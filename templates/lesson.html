@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ lesson_title }} - C Programming Learning System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/default.min.css">
+    <link rel="stylesheet" href="{{ url_for('send_static', path='style.css') }}">
+    <style>
+        .hljs {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-code"></i> C Programming Learning System
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/"><i class="fas fa-home"></i> Home</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="lesson-content">
+                    {{ lesson_content | safe }}
+                </div>
+                
+                <div class="exercise-section mt-5">
+                    <h3><i class="fas fa-laptop-code"></i> Exercise</h3>
+                    {% if exercise_content %}
+                    <div class="exercise-content">
+                        {{ exercise_content | safe }}
+                    </div>
+                    {% else %}
+                    <div class="exercise-content bg-light p-3 rounded">
+                        <p class="mb-0"><em>No specific exercise for this lesson, but you can practice writing C code below.</em></p>
+                    </div>
+                    {% endif %}
+
+                    <div class="editor-section mt-4">
+                        <h4><i class="fas fa-code"></i> Code Editor</h4>
+
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center" style="background-color: #4a76a8; color: white;">
+                                <span><i class="fas fa-file-code me-2"></i>C code.c</span>
+                                <div>
+                                    <button id="theme-toggle" class="btn btn-sm btn-outline-light me-2">
+                                        <i class="fas fa-moon"></i> Dark
+                                    </button>
+                                    <button id="solution-code" class="btn btn-sm btn-outline-light me-2 d-none">
+                                        <i class="fas fa-lightbulb"></i> Show Solution
+                                    </button>
+                                    <button id="run-code" class="btn btn-sm btn-success me-2">
+                                        <i class="fas fa-play"></i> Run
+                                    </button>
+                                    <button id="reset-code" class="btn btn-sm btn-outline-light">
+                                        <i class="fas fa-redo"></i> Reset
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body p-0">
+                                <div class="code-editor-container">
+                                    <div id="editor-wrapper" class="editor-wrapper" style="position: relative; height: 300px; display: flex;">
+                                        <div id="line-numbers" class="line-numbers" style="width: 50px; text-align: right; padding: 10px 5px; overflow: hidden; user-select: none; flex-shrink: 0;">
+                                            1
+                                        </div>
+                                        <div style="flex: 1; position: relative;">
+                                            <textarea id="code-editor"
+                                                style="height: 100%; width: 100%; padding: 10px; font-family: monospace; resize: none; border: none; outline: none; tab-size: 4;"
+                                                placeholder="Type your C code here..."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Success message card -->
+                        <div id="success-message" class="alert alert-success d-none mt-3" role="alert">
+                            <i class="fas fa-check-circle me-2"></i>
+                            <strong>Tugas anda berhasil!</strong> Output sesuai dengan yang diharapkan.
+                        </div>
+
+                        <div id="output" class="mt-3 p-3 border rounded bg-light d-none" style="max-height: 200px; overflow-y: auto;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="mb-0"><i class="fas fa-terminal"></i> Output</h5>
+                                <button id="clear-output" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-eraser"></i> Clear
+                                </button>
+                            </div>
+                            <pre id="output-content" class="mb-0"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-info-circle"></i> Lesson Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Current Lesson:</strong> {{ lesson_title }}</p>
+                        {% if lesson_info %}
+                            <div class="lesson-info-content">
+                                {{ lesson_info | safe }}
+                            </div>
+                        {% else %}
+                            <p class="text-muted">Complete the exercise to practice what you've learned.</p>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="card mt-4">
+                    <div class="card-header">
+                        <h5><i class="fas fa-list"></i> All Lessons</h5>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for lesson in get_lessons() %}
+                            <a href="{{ url_for('lesson', filename=lesson.filename) }}" 
+                               class="list-group-item list-group-item-action {% if lesson.filename == request.view_args.filename %}active{% endif %}">
+                                {{ lesson.title }}
+                            </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-5 py-4 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">C Programming Learning System &copy; 2025</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Get initial code from the template
+            const initialCode = {{ initial_code | tojson }};
+            const solutionCode = {{ solution_code | tojson }};
+            const expectedOutput = {{ expected_output | tojson }};
+
+            // Get DOM elements
+            const runButton = document.getElementById('run-code');
+            const resetButton = document.getElementById('reset-code');
+            const clearOutputButton = document.getElementById('clear-output');
+            const outputDiv = document.getElementById('output');
+            const outputContent = document.getElementById('output-content');
+            const solutionButton = document.getElementById('solution-code');
+            const themeToggle = document.getElementById('theme-toggle');
+            const codeEditor = document.getElementById('code-editor');
+
+            // Set initial code
+            codeEditor.value = initialCode;
+
+            // Check for saved theme preference
+            const savedTheme = localStorage.getItem('editor-theme');
+            let isDarkTheme = savedTheme === 'dark';
+
+            // Get the line numbers container (now part of HTML)
+            const lineNumbersContainer = document.getElementById('line-numbers');
+
+            // Function to apply dark theme
+            function applyDarkTheme() {
+                codeEditor.classList.add('code-editor-dark');
+                outputDiv.classList.add('output-dark');
+                // Update line numbers for dark theme
+                lineNumbersContainer.style.backgroundColor = '#3e3d32';
+                lineNumbersContainer.style.color = '#75715e';
+                lineNumbersContainer.style.borderColor = '#49483e';
+                codeEditor.style.backgroundColor = '#272822';
+                codeEditor.style.color = '#f8f8f2';
+            }
+
+            // Function to apply light theme
+            function applyLightTheme() {
+                codeEditor.classList.remove('code-editor-dark');
+                outputDiv.classList.remove('output-dark');
+                // Update line numbers for light theme
+                lineNumbersContainer.style.backgroundColor = '#eef0f3';
+                lineNumbersContainer.style.color = '#6c757d';
+                lineNumbersContainer.style.borderColor = '#dee2e6';
+                codeEditor.style.backgroundColor = 'white';
+                codeEditor.style.color = 'black';
+            }
+
+            // Apply theme based on preference
+            if (isDarkTheme) {
+                applyDarkTheme();
+                themeToggle.innerHTML = '<i class="fas fa-sun"></i> Light';
+            } else {
+                applyLightTheme();
+                themeToggle.innerHTML = '<i class="fas fa-moon"></i> Dark';
+            }
+
+            // Function to update line numbers
+            function updateLineNumbers() {
+                const lines = codeEditor.value.split('\n');
+                const lineCount = lines.length || 1; // Ensure at least 1 line
+
+                let lineNumbersHTML = '';
+                for (let i = 1; i <= lineCount; i++) {
+                    lineNumbersHTML += i + '<br>';
+                }
+
+                lineNumbersContainer.innerHTML = lineNumbersHTML;
+            }
+
+            // Initialize line numbers
+            updateLineNumbers();
+
+            // Update line numbers when content changes
+            codeEditor.addEventListener('input', updateLineNumbers);
+            codeEditor.addEventListener('scroll', function() {
+                lineNumbersContainer.scrollTop = codeEditor.scrollTop;
+            });
+
+            // Update line numbers on other events that might change content
+            codeEditor.addEventListener('keyup', updateLineNumbers);
+            codeEditor.addEventListener('paste', function() {
+                setTimeout(updateLineNumbers, 0);
+            });
+
+            // Prevent copy-paste in the code editor with multiple methods
+            codeEditor.addEventListener('paste', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Copy-paste is not allowed in the code editor. Please type your code manually.');
+                return false;
+            });
+
+            // Additional paste prevention using onpaste attribute
+            codeEditor.onpaste = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Copy-paste is not allowed in the code editor. Please type your code manually.');
+                return false;
+            };
+
+            codeEditor.addEventListener('copy', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Copy is not allowed in the code editor. Please type your code manually.');
+            });
+
+            codeEditor.addEventListener('cut', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Cut is not allowed in the code editor. Please type your code manually.');
+            });
+
+            // Prevent right-click context menu
+            codeEditor.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('Copy-paste is not allowed in the code editor. Please type your code manually.');
+            });
+
+            // Add keyboard shortcut for running code (Ctrl+Enter)
+            codeEditor.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    runButton.click();
+                }
+
+                // Handle Tab key to insert 4 spaces instead of changing focus
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = this.selectionStart;
+                    const end = this.selectionEnd;
+
+                    // Insert 4 spaces at cursor position
+                    this.value = this.value.substring(0, start) + '    ' + this.value.substring(end);
+
+                    // Move cursor to after the inserted spaces
+                    this.selectionStart = this.selectionEnd = start + 4;
+
+                    // Update line numbers after tab
+                    setTimeout(updateLineNumbers, 1);
+                }
+            });
+
+            // Run code functionality
+            runButton.addEventListener('click', function() {
+                const code = codeEditor.value;
+
+                if (!code.trim()) {
+                    alert('Please enter some C code to run.');
+                    return;
+                }
+
+                // Show loading state
+                runButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+                runButton.disabled = true;
+
+                // Create form data to send to the server
+                const formData = new FormData();
+                formData.append('code', code);
+
+                fetch('/compile', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    outputDiv.classList.remove('d-none');
+
+                    if (data.success) {
+                        outputContent.textContent = data.output || 'Program executed successfully with no output.';
+                        outputContent.className = 'output-success';
+
+                        // Check if output matches expected output (if available)
+                        if (expectedOutput && expectedOutput !== "None" && expectedOutput !== "") {
+                            const actualOutput = data.output || '';
+                            if (actualOutput.trim() === expectedOutput.trim()) {
+                                // Show success message card if element exists
+                                const successElement = document.getElementById('success-message');
+                                if (successElement) {
+                                    // Remove d-none to show the element
+                                    successElement.classList.remove('d-none');
+
+                                    // Hide the success message after 10 seconds
+                                    setTimeout(function() {
+                                        successElement.classList.add('d-none');
+                                    }, 10000);
+                                }
+
+                                // Show solution button if solution code exists
+                                if (solutionButton && solutionCode && solutionCode !== "None" && solutionCode !== "") {
+                                    solutionButton.classList.remove('d-none');
+                                }
+                            } else {
+                                // Hide success message if output doesn't match
+                                const successElement = document.getElementById('success-message');
+                                if (successElement) {
+                                    successElement.classList.add('d-none');
+                                }
+
+                                // Hide solution button if output doesn't match
+                                if (solutionButton) {
+                                    solutionButton.classList.add('d-none');
+                                }
+                            }
+                        } else {
+                            // Hide success message if no expected output
+                            const successElement = document.getElementById('success-message');
+                            if (successElement) {
+                                successElement.classList.add('d-none');
+                            }
+
+                            // Hide solution button if no expected output
+                            if (solutionButton) {
+                                solutionButton.classList.add('d-none');
+                            }
+                        }
+                    } else {
+                        outputContent.textContent = data.error || data.output || 'An error occurred.';
+                        outputContent.className = 'output-error';
+
+                        // Hide success message if there's an error
+                        const successElement = document.getElementById('success-message');
+                        if (successElement) {
+                            successElement.classList.add('d-none');
+                        }
+                    }
+                })
+                .catch(error => {
+                    outputDiv.classList.remove('d-none');
+                    outputContent.textContent = 'An error occurred while running the code: ' + error.message;
+                    outputContent.className = 'output-error';
+
+                    // Hide success message if there's an error
+                    const successElement = document.getElementById('success-message');
+                    if (successElement) {
+                        successElement.classList.add('d-none');
+                    }
+                })
+                .finally(() => {
+                    // Reset button state
+                    runButton.innerHTML = '<i class="fas fa-play"></i> Run';
+                    runButton.disabled = false;
+                });
+            });
+
+            // Reset code functionality
+            resetButton.addEventListener('click', function() {
+                codeEditor.value = initialCode;
+                updateLineNumbers();
+            });
+
+            // Clear output functionality
+            clearOutputButton.addEventListener('click', function() {
+                outputDiv.classList.add('d-none');
+            });
+
+            // Add solution button functionality
+            if (solutionButton && solutionCode && solutionCode !== "None" && solutionCode !== "") {
+                solutionButton.addEventListener('click', function() {
+                    codeEditor.value = solutionCode;
+                    updateLineNumbers();
+                });
+            }
+
+            // Function to apply dark theme
+            function applyDarkTheme() {
+                codeEditor.classList.add('code-editor-dark');
+                outputDiv.classList.add('output-dark');
+                // Update line numbers for dark theme
+                lineNumbersContainer.style.backgroundColor = '#3e3d32';
+                lineNumbersContainer.style.color = '#75715e';
+                codeEditor.style.backgroundColor = '#272822';
+                codeEditor.style.color = '#f8f8f2';
+            }
+
+            // Function to apply light theme
+            function applyLightTheme() {
+                codeEditor.classList.remove('code-editor-dark');
+                outputDiv.classList.remove('output-dark');
+                // Update line numbers for light theme
+                lineNumbersContainer.style.backgroundColor = '#eef0f3';
+                lineNumbersContainer.style.color = '#6c757d';
+                codeEditor.style.backgroundColor = 'white';
+                codeEditor.style.color = 'black';
+            }
+
+            // Theme toggle functionality
+            themeToggle.addEventListener('click', function() {
+                isDarkTheme = !isDarkTheme;
+
+                if (isDarkTheme) {
+                    applyDarkTheme();
+                    themeToggle.innerHTML = '<i class="fas fa-sun"></i> Light';
+                    localStorage.setItem('editor-theme', 'dark');
+                } else {
+                    applyLightTheme();
+                    themeToggle.innerHTML = '<i class="fas fa-moon"></i> Dark';
+                    localStorage.setItem('editor-theme', 'light');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
