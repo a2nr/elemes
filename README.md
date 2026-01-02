@@ -8,6 +8,7 @@ A web-based learning management system for C programming with interactive exerci
 - Interactive C code editor with compilation and execution
 - Real-time feedback on code compilation and execution
 - No database required - content stored as Markdown files
+- Student token-based progress tracking system
 - No authentication required - ready to use out of the box
 - Containerized with Podman for easy deployment
 
@@ -58,23 +59,75 @@ A web-based learning management system for C programming with interactive exerci
 
 2. Run the container:
    ```bash
-   podman run -p 5000:5000 -v $(pwd)/content:/app/content -v $(pwd)/static:/app/static -v $(pwd)/templates:/app/templates lms-c
+   podman run -p 5000:5000 -v $(pwd)/content:/app/content -v $(pwd)/static:/app/static -v $(pwd)/templates:/app/templates -v $(pwd)/tokens.csv:/app/tokens.csv lms-c
    ```
 
-## Adding New Lessons
+## Content Structure
 
-To add new lessons:
+The system uses Markdown files for content management. There are two main types of content files:
 
-1. Create a new Markdown file in the `content` directory with a `.md` extension
-2. Structure your lesson with:
-   - Lesson content at the top (using standard Markdown syntax)
-   - A separator `---EXERCISE---` (optional)
-   - Exercise content at the bottom (optional)
+### Home Page (`home.md`)
 
-### Lesson Structure
+The home page serves as the main landing page and lesson directory. Here's the template structure:
 
-**With Exercise:**
 ```markdown
+# Welcome to C Programming Learning System
+
+This is a comprehensive learning platform designed to help you master the C programming language through interactive lessons and exercises.
+
+## Learning Objectives
+
+| Module | Objective | Skills Acquired |
+|--------|-----------|-----------------|
+| Introduction to C | Understand basic syntax and structure | Writing first C program |
+| Variables & Data Types | Learn about different data types | Proper variable declaration |
+| Control Structures | Master conditional statements and loops | Logic implementation |
+| Functions | Create and use functions | Code organization |
+| Arrays & Pointers | Work with complex data structures | Memory management |
+
+## How to Use This System
+
+1. **Browse Lessons**: Select from the available lessons on the left
+2. **Read Content**: Study the lesson materials and examples
+3. **Practice Coding**: Use the integrated code editor to write and test C code
+4. **Complete Exercises**: Apply your knowledge to solve programming challenges
+5. **Get Feedback**: See immediate results of your code execution
+
+## Getting Started
+
+Start with the "Introduction to C" lesson to begin your journey in C programming. Each lesson builds upon the previous one, so it's recommended to follow them in order.
+
+Happy coding!
+
+---Available_Lessons---
+
+1. [Introduction to C Programming](lesson/introduction_to_c.md)
+2. [Variables and Data Types in C](lesson/variables_and_data_types.md)
+```
+
+**Key Components of `home.md`:**
+- Main title and welcome message
+- Learning objectives table
+- Usage instructions
+- Getting started section
+- `---Available_Lessons---` separator followed by a list of lessons in the format `[Lesson Title](lesson/filename.md)`
+
+### Lesson Template
+
+Each lesson file follows a specific structure to enable all system features. Here's the complete template:
+
+```markdown
+---LESSON_INFO---
+**Learning Objectives:**
+- Understand basic syntax and structure of C programs
+- Learn how to write your first C program
+- Familiarize with the compilation process
+
+**Prerequisites:**
+- Basic understanding of programming concepts
+- Familiarity with command line interface (optional)
+
+---END_LESSON_INFO---
 # Lesson Title
 
 Lesson content goes here...
@@ -85,25 +138,97 @@ More content...
 
 ---
 
-EXERCISE---
+## Common Data Types in C
+
+| Type | Description | Example |
+|------|-------------|---------|
+| int | Integer values | `int age = 25;` |
+| float | Floating-point numbers | `float price = 19.99;` |
+| char | Single character | `char grade = 'A';` |
+| double | Double precision float | `double pi = 3.14159;` |
+
+---EXERCISE---
 
 # Exercise Title
 
 Exercise instructions go here...
 
+**Requirements:**
+- Requirement 1
+- Requirement 2
+
+**Expected Output:**
+```
+Expected output example
+```
+
 Try writing your solution in the code editor below!
+
+---EXPECTED_OUTPUT---
+Expected output text
+---END_EXPECTED_OUTPUT---
+
+---INITIAL_CODE---
+#include <stdio.h>
+
+int main() {
+    // Write your code here
+    printf("Hello, World!\\n");
+    return 0;
+}
+---END_INITIAL_CODE---
+
+---SOLUTION_CODE---
+#include <stdio.h>
+
+int main() {
+    // Write your solution here
+    printf("Solution output\\n");
+    return 0;
+}
+---END_SOLUTION_CODE---
 ```
 
-**Without Exercise:**
-```markdown
-# Lesson Title
+**Key Components of Lesson Files:**
 
-Lesson content goes here...
+1. **Lesson Information Block** (Optional):
+   - `---LESSON_INFO---` and `---END_LESSON_INFO---` separators
+   - Contains learning objectives and prerequisites
+   - Appears in a special information card on the lesson page
 
-## Section
+2. **Main Content**:
+   - Standard Markdown content with headers, text, tables, etc.
+   - Supports all standard Markdown features including code blocks
 
-More content...
-```
+3. **Exercise Block** (Optional):
+   - `---EXERCISE---` separator
+   - Exercise instructions and requirements
+   - Appears above the code editor
+
+4. **Expected Output Block** (Optional):
+   - `---EXPECTED_OUTPUT---` and `---END_EXPECTED_OUTPUT---` separators
+   - Defines the expected output for the exercise
+   - When student code produces this output, they get a success message
+
+5. **Initial Code Block** (Optional):
+   - `---INITIAL_CODE---` and `---END_INITIAL_CODE---` separators
+   - Provides starter code for the student
+   - If not provided, defaults to a basic "Hello, World!" program
+
+6. **Solution Code Block** (Optional):
+   - `---SOLUTION_CODE---` and `---END_SOLUTION_CODE---` separators
+   - Contains the correct solution
+   - A "Show Solution" button appears when this is provided and the exercise is completed successfully
+
+## Adding New Lessons
+
+To add new lessons:
+
+1. Create a new Markdown file in the `content` directory with a `.md` extension
+2. Follow the lesson template structure above
+3. Use standard Markdown syntax for content formatting
+4. Add exercises with the `---EXERCISE---` separator if needed
+5. Include expected output, initial code, and solution code as appropriate
 
 ### Markdown Features Supported
 
@@ -113,6 +238,8 @@ More content...
 - Bold/italic: `**bold**`, `*italic*`
 - Links: `[text](url)`
 - Tables: Using standard Markdown table syntax
+- Images: `![alt text](path/to/image)`
+- Blockquotes: `> quoted text`
 
 ### Exercise Guidelines
 
@@ -120,6 +247,26 @@ More content...
 - When an exercise is provided, it will appear above the code editor
 - If no exercise is provided, a message will indicate that users can still practice with the code editor
 - The code editor is always available for practice regardless of whether an exercise is defined
+- Use `---EXPECTED_OUTPUT---` to provide automatic feedback when students complete exercises correctly
+- Use `---INITIAL_CODE---` to provide starter code
+- Use `---SOLUTION_CODE---` to provide a reference solution
+
+## Student Progress Tracking
+
+The system includes a token-based progress tracking system:
+
+1. A `tokens.csv` file is automatically generated based on the lessons in the content directory
+2. Teachers manually add student tokens and names to this file
+3. Students log in using their assigned token
+4. Progress is automatically tracked when students complete exercises successfully
+5. The system updates the CSV file with completion status for each lesson
+
+To generate the tokens CSV file:
+```bash
+python generate_tokens.py
+```
+
+The CSV file format is: `token;nama_siswa;lesson1;lesson2;...`
 
 ## How to Use
 
@@ -129,12 +276,14 @@ More content...
 4. Use the code editor to write C code
 5. Click "Run Code" to compile and execute your code
 6. View the output in the output panel
+7. For student tracking, use the token login field in the top navigation bar
 
 ## Security Considerations
 
 - The application runs C code in a containerized environment
 - Timeouts are implemented to prevent infinite loops
 - File system access is limited to the application directory
+- Copy-paste functionality is disabled in the code editor to encourage manual coding
 
 ## Project Structure
 
@@ -142,6 +291,8 @@ More content...
 - `content/`: Directory for lesson Markdown files
 - `templates/`: HTML templates
 - `static/`: CSS, JavaScript, and other static assets
+- `tokens.csv`: Student progress tracking file
+- `generate_tokens.py`: Script to generate tokens CSV file
 - `Dockerfile`: Container configuration
 - `podman-compose.yml`: Podman Compose configuration
 - `requirements.txt`: Python dependencies
@@ -159,6 +310,7 @@ podman exec -it <container_name> /bin/bash
 - If you get permission errors, make sure your user has access to Podman
 - If the application doesn't start, check that port 5000 is available
 - If code compilation fails, verify that the gcc compiler is available in the container
+- If progress tracking isn't working, ensure the tokens.csv file is properly formatted
 
 ## Stopping the Application
 
@@ -221,6 +373,9 @@ Then you can run the application again on the desired port.
 - `GET /` - Main page with all lessons
 - `GET /lesson/<filename>` - View a specific lesson
 - `POST /compile` - Compile and run C code (expects JSON with "code" field)
+- `POST /login` - Validate student token
+- `POST /validate-token` - Check if token is valid
+- `POST /track-progress` - Update student progress
 - `GET /static/<path>` - Serve static files
 
 ## Example API Usage

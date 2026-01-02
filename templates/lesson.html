@@ -27,9 +27,20 @@
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
+                <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="/"><i class="fas fa-home"></i> Home</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <div class="d-flex" id="token-section">
+                            <form class="d-flex" id="token-form" style="display: flex; align-items: center;">
+                                <input class="form-control me-2" type="text" id="student-token" placeholder="Enter token" style="width: 200px;">
+                                <button class="btn btn-outline-light" type="submit">Login</button>
+                            </form>
+                            <div id="student-info" class="text-light" style="margin-left: 15px; display: none;"></div>
+                        </div>
                     </li>
                 </ul>
             </div>
@@ -350,6 +361,39 @@
                                 if (solutionButton && solutionCode && solutionCode !== "None" && solutionCode !== "") {
                                     solutionButton.classList.remove('d-none');
                                 }
+
+                                // Track progress if student is logged in
+                                const savedToken = localStorage.getItem('student_token');
+                                if (savedToken) {
+                                    // Extract lesson name from the URL
+                                    const pathParts = window.location.pathname.split('/');
+                                    const lessonFilename = pathParts[pathParts.length - 1];
+                                    const lessonName = lessonFilename.replace('.md', '');
+
+                                    // Send progress to server
+                                    fetch('/track-progress', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            token: savedToken,
+                                            lesson_name: lessonName,
+                                            status: 'completed'
+                                        })
+                                    })
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.success) {
+                                            console.log('Progress tracked successfully');
+                                        } else {
+                                            console.error('Failed to track progress:', data.message);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error tracking progress:', error);
+                                    });
+                                }
                             } else {
                                 // Hide success message if output doesn't match
                                 const successElement = document.getElementById('success-message');
@@ -458,6 +502,126 @@
                     localStorage.setItem('editor-theme', 'light');
                 }
             });
+
+            // Token login functionality
+            const tokenForm = document.getElementById('token-form');
+            const studentTokenInput = document.getElementById('student-token');
+            const studentInfoDiv = document.getElementById('student-info');
+
+            // Handle token form submission
+            if (tokenForm) {
+                tokenForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+
+                    const token = studentTokenInput.value.trim();
+
+                    if (!token) {
+                        alert('Please enter a token');
+                        return;
+                    }
+
+                    // Send token to server for validation
+                    fetch('/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ token: token })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Store token in localStorage for persistence
+                            localStorage.setItem('student_token', token);
+
+                            // Update UI to show student info
+                            studentInfoDiv.textContent = `Welcome, ${data.student_name}!`;
+                            studentInfoDiv.style.display = 'block';
+
+                            // Hide the form after successful login
+                            tokenForm.style.display = 'none';
+
+                            // Update the token input to show logged in state
+                            studentTokenInput.placeholder = 'Logged in';
+                            studentTokenInput.disabled = true;
+
+                            // Add logout button
+                            const logoutBtn = document.createElement('button');
+                            logoutBtn.className = 'btn btn-outline-light';
+                            logoutBtn.textContent = 'Logout';
+                            logoutBtn.type = 'button';
+                            logoutBtn.onclick = function() {
+                                localStorage.removeItem('student_token');
+                                // Clear the token input field
+                                const tokenInput = document.getElementById('student-token');
+                                if (tokenInput) {
+                                    tokenInput.value = '';
+                                    tokenInput.placeholder = 'Enter token';
+                                    tokenInput.disabled = false;
+                                }
+                                location.reload();
+                            };
+                            tokenForm.appendChild(logoutBtn);
+                        } else {
+                            alert(data.message || 'Invalid token');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while logging in');
+                    });
+                });
+            }
+
+            // Check if user is already logged in
+            const savedToken = localStorage.getItem('student_token');
+            if (savedToken) {
+                // Validate the saved token
+                fetch('/validate-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ token: savedToken })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update UI to show student info
+                        studentInfoDiv.textContent = `Welcome, ${data.student_name}!`;
+                        studentInfoDiv.style.display = 'block';
+
+                        // Hide the form since user is already logged in
+                        if (tokenForm) {
+                            tokenForm.style.display = 'none';
+
+                            // Add logout button
+                            const logoutBtn = document.createElement('button');
+                            logoutBtn.className = 'btn btn-outline-light';
+                            logoutBtn.textContent = 'Logout';
+                            logoutBtn.type = 'button';
+                            logoutBtn.onclick = function() {
+                                localStorage.removeItem('student_token');
+                                // Clear the token input field
+                                const tokenInput = document.getElementById('student-token');
+                                if (tokenInput) {
+                                    tokenInput.value = '';
+                                    tokenInput.placeholder = 'Enter token';
+                                    tokenInput.disabled = false;
+                                }
+                                location.reload();
+                            };
+                            tokenForm.appendChild(logoutBtn);
+                        }
+                    } else {
+                        // Token is invalid, remove it from localStorage
+                        localStorage.removeItem('student_token');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error validating token:', error);
+                });
+            }
         });
     </script>
 </body>

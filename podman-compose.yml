@@ -9,6 +9,7 @@ services:
       - ./content:/app/content
       - ./static:/app/static
       - ./templates:/app/templates
+      - ./tokens.csv:/app/tokens.csv
     environment:
       - FLASK_ENV=development
     command: python app.py

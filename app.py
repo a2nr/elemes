@@ -10,6 +10,9 @@ import tempfile
 import markdown
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import glob
+import csv
+import uuid
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -17,6 +20,7 @@ app = Flask(__name__)
 CONTENT_DIR = 'content'
 STATIC_DIR = 'static'
 TEMPLATES_DIR = 'templates'
+TOKENS_FILE = 'tokens.csv'
 
 def get_lessons():
     """Get all lesson files from the content directory"""
@@ -55,6 +59,95 @@ def get_lessons():
             })
 
     return lessons
+
+def get_lesson_names():
+    """Get all lesson names from the content directory (excluding home.md)"""
+    lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
+    lesson_names = []
+
+    for file_path in lesson_files:
+        filename = os.path.basename(file_path)
+        # Skip home.md as it's not a lesson
+        if filename == "home.md":
+            continue
+        lesson_names.append(filename.replace('.md', ''))
+
+    return lesson_names
+
+def initialize_tokens_file():
+    """Initialize the tokens CSV file with headers and lesson columns"""
+    lesson_names = get_lesson_names()
+
+    # Check if file exists
+    if not os.path.exists(TOKENS_FILE):
+        # Create the file with headers
+        headers = ['token', 'nama_siswa'] + lesson_names
+
+        with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile, delimiter=';')
+            writer.writerow(headers)
+
+        print(f"Created new tokens file: {TOKENS_FILE} with headers: {headers}")
+
+def validate_token(token):
+    """Validate if a token exists in the CSV file and return student info"""
+    if not os.path.exists(TOKENS_FILE):
+        return None
+
+    with open(TOKENS_FILE, 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=';')
+        for row in reader:
+            if row['token'] == token:
+                return {
+                    'token': row['token'],
+                    'student_name': row['nama_siswa']
+                }
+
+    return None
+
+def get_student_progress(token):
+    """Get the progress of a student based on their token"""
+    if not os.path.exists(TOKENS_FILE):
+        return None
+
+    with open(TOKENS_FILE, 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=';')
+        for row in reader:
+            if row['token'] == token:
+                # Return the entire row as progress data
+                return row
+
+    return None
+
+def update_student_progress(token, lesson_name, status="completed"):
+    """Update the progress of a student for a specific lesson"""
+    if not os.path.exists(TOKENS_FILE):
+        return False
+
+    # Read all rows
+    rows = []
+    with open(TOKENS_FILE, 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=';')
+        fieldnames = reader.fieldnames
+        rows = list(reader)
+
+    # Find and update the specific student's lesson status
+    updated = False
+    for row in rows:
+        if row['token'] == token:
+            if lesson_name in fieldnames:
+                row[lesson_name] = status
+                updated = True
+            break
+
+    # Write the updated data back to the file
+    if updated:
+        with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
+            writer.writeheader()
+            writer.writerows(rows)
+
+    return updated
 
 def get_ordered_lessons():
     """Get lessons in the order specified in home.md if available"""
@@ -322,10 +415,90 @@ def send_assets(path):
     """Serve asset files (images, etc.)"""
     return send_from_directory('assets', path)
 
+@app.route('/login', methods=['POST'])
+def login():
+    """Handle student login with token"""
+    try:
+        data = request.get_json()
+        token = data.get('token', '').strip()
+
+        if not token:
+            return jsonify({'success': False, 'message': 'Token is required'})
+
+        # Validate the token
+        student_info = validate_token(token)
+        if student_info:
+            return jsonify({
+                'success': True,
+                'student_name': student_info['student_name'],
+                'message': 'Login successful'
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Invalid token'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing login: {str(e)}'})
+
+@app.route('/validate-token', methods=['POST'])
+def validate_token_route():
+    """Validate a token without logging in"""
+    try:
+        data = request.get_json()
+        token = data.get('token', '').strip()
+
+        if not token:
+            return jsonify({'success': False, 'message': 'Token is required'})
+
+        # Validate the token
+        student_info = validate_token(token)
+        if student_info:
+            return jsonify({
+                'success': True,
+                'student_name': student_info['student_name']
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Invalid token'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error validating token: {str(e)}'})
+
+@app.route('/track-progress', methods=['POST'])
+def track_progress():
+    """Track student progress for a lesson"""
+    try:
+        data = request.get_json()
+        token = data.get('token', '').strip()
+        lesson_name = data.get('lesson_name', '').strip()
+        status = data.get('status', 'completed').strip()
+
+        if not token or not lesson_name:
+            return jsonify({'success': False, 'message': 'Token and lesson name are required'})
+
+        # Validate the token first
+        student_info = validate_token(token)
+        if not student_info:
+            return jsonify({'success': False, 'message': 'Invalid token'})
+
+        # Update progress
+        updated = update_student_progress(token, lesson_name, status)
+        if updated:
+            return jsonify({
+                'success': True,
+                'message': 'Progress updated successfully'
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Failed to update progress'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error tracking progress: {str(e)}'})
+
 @app.context_processor
 def inject_functions():
     """Make get_lessons function available in templates"""
     return dict(get_lessons=get_lessons)
+
+# Initialize the tokens file when the app starts
+initialize_tokens_file()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False)
