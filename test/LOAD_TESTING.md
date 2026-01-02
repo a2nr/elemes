@@ -4,13 +4,15 @@
 This document describes how to perform load testing on the C Programming Learning Management System to ensure it can handle at least 50 concurrent students accessing the application.
 
 ## Requirements
-- Python 3.7+
+- Python 3.7+ (for local testing)
 - Locust (installed via pip)
+- Podman (for containerized testing)
 - The LMS application running on your local machine or a test server
 
 ## Setup
 
-### 1. Install Locust
+### Option 1: Local Installation
+#### 1. Install Locust
 ```bash
 pip install locust
 ```
@@ -21,7 +23,7 @@ cd /path/to/lms-c/test
 pip install -r requirements.txt
 ```
 
-### 2. Ensure the LMS Application is Running
+#### 2. Ensure the LMS Application is Running
 Start your LMS application:
 ```bash
 cd /path/to/lms-c
@@ -34,9 +36,34 @@ python app.py
 
 By default, the application runs on `http://localhost:5000`.
 
+### Option 2: Containerized Setup with Podman
+The load testing can also be run in a containerized environment using Podman. This ensures consistency across different environments and simplifies setup.
+
+#### 1. Using the provided podman-compose file
+A podman-compose file is provided in the test directory that sets up both the LMS application and the load testing service:
+
+```bash
+cd /path/to/lms-c
+podman-compose -f test/podman-compose.yml up --build
+```
+
+This will start both the LMS application and the Locust load testing service. The Locust web interface will be available at `http://localhost:8089`.
+
+#### 2. Running only the load test container against an existing LMS
+If you already have the LMS running, you can run just the load test container:
+
+```bash
+cd /path/to/lms-c
+podman build -f test/Dockerfile -t lms-c-load-test .
+podman run -p 8089:8089 --network=host lms-c-load-test
+```
+
+Note: Using `--network=host` allows the container to access the LMS running on localhost.
+
 ## Running the Load Test
 
-### Basic Load Test
+### Local Load Test
+#### Basic Load Test
 To run a load test simulating 50 users with a hatch rate of 2 users per second:
 ```bash
 cd /path/to/lms-c/test
@@ -45,7 +72,7 @@ locust -f load_test.py --host=http://localhost:5000
 
 Then open your browser and go to `http://localhost:8089` to configure the load test.
 
-### Command Line Load Test
+#### Command Line Load Test
 To run the load test directly from the command line without the web interface:
 ```bash
 locust -f load_test.py --host=http://localhost:5000 --users=50 --spawn-rate=2 --run-time=5m --headless
@@ -56,6 +83,32 @@ This command will:
 - Spawn 2 users per second (`--spawn-rate=2`)
 - Run for 5 minutes (`--run-time=5m`)
 - Run in headless mode without the web interface (`--headless`)
+
+### Containerized Load Test
+#### Using Podman Compose
+To run both the LMS and load testing services together:
+```bash
+cd /path/to/lms-c
+podman-compose -f test/podman-compose.yml up --build
+```
+
+Then access the Locust web interface at `http://localhost:8089` to configure and start the load test.
+
+#### Running Load Test Only
+To run just the load test against an existing LMS service:
+```bash
+cd /path/to/lms-c
+podman build -f test/Dockerfile -t lms-c-load-test .
+podman run -p 8089:8089 --network=host lms-c-load-test
+```
+
+#### Command Line Load Test in Container
+To run the load test directly from the command line in headless mode:
+```bash
+cd /path/to/lms-c
+podman build -f test/Dockerfile -t lms-c-load-test .
+podman run --network=host lms-c-load-test locust -f /app/test/load_test.py --host=http://localhost:5000 --users=50 --spawn-rate=2 --run-time=5m --headless
+```
 
 ## Test Scenarios
 
@@ -114,3 +167,5 @@ Consider monitoring system resources (CPU, memory, disk I/O) during the test usi
 ## Conclusion
 
 This load testing setup allows you to verify that the C Programming Learning Management System can handle at least 50 concurrent students. Regular load testing should be performed, especially after major updates, to ensure the application continues to meet performance requirements.
+
+Both local and containerized options are available to suit different deployment scenarios. The containerized approach using Podman ensures consistency across different environments and simplifies the setup process.
