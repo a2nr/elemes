@@ -230,6 +230,81 @@ To add new lessons:
 4. Add exercises with the `---EXERCISE---` separator if needed
 5. Include expected output, initial code, and solution code as appropriate
 
+### Complete Lesson Template
+
+Here's a complete template with all optional sections for a new lesson:
+
+```markdown
+---LESSON_INFO---
+**Learning Objectives:**
+- Understand the purpose of this lesson
+- Learn specific concepts or skills
+- Apply knowledge to practical examples
+
+**Prerequisites:**
+- Knowledge from previous lessons
+- Basic understanding of related concepts
+
+---END_LESSON_INFO---
+# Lesson Title
+
+Lesson content goes here...
+
+## Section
+
+More content...
+
+---
+
+## Tables and Other Content
+
+| Column 1 | Column 2 | Column 3 |
+|----------|----------|----------|
+| Data 1   | Data 2   | Data 3   |
+| Data 4   | Data 5   | Data 6   |
+
+---EXERCISE---
+
+# Exercise Title
+
+Exercise instructions go here...
+
+**Requirements:**
+- Requirement 1
+- Requirement 2
+
+**Expected Output:**
+```
+Expected output example
+```
+
+Try writing your solution in the code editor below!
+
+---EXPECTED_OUTPUT---
+Expected output text
+---END_EXPECTED_OUTPUT---
+
+---INITIAL_CODE---
+#include <stdio.h>
+
+int main() {
+    // Write your code here
+    printf("Hello, World!\\n");
+    return 0;
+}
+---END_INITIAL_CODE---
+
+---SOLUTION_CODE---
+#include <stdio.h>
+
+int main() {
+    // Write your solution here
+    printf("Solution output\\n");
+    return 0;
+}
+---END_SOLUTION_CODE---
+```
+
 ### Markdown Features Supported
 
 - Headers: `#`, `##`, `###`
@@ -250,6 +325,25 @@ To add new lessons:
 - Use `---EXPECTED_OUTPUT---` to provide automatic feedback when students complete exercises correctly
 - Use `---INITIAL_CODE---` to provide starter code
 - Use `---SOLUTION_CODE---` to provide a reference solution
+- Use `---LESSON_INFO---` to provide learning objectives and prerequisites in a special information card
+
+### Updating the Home Page
+
+After creating new lessons, update the `content/home.md` file to include links to your new lessons in the `---Available_Lessons---` section:
+
+```markdown
+---Available_Lessons---
+
+1. [Lesson Title](lesson/filename.md)
+```
+
+### Content Organization
+
+- Store all lesson files in the `content/` directory
+- Use descriptive filenames with underscores instead of spaces (e.g., `variables_and_data_types.md`)
+- Keep lesson files focused on a single topic or concept
+- Use consistent formatting and structure across all lessons
+- Include practical examples and exercises where appropriate
 
 ## Student Progress Tracking
 
@@ -405,3 +499,63 @@ In case of compilation errors:
   "error": "Compilation failed"
 }
 ```
+
+## Load Testing with Locust
+
+The system includes support for load testing using Locust to simulate multiple concurrent users accessing the LMS.
+
+### Prerequisites for Load Testing
+
+- Docker/Podman installed on the load testing machine
+- Network access to the LMS server
+
+### Running Load Tests
+
+1. **Prepare the LMS Server**
+   - Deploy the LMS container on the target server
+   - Note the server IP address and port (default: http://<LMS_SERVER_IP>:5000)
+
+2. **Configure Locust**
+   - Update the `podman-compose.locust.yml` file with the correct LMS server IP address:
+     ```yaml
+     command: ["locust", "-f", "locustfile.py", "--host", "http://<LMS_SERVER_IP>:5000"]
+     ```
+
+3. **Run Locust Load Test**
+   - On the load testing machine, navigate to the project directory
+   - Build and start the Locust container:
+     ```bash
+     podman-compose -f test/podman-compose.locust.yml up --build
+     ```
+   - Access the Locust web interface at `http://localhost:8089`
+   - Configure the number of users, spawn rate, and other parameters
+   - Start the load test
+
+4. **Alternative: Run Locust Directly**
+   - Install Locust on the load testing machine:
+     ```bash
+     pip install -r locust/requirements.txt
+     ```
+   - Run Locust directly:
+     ```bash
+     cd locust
+     locust -f locustfile.py --host http://<LMS_SERVER_IP>:5000
+     ```
+
+### Locust Test Scenarios
+
+The included `locustfile.py` simulates the following user behaviors:
+- Browsing the home page
+- Viewing lessons
+- Compiling C code
+- Validating student tokens
+- Logging in with tokens
+- Tracking student progress
+
+### Monitoring Performance
+
+Monitor the LMS server's resource usage (CPU, memory, disk I/O) during load testing to identify potential bottlenecks. Pay attention to:
+- Response times for API requests
+- Compilation performance under load
+- Database performance (if one is added in the future)
+- Container resource limits
