@@ -9,8 +9,8 @@ import glob
 import uuid
 
 # Configuration
-CONTENT_DIR = 'content'
-TOKENS_FILE = 'tokens.csv'
+CONTENT_DIR = '../content'
+TOKENS_FILE = '../tokens_siswa.csv'
 
 def get_lesson_names():
     """Get all lesson names from the content directory (excluding home.md)"""
