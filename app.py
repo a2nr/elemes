@@ -17,7 +17,7 @@ from datetime import datetime
 app = Flask(__name__)
 
 # Configuration
-CONTENT_DIR = '../content'
+CONTENT_DIR = 'content'
 STATIC_DIR = 'static'
 TEMPLATES_DIR = 'templates'
 TOKENS_FILE = 'tokens.csv'
