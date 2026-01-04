@@ -5,6 +5,6 @@
 echo "Stopping C Programming Learning Management System..."
 
 # Stop and remove the container
-podman stop lms-c-container && podman rm lms-c-container
+podman-compose down
 
 echo "Application has been stopped."
