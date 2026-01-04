@@ -59,12 +59,16 @@ A web-based learning management system for C programming with interactive exerci
 
 2. Run the container:
    ```bash
-   podman run -p 5000:5000 -v $(pwd)/content:/app/content -v $(pwd)/static:/app/static -v $(pwd)/templates:/app/templates -v $(pwd)/tokens.csv:/app/tokens.csv lms-c
+   podman run -p 5000:5000 -v ../content:/app/content -v ./static:/app/static -v ./templates:/app/templates -v ./tokens.csv:/app/tokens.csv lms-c
    ```
 
 ## Content Structure
 
 The system uses Markdown files for content management. There are two main types of content files:
+
+### Content Directory Location
+
+The content directory is located at the parent directory level, outside of the `elemes/` directory. This allows for easy linking and sharing of content between different instances of the LMS.
 
 ### Home Page (`home.md`)
 
@@ -329,7 +333,7 @@ int main() {
 
 ### Updating the Home Page
 
-After creating new lessons, update the `content/home.md` file to include links to your new lessons in the `---Available_Lessons---` section:
+After creating new lessons, update the `../content/home.md` file to include links to your new lessons in the `---Available_Lessons---` section:
 
 ```markdown
 ---Available_Lessons---
@@ -339,7 +343,7 @@ After creating new lessons, update the `content/home.md` file to include links t
 
 ### Content Organization
 
-- Store all lesson files in the `content/` directory
+- Store all lesson files in the `../content/` directory (at the parent directory level)
 - Use descriptive filenames with underscores instead of spaces (e.g., `variables_and_data_types.md`)
 - Keep lesson files focused on a single topic or concept
 - Use consistent formatting and structure across all lessons
@@ -372,6 +376,30 @@ The CSV file format is: `token;nama_siswa;lesson1;lesson2;...`
 6. View the output in the output panel
 7. For student tracking, use the token login field in the top navigation bar
 
+## Using as a Submodule
+
+This LMS can be used as a submodule in another repository. To set it up:
+
+1. Add this repository as a submodule to your main project:
+   ```bash
+   git submodule add <repository-url> elemes
+   ```
+
+2. Create a content directory at the root level of your main project:
+   ```bash
+   mkdir content
+   ```
+
+3. Add your lesson files to the content directory
+
+4. Run the LMS from the elemes directory:
+   ```bash
+   cd elemes
+   podman-compose -f podman-compose.yml up --build
+   ```
+
+The content directory at the root level will be automatically mounted to the application container.
+
 ## Security Considerations
 
 - The application runs C code in a containerized environment
@@ -382,7 +410,7 @@ The CSV file format is: `token;nama_siswa;lesson1;lesson2;...`
 ## Project Structure
 
 - `app.py`: Main Flask application
-- `content/`: Directory for lesson Markdown files
+- `../content/`: Directory for lesson Markdown files (at parent directory level)
 - `templates/`: HTML templates
 - `static/`: CSS, JavaScript, and other static assets
 - `tokens.csv`: Student progress tracking file

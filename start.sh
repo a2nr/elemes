@@ -17,7 +17,7 @@ if [ "$(podman ps -aq -f name=lms-c-container)" ]; then
 else
     # Build and run the container
     echo "Building and starting container..."
-    podman build -t lms-c . && podman run -d -p 5000:5000 --name lms-c-container lms-c
+    podman build -t lms-c . && podman run -d -p 5000:5000 --name lms-c-container -v ../content:/app/content -v ./static:/app/static -v ./templates:/app/templates -v ./tokens.csv:/app/tokens.csv lms-c
 fi
 
 echo "Application is now running. Access at http://localhost:5000"

@@ -9,7 +9,7 @@ import glob
 import uuid
 
 # Configuration
-CONTENT_DIR = 'content'
+CONTENT_DIR = '../content'
 TOKENS_FILE = 'tokens.csv'
 
 def get_lesson_names():

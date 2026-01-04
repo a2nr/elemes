@@ -6,7 +6,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./content:/app/content
+      - ../content:/app/content
       - ./static:/app/static
       - ./templates:/app/templates
       - ./tokens.csv:/app/tokens.csv

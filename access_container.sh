@@ -18,7 +18,7 @@ else
         podman exec -it lms-c-container /bin/bash
     else
         echo "Building and starting container..."
-        podman build -t lms-c . && podman run -d -p 5000:5000 --name lms-c-container lms-c
+        podman build -t lms-c . && podman run -d -p 5000:5000 --name lms-c-container -v ../content:/app/content -v ./static:/app/static -v ./templates:/app/templates -v ./tokens.csv:/app/tokens.csv lms-c
         sleep 5  # Wait for the application to start
         podman exec -it lms-c-container /bin/bash
     fi
