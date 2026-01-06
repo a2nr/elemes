@@ -25,7 +25,7 @@ services:
       - TS_USERSPACE=true
     volumes:
       - ./state:/var/lib/tailscale
-      - ../config:/config
+      - ./config:/config
       - /dev/net/tun:/dev/net/tun
     cap_add:
       - net_admin
