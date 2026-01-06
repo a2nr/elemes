@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import markdown
 from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask_talisman import Talisman
 import glob
 import csv
 import uuid
@@ -16,11 +17,29 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Configuration
-CONTENT_DIR = 'content'
-STATIC_DIR = 'static'
-TEMPLATES_DIR = 'templates'
-TOKENS_FILE = 'tokens.csv'
+# Load configuration from environment variables with defaults
+CONTENT_DIR = os.environ.get('CONTENT_DIR', 'content')
+STATIC_DIR = os.environ.get('STATIC_DIR', 'static')
+TEMPLATES_DIR = os.environ.get('TEMPLATES_DIR', 'templates')
+TOKENS_FILE = os.environ.get('TOKENS_FILE', 'tokens.csv')
+
+# Security configuration using Talisman
+Talisman(app,
+    force_https=False,  # Set to True if using SSL
+    strict_transport_security=True,
+    strict_transport_security_max_age=31536000,
+    frame_options='DENY',
+    content_security_policy={
+        'default-src': "'self'",
+        'script-src': "'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+        'style-src': "'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+        'img-src': "'self' data: https:",
+        'font-src': "'self' https://cdn.jsdelivr.net",
+        'connect-src': "'self'",
+        'frame-ancestors': "'none'",
+    },
+    referrer_policy='strict-origin-when-cross-origin'
+)
 
 def get_lessons():
     """Get all lesson files from the content directory"""

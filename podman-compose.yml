@@ -1,8 +1,9 @@
 version: '3.8'
 
 services:
-  lms-c:
+  elemes:
     build: .
+    container_name: elemes
     ports:
       - "5000:5000"
     volumes:
@@ -10,6 +11,28 @@ services:
       - ./static:/app/static
       - ./templates:/app/templates
       - ../tokens_siswa.csv:/app/tokens.csv
+    env_file:
+      - ../.env
+    command: gunicorn --config gunicorn.conf.py app:app
+  elemes-ts:
+    image: docker.io/tailscale/tailscale:latest
+    container_name: elemes-ts
+    hostname: ${ELEMES_HOST}
     environment:
-      - FLASK_ENV=development
-    command: python app.py
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_SERVE_CONFIG=/config/sinau-c-tail.json
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+    volumes:
+      - ./state:/var/lib/tailscale
+      - ../config:/config
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - sys_module
+    restart: unless-stopped
+
+networks:
+  main_network:
+    drive: bridge
+    network_mode: service:elemes-ts

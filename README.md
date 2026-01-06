@@ -70,6 +70,38 @@ The system uses Markdown files for content management. There are two main types 
 
 The content directory is located at the parent directory level, outside of the `elemes/` directory. This allows for easy linking and sharing of content between different instances of the LMS.
 
+### Environment Configuration
+
+The application uses environment variables for configuration. Create a `.env` file at the parent directory level (same level as the `elemes/` directory) to configure the application. The `podman-compose.yml` file is configured to read environment variables from `../.env`.
+
+Example `.env` file:
+```
+# Production Environment Configuration
+
+# Flask Configuration
+FLASK_ENV=production
+FLASK_DEBUG=0
+SECRET_KEY=your-super-secret-key-here-change-this-in-production
+
+# Application Configuration
+CONTENT_DIR=content
+STATIC_DIR=static
+TEMPLATES_DIR=templates
+TOKENS_FILE=tokens.csv
+
+# Server Configuration
+HOST=0.0.0.0
+PORT=5000
+
+# Security Configuration
+MAX_CONTENT_LENGTH=1024 * 1024  # 1MB max upload size
+WTF_CSRF_ENABLED=true
+
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_FILE=/var/log/lms-c/app.log
+```
+
 ### Home Page (`home.md`)
 
 The home page serves as the main landing page and lesson directory. Here's the template structure:
@@ -392,13 +424,121 @@ This LMS can be used as a submodule in another repository. To set it up:
 
 3. Add your lesson files to the content directory
 
-4. Run the LMS from the elemes directory:
+4. Create an environment configuration file at the root level:
+   ```bash
+   touch .env
+   ```
+
+5. Run the LMS from the elemes directory:
    ```bash
    cd elemes
    podman-compose -f podman-compose.yml up --build
    ```
 
-The content directory at the root level will be automatically mounted to the application container.
+The content directory and environment configuration at the root level will be automatically mounted to the application container.
+
+## Production Deployment
+
+For production deployment, additional considerations and configurations are required to ensure security, performance, and reliability.
+
+### Production Environment Setup
+
+1. **Environment Variables**: Use the following environment variables for production:
+   - `FLASK_ENV=production` - Sets the environment to production
+   - `FLASK_DEBUG=0` - Disables debug mode
+   - `PORT=5000` - Specifies the port to run the application on
+
+2. **Security Considerations**:
+   - Run the container as a non-root user (already configured in Dockerfile)
+   - Limit resource usage with podman/docker resource constraints
+   - Use a reverse proxy (like Nginx) in front of the application
+   - Implement proper HTTPS with SSL/TLS certificates
+
+3. **Performance Optimizations**:
+   - Use the multi-worker Gunicorn configuration (already configured)
+   - Set appropriate worker processes based on your server's CPU cores
+   - Configure proper caching mechanisms if needed
+
+### Production Deployment with Podman
+
+To deploy in a production environment:
+
+1. Build the production image:
+   ```bash
+   podman build -t lms-c:prod .
+   ```
+
+2. Run with production settings:
+   ```bash
+   podman run -d \
+     --name lms-c-prod \
+     -p 80:5000 \
+     -v /path/to/production/content:/app/content \
+     -v /path/to/production/static:/app/static \
+     -v /path/to/production/tokens.csv:/app/tokens.csv \
+     --restart=unless-stopped \
+     --memory=512m \
+     --cpus=1 \
+     lms-c:prod
+   ```
+
+### Production Deployment with Podman Compose
+
+Create a production-specific compose file (`podman-compose.prod.yml`):
+
+```yaml
+version: '3.8'
+
+services:
+  lms-c:
+    build: .
+    ports:
+      - "80:5000"
+    volumes:
+      - /path/to/production/content:/app/content
+      - /path/to/production/static:/app/static
+      - /path/to/production/templates:/app/templates
+      - /path/to/production/tokens.csv:/app/tokens.csv
+    env_file:
+      - /path/to/production/.env
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+```
+
+Run with:
+```bash
+podman-compose -f podman-compose.prod.yml up -d --build
+```
+
+### Reverse Proxy Configuration
+
+For production, it's recommended to put a reverse proxy like Nginx in front of the application:
+
+Example Nginx configuration:
+```
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### SSL/HTTPS Setup
+
+For HTTPS, you can use Let's Encrypt with Certbot:
+```bash
+sudo certbot --nginx -d your-domain.com
+```
+
+This will automatically configure SSL certificates for your domain.
 
 ## Security Considerations
 
@@ -416,8 +556,12 @@ The content directory at the root level will be automatically mounted to the app
 - `tokens.csv`: Student progress tracking file
 - `generate_tokens.py`: Script to generate tokens CSV file
 - `Dockerfile`: Container configuration
-- `podman-compose.yml`: Podman Compose configuration
+- `podman-compose.yml`: Podman Compose configuration with env_file support
 - `requirements.txt`: Python dependencies
+- `test/`: Directory containing test scripts and load testing tools
+- `test/test_production.sh`: Production environment test script
+- `test/locustfile.py`: Load testing script using Locust
+- `test/podman-compose.locust.yml`: Podman Compose configuration for load testing
 
 ## Development
 
@@ -427,12 +571,27 @@ To access the running container for development:
 podman exec -it <container_name> /bin/bash
 ```
 
+## Testing
+
+The project includes comprehensive test scripts:
+
+1. **Production Environment Tests**: Run the production test script to verify all functionality:
+   ```bash
+   ./test/test_production.sh
+   ```
+
+2. **Load Testing**: Use the included Locust configuration for load testing:
+   ```bash
+   podman-compose -f test/podman-compose.locust.yml up --build
+   ```
+
 ## Troubleshooting
 
 - If you get permission errors, make sure your user has access to Podman
 - If the application doesn't start, check that port 5000 is available
 - If code compilation fails, verify that the gcc compiler is available in the container
 - If progress tracking isn't working, ensure the tokens.csv file is properly formatted
+- If environment variables aren't being loaded, verify that the .env file is in the correct location and properly formatted
 
 ## Stopping the Application
 
@@ -562,15 +721,31 @@ The system includes support for load testing using Locust to simulate multiple c
 4. **Alternative: Run Locust Directly**
    - Install Locust on the load testing machine:
      ```bash
-     pip install -r locust/requirements.txt
+     pip install -r test/requirements.txt
      ```
    - Run Locust directly:
      ```bash
-     cd locust
+     cd test
      locust -f locustfile.py --host http://<LMS_SERVER_IP>:5000
      ```
 
 ### Locust Test Scenarios
+
+The included `locustfile.py` simulates the following user behaviors:
+- Browsing the home page
+- Viewing lessons
+- Compiling C code
+- Validating student tokens
+- Logging in with tokens
+- Tracking student progress
+
+### Monitoring Performance
+
+Monitor the LMS server's resource usage (CPU, memory, disk I/O) during load testing to identify potential bottlenecks. Pay attention to:
+- Response times for API requests
+- Compilation performance under load
+- Database performance (if one is added in the future)
+- Container resource limits
 
 The included `locustfile.py` simulates the following user behaviors:
 - Browsing the home page
