@@ -13,11 +13,11 @@ fi
 # Check if container exists but is stopped
 if [ "$(podman ps -aq -f name=elemes-container)" ]; then
   echo "Starting existing container..."
-  podman start elemes-container
+  podman-compose --env-file ../.env up -d
 else
   # Build and run the container
   echo "Building and starting container..."
-  podman-compose up --build -d
+  podman-compose --env-file ../.env up --build -d
 fi
 
 echo "Application is now running. Access at http://localhost:5000"
