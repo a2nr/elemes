@@ -38,6 +38,7 @@
                             <form class="d-flex" id="token-form" style="display: flex; align-items: center;">
                                 <input class="form-control me-2" type="text" id="student-token" placeholder="Enter token" style="width: 200px;">
                                 <button class="btn btn-outline-light" type="submit">Login</button>
+                                <button class="btn btn-outline-light logout-btn" type="button" style="display: none;">Logout</button>
                             </form>
                             <div id="student-info" class="text-light" style="margin-left: 15px; display: none;"></div>
                         </div>
@@ -120,8 +121,27 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Navigation buttons for next and previous lessons -->
+                <div class="d-flex justify-content-between mt-4">
+                    {% if prev_lesson %}
+                        <a href="{{ url_for('lesson', filename=prev_lesson.filename) }}{% if token %}?token={{ token }}{% endif %}" class="btn btn-primary">
+                            <i class="fas fa-arrow-left"></i> Previous: {{ prev_lesson.title }}
+                        </a>
+                    {% else %}
+                        <div></div> <!-- Empty div to maintain spacing when there's no previous lesson -->
+                    {% endif %}
+
+                    {% if next_lesson %}
+                        <a href="{{ url_for('lesson', filename=next_lesson.filename) }}{% if token %}?token={{ token }}{% endif %}" class="btn btn-primary">
+                            Next: {{ next_lesson.title }} <i class="fas fa-arrow-right"></i>
+                        </a>
+                    {% else %}
+                        <div></div> <!-- Empty div to maintain spacing when there's no next lesson -->
+                    {% endif %}
+                </div>
             </div>
-            
+
             <div class="col-md-4">
                 <div class="card">
                     <div class="card-header">
@@ -129,6 +149,16 @@
                     </div>
                     <div class="card-body">
                         <p><strong>Current Lesson:</strong> {{ lesson_title }}</p>
+                        {% if progress %}
+                            <p>
+                                <strong>Status:</strong>
+                                {% if lesson_completed %}
+                                    <span class="badge bg-success"><i class="fas fa-check-circle"></i> Completed</span>
+                                {% else %}
+                                    <span class="badge bg-warning"><i class="fas fa-clock"></i> In Progress</span>
+                                {% endif %}
+                            </p>
+                        {% endif %}
                         {% if lesson_info %}
                             <div class="lesson-info-content">
                                 {{ lesson_info | safe }}
@@ -138,18 +168,37 @@
                         {% endif %}
                     </div>
                 </div>
-                
+
                 <div class="card mt-4">
                     <div class="card-header">
                         <h5><i class="fas fa-list"></i> All Lessons</h5>
                     </div>
                     <div class="list-group list-group-flush">
-                        {% for lesson in get_lessons() %}
-                            <a href="{{ url_for('lesson', filename=lesson.filename) }}" 
-                               class="list-group-item list-group-item-action {% if lesson.filename == request.view_args.filename %}active{% endif %}">
-                                {{ lesson.title }}
-                            </a>
-                        {% endfor %}
+                        {% if ordered_lessons %}
+                            {% for lesson in ordered_lessons %}
+                                <a href="{{ url_for('lesson', filename=lesson.filename) }}{% if token %}?token={{ token }}{% endif %}"
+                                   class="list-group-item list-group-item-action {% if lesson.filename == request.view_args.filename %}active{% endif %}">
+                                    {{ lesson.title }}
+                                    {% if progress %}
+                                        {% if lesson.completed %}
+                                            <span class="badge bg-success float-end"><i class="fas fa-check-circle"></i></span>
+                                        {% endif %}
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        {% else %}
+                            {% for lesson in get_ordered_lessons_with_learning_objectives(progress) %}
+                                <a href="{{ url_for('lesson', filename=lesson.filename) }}{% if token %}?token={{ token }}{% endif %}"
+                                   class="list-group-item list-group-item-action {% if lesson.filename == request.view_args.filename %}active{% endif %}">
+                                    {{ lesson.title }}
+                                    {% if progress %}
+                                        {% if lesson.completed %}
+                                            <span class="badge bg-success float-end"><i class="fas fa-check-circle"></i></span>
+                                        {% endif %}
+                                    {% endif %}
+                                </a>
+                            {% endfor %}
+                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -367,7 +416,14 @@
                                 if (savedToken) {
                                     // Extract lesson name from the URL
                                     const pathParts = window.location.pathname.split('/');
-                                    const lessonFilename = pathParts[pathParts.length - 1];
+                                    let lessonFilename = pathParts[pathParts.length - 1];
+
+                                    // Handle the case where the URL might include query parameters
+                                    if (lessonFilename.includes('?')) {
+                                        lessonFilename = lessonFilename.split('?')[0];
+                                    }
+
+                                    // Extract just the lesson name without .md extension
                                     const lessonName = lessonFilename.replace('.md', '');
 
                                     // Send progress to server
@@ -385,7 +441,46 @@
                                     .then(response => response.json())
                                     .then(data => {
                                         if (data.success) {
-                                            console.log('Progress tracked successfully');
+                                            console.log('Progress tracked successfully for lesson:', lessonName);
+                                            // Update the UI to reflect the new status
+                                            document.querySelectorAll('.lesson-card').forEach(card => {
+                                                const link = card.querySelector('a');
+                                                if (link && link.href.includes(lessonFilename)) {
+                                                    const statusBadge = card.querySelector('.badge');
+                                                    if (statusBadge) {
+                                                        statusBadge.className = 'badge bg-success float-end';
+                                                        statusBadge.title = 'Completed';
+                                                        statusBadge.innerHTML = '<i class="fas fa-check-circle"></i> Completed';
+                                                    }
+                                                    const btn = card.querySelector('.btn-primary');
+                                                    if (btn) {
+                                                        btn.textContent = btn.textContent.replace('Start Learning', 'Review');
+                                                    }
+                                                }
+                                            });
+
+                                            // Update the current lesson status in the sidebar
+                                            const statusElement = document.querySelector('.card-body p strong + p span');
+                                            if (statusElement) {
+                                                statusElement.className = 'badge bg-success';
+                                                statusElement.innerHTML = '<i class="fas fa-check-circle"></i> Completed';
+                                            }
+
+                                            // Update the lesson in the "All Lessons" sidebar
+                                            document.querySelectorAll('.list-group-item').forEach(item => {
+                                                if (item.href && item.href.includes(lessonFilename)) {
+                                                    let badge = item.querySelector('.badge');
+                                                    if (!badge) {
+                                                        badge = document.createElement('span');
+                                                        badge.className = 'badge bg-success float-end';
+                                                        badge.innerHTML = '<i class="fas fa-check-circle"></i>';
+                                                        item.appendChild(badge);
+                                                    } else {
+                                                        badge.className = 'badge bg-success float-end';
+                                                        badge.innerHTML = '<i class="fas fa-check-circle"></i>';
+                                                    }
+                                                }
+                                            });
                                         } else {
                                             console.error('Failed to track progress:', data.message);
                                         }
@@ -538,30 +633,75 @@
                             studentInfoDiv.textContent = `Welcome, ${data.student_name}!`;
                             studentInfoDiv.style.display = 'block';
 
-                            // Hide the form after successful login
-                            tokenForm.style.display = 'none';
+                            // Hide the login input and login button, show logout button
+                            const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                            const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                            if (loginBtn) {
+                                loginBtn.style.display = 'none';
+                            }
+
+                            if (logoutBtn) {
+                                logoutBtn.style.display = 'inline-block';
+                                logoutBtn.onclick = function() {
+                                    // Call server endpoint to clear cookie
+                                    fetch('/logout', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        }
+                                    })
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.success) {
+                                            console.log("Server logout successful");
+                                        } else {
+                                            console.error("Server logout failed:", data.message);
+                                        }
+
+                                        // Clear localStorage
+                                        localStorage.removeItem('student_token');
+                                        // Clear the token input field
+                                        const tokenInput = document.getElementById('student-token');
+                                        if (tokenInput) {
+                                            tokenInput.value = '';
+                                            tokenInput.placeholder = 'Enter token';
+                                            tokenInput.disabled = false;
+                                        }
+                                        // Redirect to lesson page without token to ensure clean state
+                                        window.location.href = window.location.pathname;
+                                    })
+                                    .catch(error => {
+                                        console.error('Error during logout:', error);
+
+                                        // Even if server logout fails, still clear local storage and redirect
+                                        localStorage.removeItem('student_token');
+                                        // Clear the token input field
+                                        const tokenInput = document.getElementById('student-token');
+                                        if (tokenInput) {
+                                            tokenInput.value = '';
+                                            tokenInput.placeholder = 'Enter token';
+                                            tokenInput.disabled = false;
+                                        }
+                                        // Redirect to lesson page without token to ensure clean state
+                                        window.location.href = window.location.pathname;
+                                    });
+                                };
+                            }
 
                             // Update the token input to show logged in state
                             studentTokenInput.placeholder = 'Logged in';
                             studentTokenInput.disabled = true;
 
-                            // Add logout button
-                            const logoutBtn = document.createElement('button');
-                            logoutBtn.className = 'btn btn-outline-light';
-                            logoutBtn.textContent = 'Logout';
-                            logoutBtn.type = 'button';
-                            logoutBtn.onclick = function() {
-                                localStorage.removeItem('student_token');
-                                // Clear the token input field
-                                const tokenInput = document.getElementById('student-token');
-                                if (tokenInput) {
-                                    tokenInput.value = '';
-                                    tokenInput.placeholder = 'Enter token';
-                                    tokenInput.disabled = false;
-                                }
-                                location.reload();
-                            };
-                            tokenForm.appendChild(logoutBtn);
+                            // Redirect to current lesson page with token to ensure progress is loaded
+                            const currentPath = window.location.pathname;
+                            const storedToken = localStorage.getItem('student_token');
+                            if (storedToken) {
+                                window.location.href = `${currentPath}?token=${storedToken}`;
+                            } else {
+                                console.error('Token not found in localStorage after login');
+                                alert('An error occurred while processing your login');
+                            }
                         } else {
                             alert(data.message || 'Invalid token');
                         }
@@ -591,15 +731,16 @@
                         studentInfoDiv.textContent = `Welcome, ${data.student_name}!`;
                         studentInfoDiv.style.display = 'block';
 
-                        // Hide the form since user is already logged in
-                        if (tokenForm) {
-                            tokenForm.style.display = 'none';
+                        // Hide the login input and login button, show logout button
+                        const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                        const logoutBtn = tokenForm.querySelector('.logout-btn');
 
-                            // Add logout button
-                            const logoutBtn = document.createElement('button');
-                            logoutBtn.className = 'btn btn-outline-light';
-                            logoutBtn.textContent = 'Logout';
-                            logoutBtn.type = 'button';
+                        if (loginBtn) {
+                            loginBtn.style.display = 'none';
+                        }
+
+                        if (logoutBtn) {
+                            logoutBtn.style.display = 'inline-block';
                             logoutBtn.onclick = function() {
                                 localStorage.removeItem('student_token');
                                 // Clear the token input field
@@ -609,17 +750,54 @@
                                     tokenInput.placeholder = 'Enter token';
                                     tokenInput.disabled = false;
                                 }
-                                location.reload();
+                                // Redirect to lesson page without token to ensure clean state
+                                window.location.href = window.location.pathname;
                             };
-                            tokenForm.appendChild(logoutBtn);
                         }
                     } else {
                         // Token is invalid, remove it from localStorage
                         localStorage.removeItem('student_token');
+                        // Reset UI to logged out state
+                        studentInfoDiv.style.display = 'none';
+                        const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                        const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                        if (loginBtn) {
+                            loginBtn.style.display = 'inline-block';
+                        }
+
+                        if (logoutBtn) {
+                            logoutBtn.style.display = 'none';
+                        }
+
+                        const tokenInput = document.getElementById('student-token');
+                        if (tokenInput) {
+                            tokenInput.placeholder = 'Enter token';
+                            tokenInput.disabled = false;
+                        }
                     }
                 })
                 .catch(error => {
                     console.error('Error validating token:', error);
+                    // Reset UI to logged out state if there's an error
+                    localStorage.removeItem('student_token');
+                    studentInfoDiv.style.display = 'none';
+                    const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                    const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                    if (loginBtn) {
+                        loginBtn.style.display = 'inline-block';
+                    }
+
+                    if (logoutBtn) {
+                        logoutBtn.style.display = 'none';
+                    }
+
+                    const tokenInput = document.getElementById('student-token');
+                    if (tokenInput) {
+                        tokenInput.placeholder = 'Enter token';
+                        tokenInput.disabled = false;
+                    }
                 });
             }
         });

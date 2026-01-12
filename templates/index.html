@@ -18,6 +18,7 @@
                 <form class="d-flex" id="token-form" style="display: flex; align-items: center;">
                     <input class="form-control me-2" type="text" id="student-token" placeholder="Enter token" style="width: 200px;">
                     <button class="btn btn-outline-light" type="submit">Login</button>
+                    <button class="btn btn-outline-light logout-btn" type="button" style="display: none;">Logout</button>
                 </form>
                 <div id="student-info" class="text-light" style="margin-left: 15px; display: none;"></div>
             </div>
@@ -42,11 +43,22 @@
                             <div class="col-md-6 col-lg-4 mb-4">
                                 <div class="card h-100 lesson-card">
                                     <div class="card-body">
-                                        <h5 class="card-title">{{ lesson.title }}</h5>
+                                        <h5 class="card-title">
+                                            {{ lesson.title }}
+                                            {% if progress %}
+                                                {% if lesson.completed %}
+                                                    <span class="badge bg-success float-end" title="Completed"><i class="fas fa-check-circle"></i> Completed</span>
+                                                {% else %}
+                                                    <span class="badge bg-warning float-end" title="Not completed"><i class="fas fa-clock"></i> Pending</span>
+                                                {% endif %}
+                                            {% endif %}
+                                        </h5>
                                         <p class="card-text">{{ lesson.description }}</p>
                                     </div>
                                     <div class="card-footer">
-                                        <a href="{{ url_for('lesson', filename=lesson.filename) }}" class="btn btn-primary">Start Learning</a>
+                                        <a href="{{ url_for('lesson', filename=lesson.filename) }}{% if token %}?token={{ token }}{% endif %}" class="btn btn-primary">
+                                            {% if lesson.completed %}Review{% else %}Start Learning{% endif %}
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -75,6 +87,125 @@
             const studentTokenInput = document.getElementById('student-token');
             const studentInfoDiv = document.getElementById('student-info');
 
+            // Function to handle logout
+            function performLogout() {
+                console.log("Logout function called");
+
+                // Call server endpoint to clear cookie
+                fetch('/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        console.log("Server logout successful");
+                    } else {
+                        console.error("Server logout failed:", data.message);
+                    }
+
+                    // Clear localStorage
+                    localStorage.removeItem('student_token');
+
+                    // Clear the token input field
+                    const tokenInput = document.getElementById('student-token');
+                    if (tokenInput) {
+                        tokenInput.value = '';
+                        tokenInput.placeholder = 'Enter token';
+                        tokenInput.disabled = false;
+                        console.log("Cleared token input");
+                    }
+
+                    // Show login button and hide logout button
+                    const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                    const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                    if (loginBtn) {
+                        loginBtn.style.display = 'inline-block';
+                        console.log("Showed login button");
+                    }
+
+                    if (logoutBtn) {
+                        logoutBtn.style.display = 'none';
+                        console.log("Hid logout button");
+                    }
+
+                    // Hide student info
+                    studentInfoDiv.style.display = 'none';
+                    console.log("Hid student info");
+
+                    // Reset form display
+                    tokenForm.style.display = 'flex';
+                    console.log("Reset form display");
+
+                    // Force a page reload to ensure everything is reset properly
+                    location.reload();
+                })
+                .catch(error => {
+                    console.error('Error during logout:', error);
+
+                    // Even if server logout fails, still clear local storage and UI
+                    localStorage.removeItem('student_token');
+
+                    // Clear the token input field
+                    const tokenInput = document.getElementById('student-token');
+                    if (tokenInput) {
+                        tokenInput.value = '';
+                        tokenInput.placeholder = 'Enter token';
+                        tokenInput.disabled = false;
+                        console.log("Cleared token input");
+                    }
+
+                    // Show login button and hide logout button
+                    const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                    const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                    if (loginBtn) {
+                        loginBtn.style.display = 'inline-block';
+                        console.log("Showed login button");
+                    }
+
+                    if (logoutBtn) {
+                        logoutBtn.style.display = 'none';
+                        console.log("Hid logout button");
+                    }
+
+                    // Hide student info
+                    studentInfoDiv.style.display = 'none';
+                    console.log("Hid student info");
+
+                    // Reset form display
+                    tokenForm.style.display = 'flex';
+                    console.log("Reset form display");
+
+                    // Force a page reload to ensure everything is reset properly
+                    location.reload();
+                });
+            }
+
+            // Function to initialize logout button
+            function initializeLogoutButton() {
+                const logoutBtn = document.querySelector('.logout-btn');
+                if (logoutBtn) {
+                    console.log("Adding event listener to logout button");
+                    // Remove any existing event listeners to avoid duplicates
+                    logoutBtn.replaceWith(logoutBtn.cloneNode(true));
+                    const newLogoutBtn = document.querySelector('.logout-btn');
+                    newLogoutBtn.addEventListener('click', performLogout);
+                    console.log("Event listener added successfully");
+                } else {
+                    console.log("Logout button not found");
+                }
+            }
+
+            // Add event listener to the logout button after DOM is loaded
+            document.addEventListener('DOMContentLoaded', function() {
+                console.log("DOM loaded, initializing logout button");
+                initializeLogoutButton();
+            });
+
             // Handle token form submission
             tokenForm.addEventListener('submit', function(e) {
                 e.preventDefault();
@@ -84,6 +215,13 @@
                 if (!token) {
                     alert('Please enter a token');
                     return;
+                }
+
+                // Prevent multiple submissions by disabling the submit button temporarily
+                const submitBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Logging in...';
                 }
 
                 // Send token to server for validation
@@ -96,6 +234,12 @@
                 })
                 .then(response => response.json())
                 .then(data => {
+                    // Re-enable the submit button
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Login';
+                    }
+
                     if (data.success) {
                         // Store token in localStorage for persistence
                         localStorage.setItem('student_token', token);
@@ -104,35 +248,35 @@
                         studentInfoDiv.textContent = `Welcome, ${data.student_name}!`;
                         studentInfoDiv.style.display = 'block';
 
-                        // Hide the form after successful login
-                        tokenForm.style.display = 'none';
+                        // Hide the login input and login button, show logout button
+                        const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                        const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                        if (loginBtn) {
+                            loginBtn.style.display = 'none';
+                        }
+
+                        if (logoutBtn) {
+                            logoutBtn.style.display = 'inline-block';
+                            logoutBtn.onclick = performLogout;
+                        }
 
                         // Update the token input to show logged in state
                         studentTokenInput.placeholder = 'Logged in';
                         studentTokenInput.disabled = true;
 
-                        // Add logout button
-                        const logoutBtn = document.createElement('button');
-                        logoutBtn.className = 'btn btn-outline-light';
-                        logoutBtn.textContent = 'Logout';
-                        logoutBtn.type = 'button';
-                        logoutBtn.onclick = function() {
-                            localStorage.removeItem('student_token');
-                            // Clear the token input field
-                            const tokenInput = document.getElementById('student-token');
-                            if (tokenInput) {
-                                tokenInput.value = '';
-                                tokenInput.placeholder = 'Enter token';
-                                tokenInput.disabled = false;
-                            }
-                            location.reload();
-                        };
-                        tokenForm.appendChild(logoutBtn);
+                        // Redirect to homepage with token to ensure progress is loaded
+                        window.location.href = `/?token=${token}`;
                     } else {
                         alert(data.message || 'Invalid token');
                     }
                 })
                 .catch(error => {
+                    // Re-enable the submit button
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Login';
+                    }
                     console.error('Error:', error);
                     alert('An error occurred while logging in');
                 });
@@ -156,33 +300,60 @@
                         studentInfoDiv.textContent = `Welcome, ${data.student_name}!`;
                         studentInfoDiv.style.display = 'block';
 
-                        // Hide the form since user is already logged in
-                        tokenForm.style.display = 'none';
+                        // Hide the login input and login button, show logout button
+                        const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                        const logoutBtn = tokenForm.querySelector('.logout-btn');
 
-                        // Add logout button
-                        const logoutBtn = document.createElement('button');
-                        logoutBtn.className = 'btn btn-outline-light';
-                        logoutBtn.textContent = 'Logout';
-                        logoutBtn.type = 'button';
-                        logoutBtn.onclick = function() {
-                            localStorage.removeItem('student_token');
-                            // Clear the token input field
-                            const tokenInput = document.getElementById('student-token');
-                            if (tokenInput) {
-                                tokenInput.value = '';
-                                tokenInput.placeholder = 'Enter token';
-                                tokenInput.disabled = false;
-                            }
-                            location.reload();
-                        };
-                        tokenForm.appendChild(logoutBtn);
+                        if (loginBtn) {
+                            loginBtn.style.display = 'none';
+                        }
+
+                        if (logoutBtn) {
+                            logoutBtn.style.display = 'inline-block';
+                            logoutBtn.onclick = performLogout;
+                        }
+
+                        // Update the token input to show logged in state
+                        studentTokenInput.placeholder = 'Logged in';
+                        studentTokenInput.disabled = true;
                     } else {
                         // Token is invalid, remove it from localStorage
                         localStorage.removeItem('student_token');
+                        // Reset UI to logged out state
+                        studentInfoDiv.style.display = 'none';
+                        const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                        const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                        if (loginBtn) {
+                            loginBtn.style.display = 'inline-block';
+                        }
+
+                        if (logoutBtn) {
+                            logoutBtn.style.display = 'none';
+                        }
+
+                        studentTokenInput.placeholder = 'Enter token';
+                        studentTokenInput.disabled = false;
                     }
                 })
                 .catch(error => {
                     console.error('Error validating token:', error);
+                    // Reset UI to logged out state if there's an error
+                    localStorage.removeItem('student_token');
+                    studentInfoDiv.style.display = 'none';
+                    const loginBtn = tokenForm.querySelector('button[type="submit"]:not(.logout-btn)');
+                    const logoutBtn = tokenForm.querySelector('.logout-btn');
+
+                    if (loginBtn) {
+                        loginBtn.style.display = 'inline-block';
+                    }
+
+                    if (logoutBtn) {
+                        logoutBtn.style.display = 'none';
+                    }
+
+                    studentTokenInput.placeholder = 'Enter token';
+                    studentTokenInput.disabled = false;
                 });
             }
         });

@@ -9,9 +9,16 @@ services:
       - ./static:/app/static
       - ./templates:/app/templates
       - ../tokens_siswa.csv:/app/tokens.csv
+      - ../assets:/app/assets
     env_file:
       - ../.env
+
+    # production
     command: gunicorn --config gunicorn.conf.py app:app
+
+    # debug
+    # command: python app.py
+
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
     container_name: elemes-ts

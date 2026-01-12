@@ -14,8 +14,12 @@ import glob
 import csv
 import uuid
 from datetime import datetime
+import logging
 
 app = Flask(__name__)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Load configuration from environment variables with defaults
 CONTENT_DIR = os.environ.get('CONTENT_DIR', 'content')
@@ -141,6 +145,7 @@ def get_student_progress(token):
 def update_student_progress(token, lesson_name, status="completed"):
     """Update the progress of a student for a specific lesson"""
     if not os.path.exists(TOKENS_FILE):
+        logging.warning(f"Tokens file {TOKENS_FILE} does not exist")
         return False
 
     # Read all rows
@@ -154,9 +159,13 @@ def update_student_progress(token, lesson_name, status="completed"):
     updated = False
     for row in rows:
         if row['token'] == token:
+            # Check if the lesson_name exists in fieldnames
             if lesson_name in fieldnames:
                 row[lesson_name] = status
                 updated = True
+                logging.info(f"Updating progress for token {token}, lesson {lesson_name}, status {status}")
+            else:
+                logging.warning(f"Lesson '{lesson_name}' not found in CSV columns: {fieldnames}")
             break
 
     # Write the updated data back to the file
@@ -165,6 +174,9 @@ def update_student_progress(token, lesson_name, status="completed"):
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
             writer.writeheader()
             writer.writerows(rows)
+        logging.info(f"Updated progress for token {token}, lesson {lesson_name}, status {status}")
+    else:
+        logging.warning(f"Failed to update progress for token {token}, lesson {lesson_name}")
 
     return updated
 
@@ -209,6 +221,153 @@ def get_ordered_lessons():
 
     # If no specific order is defined in home.md, return lessons in default order
     return get_lessons()
+
+
+def get_lessons_with_learning_objectives():
+    """Get all lesson files from the content directory with learning objectives as descriptions"""
+    lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
+    lessons = []
+
+    for file_path in lesson_files:
+        filename = os.path.basename(file_path)
+        # Skip home.md as it's not a lesson
+        if filename == "home.md":
+            continue
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            # Extract title from first line if it starts with #
+            lines = content.split('\n')
+            title = "Untitled"
+            description = "Learn C programming concepts with practical examples."
+
+            # Look for lesson info section to extract learning objectives
+            lesson_info_start = content.find('---LESSON_INFO---')
+            lesson_info_end = content.find('---END_LESSON_INFO---')
+
+            if lesson_info_start != -1 and lesson_info_end != -1:
+                lesson_info_section = content[lesson_info_start + len('---LESSON_INFO---'):lesson_info_end]
+
+                # Extract learning objectives
+                objectives_start = lesson_info_section.find('**Learning Objectives:**')
+                if objectives_start != -1:
+                    objectives_section = lesson_info_section[objectives_start:]
+
+                    # Find the objectives list
+                    import re
+                    # Look for bullet points after Learning Objectives
+                    objective_matches = re.findall(r'- ([^\n]+)', objectives_section)
+
+                    if objective_matches:
+                        # Combine first few objectives as description
+                        description = '; '.join(objective_matches[:3])  # Take first 3 objectives
+                    else:
+                        # If no bullet points found, take a few lines after the heading
+                        lines_after = lesson_info_section[objectives_start:].split('\n')[1:4]
+                        description = ' '.join(line.strip() for line in lines_after if line.strip())
+
+                # Look for the main title after the lesson info section
+                # Find the content after END_LESSON_INFO
+                content_after_info = content[lesson_info_end + len('---END_LESSON_INFO---'):].strip()
+                content_lines = content_after_info.split('\n')
+
+                # Find the first line that starts with # (the main title)
+                for line in content_lines:
+                    if line.startswith('# '):
+                        title = line[2:].strip()
+                        break
+            else:
+                # If no lesson info section, use the original method
+                for i, line in enumerate(lines):
+                    if line.startswith('# '):
+                        title = line[2:].strip()
+                        break
+
+            lessons.append({
+                'filename': filename,
+                'title': title,
+                'description': description,
+                'path': file_path
+            })
+
+    return lessons
+
+
+def get_ordered_lessons_with_learning_objectives(progress=None):
+    """Get lessons in the order specified in home.md if available with learning objectives as descriptions"""
+    # Read home content to check for lesson order
+    home_file_path = os.path.join(CONTENT_DIR, "home.md")
+    if os.path.exists(home_file_path):
+        with open(home_file_path, 'r', encoding='utf-8') as f:
+            home_content = f.read()
+
+        # Split content to get only the lesson list part
+        parts = home_content.split('---Available_Lessons---')
+        if len(parts) > 1:
+            lesson_list_content = parts[1]
+
+            # Find lesson links in the lesson list content
+            import re
+            # Look for markdown links that point to lessons
+            lesson_links = re.findall(r'\[([^\]]+)\]\((?:lesson/)?([^\)]+)\)', lesson_list_content)
+
+            if lesson_links:
+                # Create ordered list based on home.md
+                all_lessons = get_lessons_with_learning_objectives()
+                ordered_lessons = []
+
+                for link_text, filename in lesson_links:
+                    for lesson in all_lessons:
+                        if lesson['filename'] == filename:
+                            # Update title to use the link text from home.md if needed
+                            lesson_copy = lesson.copy()
+                            lesson_copy['title'] = link_text
+
+                            # Add completion status if progress is provided
+                            if progress:
+                                lesson_key = filename.replace('.md', '')
+                                if lesson_key in progress:
+                                    lesson_copy['completed'] = progress[lesson_key] == 'completed'
+                                else:
+                                    lesson_copy['completed'] = False
+                            else:
+                                lesson_copy['completed'] = False
+
+                            ordered_lessons.append(lesson_copy)
+                            break
+
+                # Add any remaining lessons not mentioned in home.md
+                for lesson in all_lessons:
+                    if not any(l['filename'] == lesson['filename'] for l in ordered_lessons):
+                        # Add completion status if progress is provided
+                        if progress:
+                            lesson_key = lesson['filename'].replace('.md', '')
+                            if lesson_key in progress:
+                                lesson['completed'] = progress[lesson_key] == 'completed'
+                            else:
+                                lesson['completed'] = False
+                        else:
+                            lesson['completed'] = False
+                        ordered_lessons.append(lesson)
+
+                return ordered_lessons
+
+    # If no specific order is defined in home.md, return lessons in default order
+    all_lessons = get_lessons_with_learning_objectives()
+
+    # Add completion status if progress is provided
+    if progress:
+        for lesson in all_lessons:
+            lesson_key = lesson['filename'].replace('.md', '')
+            if lesson_key in progress:
+                lesson['completed'] = progress[lesson_key] == 'completed'
+            else:
+                lesson['completed'] = False
+    else:
+        for lesson in all_lessons:
+            lesson['completed'] = False
+
+    return all_lessons
 
 def render_markdown_content(file_path):
     """Render markdown content to HTML"""
@@ -290,7 +449,20 @@ def render_markdown_content(file_path):
 @app.route('/')
 def index():
     """Main page showing all lessons"""
-    lessons = get_ordered_lessons()
+    # Get token from session or request (for now, we'll pass it in the template context)
+    token = request.args.get('token', '')  # This would typically come from session after login
+
+    # If no token provided in URL, try to get from cookie
+    if not token:
+        token = request.cookies.get('student_token', '')
+
+    # Get student progress if token is provided
+    progress = None
+    if token:
+        progress = get_student_progress(token)
+        print(f"Progress for token {token}: {progress}")  # Logging for debugging
+
+    lessons = get_ordered_lessons_with_learning_objectives(progress)
 
     # Read home content from a home.md file if it exists
     home_content = ""
@@ -304,7 +476,11 @@ def index():
         main_content = parts[0] if len(parts) > 0 else full_content
         home_content = markdown.markdown(main_content, extensions=['fenced_code', 'codehilite', 'tables'])
 
-    return render_template('index.html', lessons=lessons, home_content=home_content)
+    print(f"Sending to template - token: {token}, progress: {progress}, lessons count: {len(lessons)}")  # Logging for debugging
+    for lesson in lessons:
+        print(f"Lesson: {lesson['title']}, completed: {lesson.get('completed', 'N/A')}")  # Logging for debugging
+
+    return render_template('index.html', lessons=lessons, home_content=home_content, token=token, progress=progress)
 
 @app.route('/lesson/<filename>')
 def lesson(filename):
@@ -325,6 +501,44 @@ int main() {
     return 0;
 }"""
 
+    # Get token from session or request (for now, we'll pass it in the template context)
+    token = request.args.get('token', '')  # This would typically come from session after login
+
+    # If no token provided in URL, try to get from cookie
+    if not token:
+        token = request.cookies.get('student_token', '')
+
+    # Get student progress if token is provided
+    progress = None
+    lesson_completed = False
+    if token:
+        progress = get_student_progress(token)
+        if progress and filename.replace('.md', '') in progress:
+            lesson_completed = progress[filename.replace('.md', '')] == 'completed'
+
+    # Get ordered lessons to determine next and previous lessons
+    all_lessons = get_ordered_lessons_with_learning_objectives(progress)
+
+    # Find current lesson index
+    current_lesson_idx = -1
+    for i, lesson in enumerate(all_lessons):
+        if lesson['filename'] == filename:
+            current_lesson_idx = i
+            break
+
+    # Determine previous and next lessons
+    prev_lesson = None
+    next_lesson = None
+
+    if current_lesson_idx != -1:
+        if current_lesson_idx > 0:
+            prev_lesson = all_lessons[current_lesson_idx - 1]
+        if current_lesson_idx < len(all_lessons) - 1:
+            next_lesson = all_lessons[current_lesson_idx + 1]
+
+    # Get ordered lessons for the sidebar
+    ordered_lessons = get_ordered_lessons_with_learning_objectives(progress)
+
     return render_template('lesson.html',
                           lesson_content=lesson_html,
                           exercise_content=exercise_html,
@@ -332,7 +546,13 @@ int main() {
                           lesson_info=lesson_info,
                           initial_code=initial_code,
                           solution_code=solution_code,
-                          lesson_title=filename.replace('.md', '').replace('_', ' ').title())
+                          lesson_title=filename.replace('.md', '').replace('_', ' ').title(),
+                          token=token,
+                          progress=progress,
+                          lesson_completed=lesson_completed,
+                          prev_lesson=prev_lesson,
+                          next_lesson=next_lesson,
+                          ordered_lessons=ordered_lessons)
 
 @app.route('/compile', methods=['POST'])
 def compile_code():
@@ -447,16 +667,34 @@ def login():
         # Validate the token
         student_info = validate_token(token)
         if student_info:
-            return jsonify({
+            response = jsonify({
                 'success': True,
                 'student_name': student_info['student_name'],
                 'message': 'Login successful'
             })
+            # Set token in cookie with expiration
+            response.set_cookie('student_token', token, httponly=True, secure=False, samesite='Lax', max_age=86400)  # 24 hours
+            return response
         else:
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error processing login: {str(e)}'})
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    """Handle student logout"""
+    try:
+        # Create response that clears the cookie
+        response = jsonify({
+            'success': True,
+            'message': 'Logout successful'
+        })
+        # Clear the student_token cookie
+        response.set_cookie('student_token', '', expires=0)
+        return response
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing logout: {str(e)}'})
 
 @app.route('/validate-token', methods=['POST'])
 def validate_token_route():
@@ -464,6 +702,10 @@ def validate_token_route():
     try:
         data = request.get_json()
         token = data.get('token', '').strip()
+
+        # If no token provided in request, try to get from cookie
+        if not token:
+            token = request.cookies.get('student_token', '').strip()
 
         if not token:
             return jsonify({'success': False, 'message': 'Token is required'})
@@ -490,6 +732,8 @@ def track_progress():
         lesson_name = data.get('lesson_name', '').strip()
         status = data.get('status', 'completed').strip()
 
+        logging.info(f"Received track-progress request: token={token}, lesson_name={lesson_name}, status={status}")
+
         if not token or not lesson_name:
             return jsonify({'success': False, 'message': 'Token and lesson name are required'})
 
@@ -501,23 +745,31 @@ def track_progress():
         # Update progress
         updated = update_student_progress(token, lesson_name, status)
         if updated:
+            logging.info(f"Progress updated successfully for token {token}, lesson {lesson_name}")
             return jsonify({
                 'success': True,
                 'message': 'Progress updated successfully'
             })
         else:
+            logging.warning(f"Failed to update progress for token {token}, lesson {lesson_name}")
             return jsonify({'success': False, 'message': 'Failed to update progress'})
 
     except Exception as e:
+        logging.error(f"Error in track-progress: {str(e)}")
         return jsonify({'success': False, 'message': f'Error tracking progress: {str(e)}'})
 
 @app.context_processor
 def inject_functions():
-    """Make get_lessons function available in templates"""
-    return dict(get_lessons=get_lessons)
+    """Make functions available in templates"""
+    return dict(
+        get_lessons=get_lessons,
+        get_ordered_lessons_with_learning_objectives=get_ordered_lessons_with_learning_objectives
+    )
 
 # Initialize the tokens file when the app starts
 initialize_tokens_file()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    import os
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(host='0.0.0.0', port=5000, debug=debug_mode)
