@@ -13,6 +13,7 @@ from flask_talisman import Talisman
 import glob
 import csv
 import uuid
+import os
 from datetime import datetime
 import logging
 
@@ -26,6 +27,16 @@ CONTENT_DIR = os.environ.get('CONTENT_DIR', 'content')
 STATIC_DIR = os.environ.get('STATIC_DIR', 'static')
 TEMPLATES_DIR = os.environ.get('TEMPLATES_DIR', 'templates')
 TOKENS_FILE = os.environ.get('TOKENS_FILE', 'tokens.csv')
+
+# Get application titles from environment variables
+APP_BAR_TITLE = os.environ.get('APP_BAR_TITLE', 'C Programming Learning System')
+COPYRIGHT_TEXT = os.environ.get('COPYRIGHT_TEXT', 'C Programming Learning System &copy; 2025')
+PAGE_TITLE_SUFFIX = os.environ.get('PAGE_TITLE_SUFFIX', 'C Programming Learning System')
+
+# Log the values to ensure they are loaded correctly
+print(f"APP_BAR_TITLE: {APP_BAR_TITLE}")
+print(f"COPYRIGHT_TEXT: {COPYRIGHT_TEXT}")
+print(f"PAGE_TITLE_SUFFIX: {PAGE_TITLE_SUFFIX}")
 
 # Security configuration using Talisman
 Talisman(app,
@@ -449,6 +460,11 @@ def render_markdown_content(file_path):
 @app.route('/')
 def index():
     """Main page showing all lessons"""
+    print("Index function called")  # Logging for debugging
+    print(f"APP_BAR_TITLE value: {APP_BAR_TITLE}")  # Logging for debugging
+    print(f"COPYRIGHT_TEXT value: {COPYRIGHT_TEXT}")  # Logging for debugging
+    print(f"PAGE_TITLE_SUFFIX value: {PAGE_TITLE_SUFFIX}")  # Logging for debugging
+
     # Get token from session or request (for now, we'll pass it in the template context)
     token = request.args.get('token', '')  # This would typically come from session after login
 
@@ -480,7 +496,23 @@ def index():
     for lesson in lessons:
         print(f"Lesson: {lesson['title']}, completed: {lesson.get('completed', 'N/A')}")  # Logging for debugging
 
-    return render_template('index.html', lessons=lessons, home_content=home_content, token=token, progress=progress)
+    try:
+        result = render_template('index.html',
+                               lessons=lessons,
+                               home_content=home_content,
+                               token=token,
+                               progress=progress,
+                               app_bar_title=APP_BAR_TITLE,
+                               copyright_text=COPYRIGHT_TEXT,
+                               page_title_suffix=PAGE_TITLE_SUFFIX)
+        print("Template rendered successfully")
+        return result
+    except Exception as e:
+        print(f"Error rendering template: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Return a simple error page
+        return f"Error rendering template: {str(e)}"
 
 @app.route('/lesson/<filename>')
 def lesson(filename):
@@ -552,7 +584,10 @@ int main() {
                           lesson_completed=lesson_completed,
                           prev_lesson=prev_lesson,
                           next_lesson=next_lesson,
-                          ordered_lessons=ordered_lessons)
+                          ordered_lessons=ordered_lessons,
+                          app_bar_title=APP_BAR_TITLE,
+                          copyright_text=COPYRIGHT_TEXT,
+                          page_title_suffix=PAGE_TITLE_SUFFIX)
 
 @app.route('/compile', methods=['POST'])
 def compile_code():

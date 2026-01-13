@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C Programming Learning System</title>
+    <title>{{ page_title_suffix }}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('send_static', path='style.css') }}">
@@ -12,7 +12,7 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
             <a class="navbar-brand" href="/">
-                <i class="fas fa-code"></i> C Programming Learning System
+                <i class="fas fa-code"></i> {{ app_bar_title }}
             </a>
             <div class="d-flex">
                 <form class="d-flex" id="token-form" style="display: flex; align-items: center;">
@@ -28,8 +28,6 @@
     <div class="container mt-4">
         <div class="row">
             <div class="col-md-12">
-                <h1 class="mb-4">C Programming Learning System</h1>
-
                 <!-- Home content rendered from markdown -->
                 <div class="home-content mb-5">
                     {{ home_content | safe }}
@@ -76,7 +74,7 @@
 
     <footer class="footer mt-5 py-4 bg-light">
         <div class="container text-center">
-            <span class="text-muted">C Programming Learning System &copy; 2025</span>
+            <span class="text-muted">{{ copyright_text }}</span>
         </div>
     </footer>
 

@@ -14,10 +14,10 @@ services:
       - ../.env
 
     # production
-    command: gunicorn --config gunicorn.conf.py app:app
+    # command: gunicorn --config gunicorn.conf.py app:app
 
     # debug
-    # command: python app.py
+    command: python app.py
 
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
