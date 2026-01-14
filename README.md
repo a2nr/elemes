@@ -5,12 +5,14 @@ A web-based learning management system for C programming with interactive exerci
 ## Features
 
 - View lessons written in Markdown format
-- Interactive C code editor with compilation and execution
+- Interactive code editor with compilation and execution for multiple programming languages
 - Real-time feedback on code compilation and execution
 - No database required - content stored as Markdown files
 - Student token-based progress tracking system
 - No authentication required - ready to use out of the box
 - Containerized with Podman for easy deployment
+- Support for multiple programming languages (C, Python, and extensible for others)
+- Configurable default programming language via environment variables
 
 ## Prerequisites
 
@@ -747,18 +749,58 @@ Monitor the LMS server's resource usage (CPU, memory, disk I/O) during load test
 - Database performance (if one is added in the future)
 - Container resource limits
 
-The included `locustfile.py` simulates the following user behaviors:
-- Browsing the home page
-- Viewing lessons
-- Compiling C code
-- Validating student tokens
-- Logging in with tokens
-- Tracking student progress
+## Multi-Language Programming Support
 
-### Monitoring Performance
+The system now supports multiple programming languages with a modular compiler architecture. Currently supports C and Python with easy extensibility for additional languages.
 
-Monitor the LMS server's resource usage (CPU, memory, disk I/O) during load testing to identify potential bottlenecks. Pay attention to:
-- Response times for API requests
-- Compilation performance under load
-- Database performance (if one is added in the future)
-- Container resource limits
+### Supported Languages
+
+- **C**: Compiled using GCC with standard compilation and execution workflow
+- **Python**: Interpreted using Python 3 with syntax checking and execution
+
+### Configuration
+
+The default programming language can be configured via environment variables in your `.env` file:
+
+```
+# To use C as default language (default setting)
+DEFAULT_PROGRAMMING_LANGUAGE=c
+
+# To use Python as default language
+DEFAULT_PROGRAMMING_LANGUAGE=python
+```
+
+### Extending to Additional Languages
+
+The system is designed to be easily extended with additional programming languages:
+
+1. Create a new compiler class that inherits from `BaseCompiler` in the `compiler/` directory
+2. Implement the `compile()` and `run()` methods for your language
+3. Register the new compiler in the `CompilerFactory` in `compiler/__init__.py`
+4. Update the UI if needed to support the new language
+
+Example structure for a new language compiler:
+```python
+# compiler/new_language_compiler.py
+from .base_compiler import BaseCompiler
+import subprocess
+
+class NewLanguageCompiler(BaseCompiler):
+    def __init__(self):
+        super().__init__("NewLanguage", ".nl")  # Replace with appropriate extension
+
+    def compile(self, file_path, timeout=10):
+        # Implement compilation logic for your language
+        pass
+
+    def run(self, file_path, timeout=5):
+        # Implement execution logic for your language
+        pass
+```
+
+### Language-Specific Features
+
+- The code editor header now dynamically displays the active programming language
+- File extensions are automatically adjusted based on the selected language
+- The system maintains backward compatibility with existing C lessons
+- All language compilation follows the same security and timeout constraints

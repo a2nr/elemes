@@ -72,7 +72,7 @@
 
                         <div class="card">
                             <div class="card-header d-flex justify-content-between align-items-center" style="background-color: #4a76a8; color: white;">
-                                <span><i class="fas fa-file-code me-2"></i>C code.c</span>
+                                <span><i class="fas fa-file-code me-2"></i>{{ language_display_name }} code.{{ 'py' if language == 'python' else 'c' }}</span>
                                 <div>
                                     <button id="theme-toggle" class="btn btn-sm btn-outline-light me-2">
                                         <i class="fas fa-moon"></i> Dark
@@ -366,7 +366,7 @@
                 const code = codeEditor.value;
 
                 if (!code.trim()) {
-                    alert('Please enter some C code to run.');
+                    alert('Please enter some code to run.');
                     return;
                 }
 
@@ -374,13 +374,21 @@
                 runButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
                 runButton.disabled = true;
 
-                // Create form data to send to the server
-                const formData = new FormData();
-                formData.append('code', code);
+                // Get language from environment/config - default to C for backward compatibility
+                const language = '{{ language | default("c") }}'; // This would be passed from the backend
+
+                // Prepare data to send to the server
+                const requestData = {
+                    code: code,
+                    language: language
+                };
 
                 fetch('/compile', {
                     method: 'POST',
-                    body: formData
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
                 })
                 .then(response => response.json())
                 .then(data => {

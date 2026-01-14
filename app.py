@@ -22,6 +22,9 @@ app = Flask(__name__)
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Import compiler module after app initialization to avoid circular imports
+from compiler import compiler_factory
+
 # Load configuration from environment variables with defaults
 CONTENT_DIR = os.environ.get('CONTENT_DIR', 'content')
 STATIC_DIR = os.environ.get('STATIC_DIR', 'static')
@@ -571,6 +574,10 @@ int main() {
     # Get ordered lessons for the sidebar
     ordered_lessons = get_ordered_lessons_with_learning_objectives(progress)
 
+    # Get the programming language from environment variable
+    programming_language = os.environ.get('DEFAULT_PROGRAMMING_LANGUAGE', 'c').lower()
+    language_display_name = compiler_factory.get_language_display_name(programming_language)
+
     return render_template('lesson.html',
                           lesson_content=lesson_html,
                           exercise_content=exercise_html,
@@ -587,20 +594,25 @@ int main() {
                           ordered_lessons=ordered_lessons,
                           app_bar_title=APP_BAR_TITLE,
                           copyright_text=COPYRIGHT_TEXT,
-                          page_title_suffix=PAGE_TITLE_SUFFIX)
+                          page_title_suffix=PAGE_TITLE_SUFFIX,
+                          language=programming_language,
+                          language_display_name=language_display_name)
+
 
 @app.route('/compile', methods=['POST'])
 def compile_code():
-    """Compile and run C code submitted by the user"""
+    """Compile and run code submitted by the user in the selected programming language"""
     try:
         code = None
+        language = None
 
-        # Try to get code from JSON data
+        # Try to get code and language from JSON data
         if request.content_type and 'application/json' in request.content_type:
             try:
                 json_data = request.get_json(force=True)
-                if json_data and 'code' in json_data:
-                    code = json_data['code']
+                if json_data:
+                    code = json_data.get('code', '')
+                    language = json_data.get('language', '')  # Get language from request
             except Exception as e:
                 # Log the error for debugging
                 print(f"JSON parsing error: {e}")
@@ -609,6 +621,7 @@ def compile_code():
         # If not found in JSON, try form data
         if not code:
             code = request.form.get('code', '')
+            language = request.form.get('language', '')  # Get language from form
 
         if not code:
             return jsonify({
@@ -617,58 +630,11 @@ def compile_code():
                 'error': 'No code provided'
             })
 
-        # Create a temporary file for the C code
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.c', delete=False) as temp_c:
-            temp_c.write(code)
-            temp_c_path = temp_c.name
+        # Get the appropriate compiler based on the language
+        compiler = compiler_factory.get_compiler(language)
 
-        # Create a temporary file for the executable
-        temp_exe_path = temp_c_path.replace('.c', '')
-
-        # Compile the C code
-        compile_result = subprocess.run(
-            ['gcc', temp_c_path, '-o', temp_exe_path],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-
-        if compile_result.returncode != 0:
-            # Compilation failed
-            result = {
-                'success': False,
-                'output': compile_result.stdout,  # Include any stdout if available
-                'error': compile_result.stderr  # Show GCC error messages
-            }
-        else:
-            # Compilation succeeded, run the program
-            try:
-                run_result = subprocess.run(
-                    [temp_exe_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-
-                result = {
-                    'success': True,
-                    'output': run_result.stdout,
-                    'error': run_result.stderr if run_result.stderr else None
-                }
-            except subprocess.TimeoutExpired:
-                result = {
-                    'success': False,
-                    'output': '',
-                    'error': 'Program execution timed out'
-                }
-
-        # Clean up temporary files
-        try:
-            os.remove(temp_c_path)
-            if os.path.exists(temp_exe_path):
-                os.remove(temp_exe_path)
-        except:
-            pass  # Ignore cleanup errors
+        # Compile and run the code using the selected compiler
+        result = compiler.compile_and_run(code)
 
         return jsonify(result)
 
