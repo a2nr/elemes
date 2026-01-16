@@ -24,7 +24,8 @@ body {
 
 .lesson-content h1, .lesson-content h2, .lesson-content h3 {
     color: #2c3e50;
-    margin-top: 20px;
+    margin-top: 30px;
+    margin-bottom: 20px;
 }
 
 .lesson-content h1 {
@@ -33,8 +34,22 @@ body {
 }
 
 .lesson-content p {
-    line-height: 1.6;
-    margin-bottom: 15px;
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
+/* Add spacing after other block elements */
+.lesson-content ul, .lesson-content ol {
+    margin-top: 15px;
+    margin-bottom: 20px;
+}
+
+.lesson-content blockquote {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    padding: 15px 20px;
+    border-left: 4px solid #3498db;
+    background-color: #f8f9fa;
 }
 
 .lesson-content code {
@@ -160,10 +175,46 @@ body {
     padding: 10px;
 }
 
-.lesson-content img {
+.lesson-content img, .home-content img {
     max-width: 100%;
     height: auto;
-    margin: 10px 0;
+    margin: 15px 0;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+    object-fit: contain; /* Ensures the entire image is visible within its bounds */
+}
+
+.lesson-content img.zoomable-img {
+    max-width: 100%;
+    height: auto;
+    margin: 15px 0;
+    display: block;
+    cursor: zoom-in;
+    transition: transform 0.3s ease;
+    object-fit: contain; /* Ensures the entire image is visible within its bounds */
+}
+
+.lesson-content img.zoomable-img.enlarged {
+    cursor: zoom-out;
+    max-width: 95vw;
+    max-height: 90vh;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1050; /* High z-index to appear above other elements */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.lesson-content img.zoomable-img {
+    max-width: 100%;
+    height: auto;
+    margin: 15px 0;
+    display: block;
+    cursor: zoom-in;
+    transition: transform 0.3s ease;
+    object-fit: contain; /* Ensures the entire image is visible within its bounds */
 }
 
 .lesson-content figure {

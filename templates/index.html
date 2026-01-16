@@ -354,6 +354,38 @@
                     studentTokenInput.disabled = false;
                 });
             }
+
+            // Image zoom functionality for home page
+            document.addEventListener('DOMContentLoaded', function() {
+                // Select all images inside home content
+                const homeImages = document.querySelectorAll('.home-content img');
+
+                homeImages.forEach(img => {
+                    // Add zoomable-img class to make them zoomable
+                    if (!img.classList.contains('zoomable-img')) {
+                        img.classList.add('zoomable-img');
+                    }
+
+                    img.addEventListener('click', function() {
+                        // Toggle enlarged class to zoom in/out
+                        this.classList.toggle('enlarged');
+
+                        // Prevent default behavior to avoid any conflicts
+                        if (event) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
+                    });
+                });
+
+                // Add event listener to close enlarged images when clicking outside
+                document.addEventListener('click', function(event) {
+                    const enlargedImg = document.querySelector('.home-content img.enlarged');
+                    if (enlargedImg && !event.target.classList.contains('zoomable-img')) {
+                        enlargedImg.classList.remove('enlarged');
+                    }
+                });
+            });
         });
     </script>
 </body>
