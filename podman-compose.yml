@@ -4,8 +4,6 @@ services:
   elemes:
     build: .
     container_name: elemes
-    ports:
-      - "5000:5000"  # Expose port 5000 to the host
     volumes:
       - ../content:/app/content
       - ./static:/app/static
