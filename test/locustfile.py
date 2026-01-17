@@ -307,6 +307,10 @@ class WebsiteUser(HttpUser):
             pass  # Ignore logout errors
 
 
+# Define the user classes to be used in the test
+user_classes = [WebsiteUser, AdvancedUser, SessionBasedUser, PowerUser]
+
+
 # Additional task sets for more complex behaviors
 
 class LessonNavigationTaskSet(TaskSet):
@@ -507,3 +511,194 @@ class AdvancedUser(HttpUser):
     tasks = {LessonNavigationTaskSet: 2, CompilationFocusedTaskSet: 3, LMSCUserBehavior: 4}
 
     wait_time = between(0.5, 2)
+
+
+class SessionBasedUser(HttpUser):
+    """
+    User that simulates a complete learning session with focused behavior
+    """
+    weight = 1
+    tasks = [LMSCUserBehavior]
+
+    wait_time = between(2, 5)
+
+    def on_start(self):
+        """
+        Initialize a complete learning session
+        """
+        # Login at the beginning of the session
+        tokens_file = '/mnt/locust/tokens_siswa.csv'
+        all_students = []
+
+        if os.path.exists(tokens_file):
+            with open(tokens_file, 'r', newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile, delimiter=';')
+                all_students = list(reader)
+
+        if all_students:
+            selected_student = random.choice(all_students)
+            self.student_token = selected_student.get('token', f"STUDENT_TOKEN_{random.randint(1000, 9999)}")
+            self.student_name = selected_student.get('nama_siswa', f"Student_{random.randint(1000, 9999)}")
+        else:
+            self.student_token = f"STUDENT_TOKEN_{random.randint(1000, 9999)}"
+            self.student_name = f"Student_{random.randint(1000, 9999)}"
+
+        # Login the student
+        login_payload = {
+            "token": self.student_token
+        }
+
+        try:
+            self.client.post("/login", json=login_payload)
+        except:
+            pass  # Continue even if login fails
+
+        # Read lesson files
+        content_dir = '/mnt/locust/content'
+        self.lesson_files = []
+
+        if os.path.exists(content_dir):
+            lesson_paths = glob.glob(os.path.join(content_dir, "*.md"))
+            self.lesson_files = [os.path.basename(path) for path in lesson_paths if os.path.isfile(path)]
+
+
+class BehaviorAnalysisTaskSet(TaskSet):
+    """
+    Task set for analyzing user behavior patterns
+    """
+
+    def on_start(self):
+        """
+        Initialize with student data
+        """
+        tokens_file = '/mnt/locust/tokens_siswa.csv'
+        all_students = []
+
+        if os.path.exists(tokens_file):
+            with open(tokens_file, 'r', newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile, delimiter=';')
+                all_students = list(reader)
+
+        if all_students:
+            selected_student = random.choice(all_students)
+            self.student_token = selected_student.get('token', f"STUDENT_TOKEN_{random.randint(1000, 9999)}")
+            self.student_name = selected_student.get('nama_siswa', f"Student_{random.randint(1000, 9999)}")
+        else:
+            self.student_token = f"STUDENT_TOKEN_{random.randint(1000, 9999)}"
+            self.student_name = f"Student_{random.randint(1000, 9999)}"
+
+        # Read lesson files
+        content_dir = '/mnt/locust/content'
+        self.lesson_files = []
+
+        if os.path.exists(content_dir):
+            lesson_paths = glob.glob(os.path.join(content_dir, "*.md"))
+            self.lesson_files = [os.path.basename(path) for path in lesson_paths if os.path.isfile(path)]
+
+    @task(3)
+    def analyze_learning_pattern(self):
+        """
+        Simulate a learning pattern where a student goes through multiple lessons in sequence
+        """
+        if not self.lesson_files:
+            return
+
+        # Select a few lessons to go through in sequence
+        selected_lessons = random.sample(self.lesson_files, min(3, len(self.lesson_files)))
+
+        for lesson in selected_lessons:
+            # Visit the lesson
+            self.client.get(f"/lesson/{lesson}?token={self.student_token}")
+
+            # Spend some time reading (simulate wait)
+            self.wait()
+
+            # Try to compile code from the lesson
+            self.compile_code_from_lesson(lesson)
+
+            # Track progress for the lesson
+            lesson_name = lesson.replace('.md', '')
+            progress_payload = {
+                "token": self.student_token,
+                "lesson_name": lesson_name,
+                "status": "in_progress"
+            }
+            self.client.post("/track-progress", json=progress_payload)
+
+            # Wait between activities
+            self.wait()
+
+        # Mark final lesson as completed
+        if selected_lessons:
+            final_lesson = selected_lessons[-1].replace('.md', '')
+            progress_payload = {
+                "token": self.student_token,
+                "lesson_name": final_lesson,
+                "status": "completed"
+            }
+            self.client.post("/track-progress", json=progress_payload)
+
+    def compile_code_from_lesson(self, lesson_file):
+        """
+        Attempt to compile code from a specific lesson
+        """
+        lesson_path = f'/mnt/locust/content/{lesson_file}'
+
+        if not os.path.exists(lesson_path):
+            return
+
+        try:
+            with open(lesson_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            # Look for code sections in the lesson
+            initial_code = self.extract_code_section(content, '---INITIAL_CODE---', '---END_INITIAL_CODE---')
+            solution_code = self.extract_code_section(content, '---SOLUTION_CODE---', '---END_SOLUTION_CODE---')
+
+            # Use available code for compilation
+            code_to_compile = None
+            if solution_code:
+                code_to_compile = solution_code
+            elif initial_code:
+                code_to_compile = initial_code
+
+            if code_to_compile:
+                programming_language = os.environ.get('DEFAULT_PROGRAMMING_LANGUAGE', 'c')
+
+                compile_payload = {
+                    "code": code_to_compile,
+                    "language": programming_language
+                }
+
+                response = self.client.post("/compile", json=compile_payload)
+
+                if response.status_code == 200:
+                    result = response.json()
+                    if not result.get("success"):
+                        print(f"Compilation error in lesson {lesson_file}: {result.get('error')}")
+        except Exception as e:
+            print(f"Error compiling code from lesson {lesson_file}: {str(e)}")
+
+    def extract_code_section(self, content, start_marker, end_marker):
+        """
+        Extract code between start and end markers
+        """
+        start_idx = content.find(start_marker)
+        end_idx = content.find(end_marker)
+
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            start_pos = start_idx + len(start_marker)
+            extracted_code = content[start_pos:end_idx].strip()
+            return extracted_code
+
+        return None
+
+
+class PowerUser(HttpUser):
+    """
+    Power user that exhibits intensive usage patterns
+    """
+    weight = 1
+    tasks = {BehaviorAnalysisTaskSet: 3, CompilationFocusedTaskSet: 4, LMSCUserBehavior: 2}
+
+    wait_time = between(0.2, 1.5)
