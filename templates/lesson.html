@@ -232,6 +232,7 @@
             const initialCode = {{ initial_code | tojson }};
             const solutionCode = {{ solution_code | tojson }};
             const expectedOutput = {{ expected_output | tojson }};
+            const keyText = {{ key_text | tojson }};
 
             // Get DOM elements
             const runButton = document.getElementById('run-code');
@@ -563,6 +564,51 @@
                     return;
                 }
 
+                // Perform static analysis first
+                let staticAnalysisPassed = true;
+                let staticAnalysisMessage = '';
+
+                if (keyText && keyText !== "None" && keyText !== "") {
+                    // Parse the key text to get required keywords
+                    const requiredKeywords = keyText.split('\n').filter(keyword => keyword.trim() !== '');
+
+                    // Perform static analysis
+                    staticAnalysisPassed = true;
+                    staticAnalysisMessage = '';
+
+                    for (const keyword of requiredKeywords) {
+                        if (keyword.trim() !== '') {
+                            // Check if the keyword contains regex patterns (enclosed in slashes)
+                            const trimmedKeyword = keyword.trim();
+
+                            if (trimmedKeyword.startsWith('/') && trimmedKeyword.endsWith('/')) {
+                                // This is a regex pattern
+                                try {
+                                    const regexPattern = trimmedKeyword.slice(1, -1); // Remove the leading and trailing slashes
+                                    const regex = new RegExp(regexPattern, 'g');
+
+                                    if (!regex.test(code)) {
+                                        staticAnalysisPassed = false;
+                                        staticAnalysisMessage += `Missing pattern: "${trimmedKeyword}"\n`;
+                                    }
+                                } catch (e) {
+                                    // If regex is malformed, treat as literal string
+                                    if (!code.includes(trimmedKeyword)) {
+                                        staticAnalysisPassed = false;
+                                        staticAnalysisMessage += `Missing required keyword: "${trimmedKeyword}"\n`;
+                                    }
+                                }
+                            } else {
+                                // Simple check: see if the literal keyword exists in the code
+                                if (!code.includes(trimmedKeyword)) {
+                                    staticAnalysisPassed = false;
+                                    staticAnalysisMessage += `Missing required keyword: "${trimmedKeyword}"\n`;
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Show loading state
                 runButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
                 runButton.disabled = true;
@@ -591,10 +637,12 @@
                         outputContent.textContent = data.output || 'Program executed successfully with no output.';
                         outputContent.className = 'output-success';
 
-                        // Check if output matches expected output (if available)
+                        // Check if output matches expected output (if available) AND static analysis passed
                         if (expectedOutput && expectedOutput !== "None" && expectedOutput !== "") {
                             const actualOutput = data.output || '';
-                            if (actualOutput.trim() === expectedOutput.trim()) {
+
+                            // Both output match and static analysis pass are required for success
+                            if (actualOutput.trim() === expectedOutput.trim() && staticAnalysisPassed) {
                                 // Show success message card if element exists
                                 const successElement = document.getElementById('success-message');
                                 if (successElement) {
@@ -691,27 +739,126 @@
                                     });
                                 }
                             } else {
-                                // Hide success message if output doesn't match
+                                // Hide success message if output doesn't match OR static analysis failed
                                 const successElement = document.getElementById('success-message');
                                 if (successElement) {
                                     successElement.classList.add('d-none');
                                 }
 
-                                // Hide solution button if output doesn't match
+                                // Hide solution button if output doesn't match OR static analysis failed
                                 if (solutionButton) {
                                     solutionButton.classList.add('d-none');
                                 }
                             }
                         } else {
-                            // Hide success message if no expected output
-                            const successElement = document.getElementById('success-message');
-                            if (successElement) {
-                                successElement.classList.add('d-none');
-                            }
+                            // For lessons without expected output, check only static analysis
+                            if (staticAnalysisPassed) {
+                                // Show success message card if element exists
+                                const successElement = document.getElementById('success-message');
+                                if (successElement) {
+                                    // Remove d-none to show the element
+                                    successElement.classList.remove('d-none');
 
-                            // Hide solution button if no expected output
-                            if (solutionButton) {
-                                solutionButton.classList.add('d-none');
+                                    // Hide the success message after 10 seconds
+                                    setTimeout(function() {
+                                        successElement.classList.add('d-none');
+                                    }, 10000);
+                                }
+
+                                // Show solution button if solution code exists
+                                if (solutionButton && solutionCode && solutionCode !== "None" && solutionCode !== "") {
+                                    solutionButton.classList.remove('d-none');
+                                }
+
+                                // Track progress if student is logged in
+                                const savedToken = localStorage.getItem('student_token');
+                                if (savedToken) {
+                                    // Extract lesson name from the URL
+                                    const pathParts = window.location.pathname.split('/');
+                                    let lessonFilename = pathParts[pathParts.length - 1];
+
+                                    // Handle the case where the URL might include query parameters
+                                    if (lessonFilename.includes('?')) {
+                                        lessonFilename = lessonFilename.split('?')[0];
+                                    }
+
+                                    // Extract just the lesson name without .md extension
+                                    const lessonName = lessonFilename.replace('.md', '');
+
+                                    // Send progress to server
+                                    fetch('/track-progress', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                            token: savedToken,
+                                            lesson_name: lessonName,
+                                            status: 'completed'
+                                        })
+                                    })
+                                    .then(response => response.json())
+                                    .then(data => {
+                                        if (data.success) {
+                                            console.log('Progress tracked successfully for lesson:', lessonName);
+                                            // Update the UI to reflect the new status
+                                            document.querySelectorAll('.lesson-card').forEach(card => {
+                                                const link = card.querySelector('a');
+                                                if (link && link.href.includes(lessonFilename)) {
+                                                    const statusBadge = card.querySelector('.badge');
+                                                    if (statusBadge) {
+                                                        statusBadge.className = 'badge bg-success float-end';
+                                                        statusBadge.title = 'Completed';
+                                                        statusBadge.innerHTML = '<i class="fas fa-check-circle"></i> Completed';
+                                                    }
+                                                    const btn = card.querySelector('.btn-primary');
+                                                    if (btn) {
+                                                        btn.textContent = btn.textContent.replace('Start Learning', 'Review');
+                                                    }
+                                                }
+                                            });
+
+                                            // Update the current lesson status in the sidebar
+                                            const statusElement = document.querySelector('.card-body p strong + p span');
+                                            if (statusElement) {
+                                                statusElement.className = 'badge bg-success';
+                                                statusElement.innerHTML = '<i class="fas fa-check-circle"></i> Completed';
+                                            }
+
+                                            // Update the lesson in the "All Lessons" sidebar
+                                            document.querySelectorAll('.list-group-item').forEach(item => {
+                                                if (item.href && item.href.includes(lessonFilename)) {
+                                                    let badge = item.querySelector('.badge');
+                                                    if (!badge) {
+                                                        badge = document.createElement('span');
+                                                        badge.className = 'badge bg-success float-end';
+                                                        badge.innerHTML = '<i class="fas fa-check-circle"></i>';
+                                                        item.appendChild(badge);
+                                                    } else {
+                                                        badge.className = 'badge bg-success float-end';
+                                                        badge.innerHTML = '<i class="fas fa-check-circle"></i>';
+                                                    }
+                                                }
+                                            });
+                                        } else {
+                                            console.error('Failed to track progress:', data.message);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.error('Error tracking progress:', error);
+                                    });
+                                }
+                            } else {
+                                // Hide success message if static analysis failed
+                                const successElement = document.getElementById('success-message');
+                                if (successElement) {
+                                    successElement.classList.add('d-none');
+                                }
+
+                                // Hide solution button if static analysis failed
+                                if (solutionButton) {
+                                    solutionButton.classList.add('d-none');
+                                }
                             }
                         }
                     } else {

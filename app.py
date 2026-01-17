@@ -394,6 +394,7 @@ def render_markdown_content(file_path):
     initial_code = ""
     solution_code = ""
     expected_output = ""
+    key_text = ""
 
     # Look for expected output separator - format: [content] ---EXPECTED_OUTPUT--- [output] ---END_EXPECTED_OUTPUT--- [content]
     if '---EXPECTED_OUTPUT---' in lesson_content and '---END_EXPECTED_OUTPUT---' in lesson_content:
@@ -406,6 +407,18 @@ def render_markdown_content(file_path):
             expected_output = lesson_content[expected_start:end_idx].strip()
             # Remove the expected output section from the lesson content
             lesson_content = lesson_content[:start_idx] + lesson_content[end_idx + len('---END_EXPECTED_OUTPUT---'):]
+
+    # Look for key text separator - format: [content] ---KEY_TEXT--- [keywords] ---END_KEY_TEXT--- [content]
+    if '---KEY_TEXT---' in lesson_content and '---END_KEY_TEXT---' in lesson_content:
+        start_idx = lesson_content.find('---KEY_TEXT---')
+        end_idx = lesson_content.find('---END_KEY_TEXT---')
+
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            # Extract the key text between the separators
+            key_start = start_idx + len('---KEY_TEXT---')
+            key_text = lesson_content[key_start:end_idx].strip()
+            # Remove the key text section from the lesson content
+            lesson_content = lesson_content[:start_idx] + lesson_content[end_idx + len('---END_KEY_TEXT---'):]
 
     # Look for lesson info separator - format: ---LESSON_INFO--- [info] ---END_LESSON_INFO--- [content]
     if '---LESSON_INFO---' in lesson_content and '---END_LESSON_INFO---' in lesson_content:
@@ -458,7 +471,7 @@ def render_markdown_content(file_path):
     exercise_html = markdown.markdown(exercise_content, extensions=['fenced_code', 'codehilite', 'tables']) if exercise_content else ""
     lesson_info_html = markdown.markdown(lesson_info, extensions=['fenced_code', 'codehilite', 'tables']) if lesson_info else ""
 
-    return lesson_html, exercise_html, expected_output, lesson_info_html, initial_code, solution_code
+    return lesson_html, exercise_html, expected_output, lesson_info_html, initial_code, solution_code, key_text
 
 @app.route('/')
 def index():
@@ -524,7 +537,7 @@ def lesson(filename):
     if not os.path.exists(file_path):
         return "Lesson not found", 404
 
-    lesson_html, exercise_html, expected_output, lesson_info, initial_code, solution_code = render_markdown_content(file_path)
+    lesson_html, exercise_html, expected_output, lesson_info, initial_code, solution_code, key_text = render_markdown_content(file_path)
 
     # If no initial code is provided, use a default template
     if not initial_code:
@@ -585,6 +598,7 @@ int main() {
                           lesson_info=lesson_info,
                           initial_code=initial_code,
                           solution_code=solution_code,
+                          key_text=key_text,
                           lesson_title=filename.replace('.md', '').replace('_', ' ').title(),
                           token=token,
                           progress=progress,
@@ -597,6 +611,22 @@ int main() {
                           page_title_suffix=PAGE_TITLE_SUFFIX,
                           language=programming_language,
                           language_display_name=language_display_name)
+
+
+@app.route('/get-key-text/<filename>')
+def get_key_text(filename):
+    """Get the key text for a specific lesson"""
+    file_path = os.path.join(CONTENT_DIR, filename)
+    if not os.path.exists(file_path):
+        return jsonify({'success': False, 'error': 'Lesson not found'}), 404
+
+    # Extract key text from the lesson file
+    _, _, _, _, _, _, key_text = render_markdown_content(file_path)
+
+    return jsonify({
+        'success': True,
+        'key_text': key_text
+    })
 
 
 @app.route('/compile', methods=['POST'])

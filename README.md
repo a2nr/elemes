@@ -804,3 +804,54 @@ class NewLanguageCompiler(BaseCompiler):
 - File extensions are automatically adjusted based on the selected language
 - The system maintains backward compatibility with existing C lessons
 - All language compilation follows the same security and timeout constraints
+
+## Static Code Analysis Feature
+
+The system includes a static code analysis feature that validates student code against required keywords before compilation. This prevents students from hardcoding outputs without using proper algorithms or variables.
+
+### How It Works
+
+1. Teachers define required keywords in lesson files using the `---KEY_TEXT---` and `---END_KEY_TEXT---` markers
+2. When students submit code, the system checks if their code contains all required keywords
+3. Students only receive success notifications and lesson completion credit if both:
+   - Their output matches the expected output (if specified)
+   - Their code contains all required keywords from the KEY_TEXT section
+
+### Adding Static Analysis to Lessons
+
+To add static analysis to a lesson, include the `---KEY_TEXT---` section in your lesson file:
+
+```markdown
+---KEY_TEXT---
+int counter
+counter = 5
+printf
+---END_KEY_TEXT---
+```
+
+This example would require students to use an integer variable named `counter`, initialize it to 5, and use the `printf` function in their code.
+
+### Advanced Pattern Matching
+
+The system supports both literal keyword matching and regex patterns:
+
+- For literal keywords, just list them (one per line)
+- For regex patterns, enclose them in forward slashes: `/int\s+\w+\s*=\s*\d+/`
+
+Example with regex:
+```markdown
+---KEY_TEXT---
+int counter
+/counter\s*=\s*\d+/
+printf
+---END_KEY_TEXT---
+```
+
+This would require an integer variable named counter, an assignment to a numeric value, and the printf function.
+
+### Behavior
+
+- If static analysis fails, the success message is hidden and progress is not tracked
+- No explicit error messages are shown to students to maintain a clean user experience
+- The code still gets compiled and executed normally, but success criteria are not met
+- Both output correctness and keyword presence are required for lesson completion

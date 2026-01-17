@@ -28,6 +28,7 @@ Happy coding!
 
 ---Available_Lessons---
 
-1. [Introduction to C Programming](lesson/introduction_to_c.md)
-2. [Variables and Data Types in C](lesson/variables_and_data_types.md)
+1. [Hello World](lesson/hello_world.md)
+2. [variables](lesson/variable.md)
+3. [data type](lesson/data_type.md)
 
