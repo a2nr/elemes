@@ -997,21 +997,39 @@
                 });
             }
 
-            // Image zoom functionality
-            document.addEventListener('DOMContentLoaded', function() {
+            // Dynamic image sizing and zoom functionality
+            function setupImageHandling() {
                 // Select all images inside lesson content
                 const lessonImages = document.querySelectorAll('.lesson-content img');
 
                 lessonImages.forEach(img => {
                     // Add zoomable-img class to make them zoomable
-                    img.classList.add('zoomable-img');
+                    if (!img.classList.contains('zoomable-img')) {
+                        img.classList.add('zoomable-img');
+                    }
+
+                    // Add load event to handle image sizing
+                    if (!img.complete) {
+                        img.addEventListener('load', function() {
+                            // Image loaded, ensure it fits container
+                            this.style.maxWidth = '100%';
+                            this.style.height = 'auto';
+                        });
+                    } else {
+                        // Image already loaded
+                        img.style.maxWidth = '100%';
+                        img.style.height = 'auto';
+                    }
 
                     img.addEventListener('click', function() {
                         // Toggle enlarged class to zoom in/out
                         this.classList.toggle('enlarged');
 
                         // Prevent default behavior to avoid any conflicts
-                        event.preventDefault();
+                        if (event) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                        }
                     });
                 });
 
@@ -1022,7 +1040,10 @@
                         enlargedImg.classList.remove('enlarged');
                     }
                 });
-            });
+            }
+
+            // Call the function to set up image handling
+            setupImageHandling();
         });
     </script>
 </body>

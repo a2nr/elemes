@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  master:
+    container_name: locust_master
+    image: locustio/locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ../../:/mnt/locust
+    environment:
+      # URL target default (bisa diganti saat run)
+      - LOCUST_HOST=${TARGET_URL:-http://example.com}
+      # Number of students to simulate - defaults to 10 but should match number in tokens_siswa.csv
+      - LOCUST_NUM_STUDENTS=${LOCUST_NUM_STUDENTS:-10}
+    command: -f /mnt/locust/elemes/test/locustfile.py --master
+
+  worker:
+    image: locustio/locust
+    volumes:
+      - ../../:/mnt/locust
+    environment:
+      - LOCUST_HOST=${TARGET_URL:-http://example.com}
+      # Number of students to simulate - defaults to 10 but should match number in tokens_siswa.csv
+      - LOCUST_NUM_STUDENTS=${LOCUST_NUM_STUDENTS:-10}
+    # Worker akan otomatis mendeteksi Master lewat nama service 'master'
+    command: -f /mnt/locust/elemes/test/locustfile.py --worker --master-host locust_master
+

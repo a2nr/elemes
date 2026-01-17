@@ -355,8 +355,8 @@
                 });
             }
 
-            // Image zoom functionality for home page
-            document.addEventListener('DOMContentLoaded', function() {
+            // Dynamic image sizing and zoom functionality for home page
+            function setupHomeImageHandling() {
                 // Select all images inside home content
                 const homeImages = document.querySelectorAll('.home-content img');
 
@@ -364,6 +364,19 @@
                     // Add zoomable-img class to make them zoomable
                     if (!img.classList.contains('zoomable-img')) {
                         img.classList.add('zoomable-img');
+                    }
+
+                    // Add load event to handle image sizing
+                    if (!img.complete) {
+                        img.addEventListener('load', function() {
+                            // Image loaded, ensure it fits container
+                            this.style.maxWidth = '100%';
+                            this.style.height = 'auto';
+                        });
+                    } else {
+                        // Image already loaded
+                        img.style.maxWidth = '100%';
+                        img.style.height = 'auto';
                     }
 
                     img.addEventListener('click', function() {
@@ -385,7 +398,10 @@
                         enlargedImg.classList.remove('enlarged');
                     }
                 });
-            });
+            }
+
+            // Call the function to set up image handling
+            setupHomeImageHandling();
         });
     </script>
 </body>

@@ -183,6 +183,8 @@ body {
     cursor: pointer;
     transition: transform 0.3s ease;
     object-fit: contain; /* Ensures the entire image is visible within its bounds */
+    image-rendering: -webkit-optimize-contrast; /* Optimizes rendering for better performance */
+    image-rendering: crisp-edges; /* Better rendering for scaled images */
 }
 
 .lesson-content img.zoomable-img {
