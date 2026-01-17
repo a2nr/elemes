@@ -307,8 +307,6 @@ class WebsiteUser(HttpUser):
             pass  # Ignore logout errors
 
 
-# Define the user classes to be used in the test
-user_classes = [WebsiteUser, AdvancedUser, SessionBasedUser, PowerUser]
 
 
 # Additional task sets for more complex behaviors
@@ -702,3 +700,61 @@ class PowerUser(HttpUser):
     tasks = {BehaviorAnalysisTaskSet: 3, CompilationFocusedTaskSet: 4, LMSCUserBehavior: 2}
 
     wait_time = between(0.2, 1.5)
+
+
+class TeacherUser(HttpUser):
+    """
+    Teacher user that accesses the progress report feature
+    """
+    weight = 1
+    tasks = [LMSCUserBehavior]
+
+    wait_time = between(2, 5)
+
+    def on_start(self):
+        """
+        Initialize teacher session
+        """
+        # Teachers don't need a specific token to view progress report
+        # They can access the progress report page to see all students' progress
+        pass
+
+    @task(2)
+    def view_progress_report(self):
+        """
+        Task to view the student progress report
+        """
+        # Access the progress report page
+        response = self.client.get("/progress-report")
+
+        # Check if the response is successful
+        if response.status_code == 200:
+            print("Successfully accessed progress report page")
+        else:
+            print(f"Failed to access progress report page: {response.status_code}")
+
+    @task(1)
+    def export_progress_csv(self):
+        """
+        Task to export the progress report as CSV
+        """
+        # Export the progress report as CSV
+        response = self.client.get("/progress-report/export-csv")
+
+        # Check if the response is successful
+        if response.status_code == 200:
+            print("Successfully exported progress report as CSV")
+        else:
+            print(f"Failed to export progress report as CSV: {response.status_code}")
+
+    @task(1)
+    def view_homepage_as_teacher(self):
+        """
+        Task for teacher to view homepage
+        """
+        # Teachers might also view the homepage
+        self.client.get("/")
+
+
+# Update the user_classes list to include the new TeacherUser
+user_classes = [WebsiteUser, AdvancedUser, SessionBasedUser, PowerUser, TeacherUser]

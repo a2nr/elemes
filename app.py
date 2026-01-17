@@ -642,7 +642,7 @@ def compile_code():
         return jsonify({
             'success': False,
             'output': '',
-            'error': f'An error occurred: {str(e)}'
+            'error': 'An error occurred: ' + str(e)
         })
 
 @app.route('/static/<path:path>')
@@ -680,7 +680,7 @@ def login():
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error processing login: {str(e)}'})
+        return jsonify({'success': False, 'message': 'Error processing login: ' + str(e)})
 
 @app.route('/logout', methods=['POST'])
 def logout():
@@ -695,7 +695,7 @@ def logout():
         response.set_cookie('student_token', '', expires=0)
         return response
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error processing logout: {str(e)}'})
+        return jsonify({'success': False, 'message': 'Error processing logout: ' + str(e)})
 
 @app.route('/validate-token', methods=['POST'])
 def validate_token_route():
@@ -722,7 +722,7 @@ def validate_token_route():
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error validating token: {str(e)}'})
+        return jsonify({'success': False, 'message': 'Error validating token: ' + str(e)})
 
 @app.route('/track-progress', methods=['POST'])
 def track_progress():
@@ -756,8 +756,131 @@ def track_progress():
             return jsonify({'success': False, 'message': 'Failed to update progress'})
 
     except Exception as e:
-        logging.error(f"Error in track-progress: {str(e)}")
-        return jsonify({'success': False, 'message': f'Error tracking progress: {str(e)}'})
+        logging.error("Error in track-progress: " + str(e))
+        return jsonify({'success': False, 'message': 'Error tracking progress: ' + str(e)})
+
+
+def calculate_student_completion(student_data, all_lessons):
+    """Calculate the number of completed lessons for a student"""
+    completed_count = 0
+    for lesson in all_lessons:
+        # Handle both the new structure and the old structure for compatibility
+        if isinstance(lesson, dict) and 'filename' in lesson:
+            lesson_key = lesson['filename'].replace('.md', '')
+        else:
+            # If lesson is just a string (fallback)
+            lesson_key = lesson.replace('.md', '')
+
+        if lesson_key in student_data and student_data[lesson_key] == 'completed':
+            completed_count += 1
+    return completed_count
+
+@app.route('/progress-report')
+def progress_report():
+    """Display a report of all students' progress (from teacher's perspective)"""
+    # Get all students' progress from the CSV file
+    all_students_progress = []
+    lesson_headers = []  # Store the lesson column headers in the correct order
+
+    if os.path.exists(TOKENS_FILE):
+        with open(TOKENS_FILE, 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile, delimiter=';')
+            # Get the fieldnames to determine the correct order of lessons
+            lesson_headers = [field for field in reader.fieldnames if field not in ['token', 'nama_siswa']]
+
+            # Get all lessons to map filenames to titles
+            all_lessons_dict = {}
+            for lesson in get_lessons_with_learning_objectives():
+                lesson_key = lesson['filename'].replace('.md', '')
+                all_lessons_dict[lesson_key] = lesson
+
+            # Create ordered lesson list based on CSV column order
+            ordered_lessons = []
+            for lesson_header in lesson_headers:
+                if lesson_header in all_lessons_dict:
+                    ordered_lessons.append(all_lessons_dict[lesson_header])
+                else:
+                    # If lesson not found in content directory, create a minimal entry
+                    ordered_lessons.append({
+                        'filename': f"{lesson_header}.md",
+                        'title': lesson_header.replace('_', ' ').title(),
+                        'description': 'Lesson information not available'
+                    })
+
+            for row in reader:
+                # Create a copy of the row without the token
+                student_data = dict(row)
+                del student_data['token']  # Don't include token in the displayed data
+                # Add completion count to student data
+                student_data['completed_count'] = calculate_student_completion(student_data, ordered_lessons)
+                all_students_progress.append(student_data)
+
+    return render_template('progress_report.html',
+                          all_students_progress=all_students_progress,
+                          all_lessons=ordered_lessons,
+                          app_bar_title=APP_BAR_TITLE,
+                          copyright_text=COPYRIGHT_TEXT,
+                          page_title_suffix=PAGE_TITLE_SUFFIX)
+
+
+@app.route('/progress-report/export-csv')
+def export_progress_csv():
+    """Export the progress report as CSV"""
+    # Get all students' progress from the CSV file
+    all_students_progress = []
+    lesson_headers = []  # Store the lesson column headers in the correct order
+
+    if os.path.exists(TOKENS_FILE):
+        with open(TOKENS_FILE, 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile, delimiter=';')
+            # Get the fieldnames to determine the correct order of lessons
+            lesson_headers = [field for field in reader.fieldnames if field not in ['token', 'nama_siswa']]
+
+            # Get all lessons to map filenames to titles
+            all_lessons_dict = {}
+            for lesson in get_lessons_with_learning_objectives():
+                lesson_key = lesson['filename'].replace('.md', '')
+                all_lessons_dict[lesson_key] = lesson
+
+            # Create ordered lesson list based on CSV column order
+            ordered_lessons = []
+            for lesson_header in lesson_headers:
+                if lesson_header in all_lessons_dict:
+                    ordered_lessons.append(all_lessons_dict[lesson_header])
+                else:
+                    # If lesson not found in content directory, create a minimal entry
+                    ordered_lessons.append({
+                        'filename': f"{lesson_header}.md",
+                        'title': lesson_header.replace('_', ' ').title(),
+                        'description': 'Lesson information not available'
+                    })
+
+            for row in reader:
+                # Create a copy of the row without the token
+                student_data = dict(row)
+                del student_data['token']  # Don't include token in the exported data
+                # Add completion count to student data
+                student_data['completed_count'] = calculate_student_completion(student_data, ordered_lessons)
+                all_students_progress.append(student_data)
+
+    # Create CSV response
+    import io
+    from flask import Response
+    output = io.StringIO()
+    if all_students_progress:
+        # Write CSV header
+        fieldnames = list(all_students_progress[0].keys())
+        writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';')
+        writer.writeheader()
+        writer.writerows(all_students_progress)
+
+    # Create response with CSV content
+    response = Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={"Content-Disposition": "attachment; filename=progress_report.csv"}
+    )
+    return response
 
 @app.context_processor
 def inject_functions():

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Progress Report - {{ page_title_suffix }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('send_static', path='style.css') }}">
+    <style>
+        .progress-card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+        .table th {
+            background-color: #f8f9fa;
+        }
+        .status-completed {
+            background-color: #28a745;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        .status-not-started {
+            background-color: #dc3545;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        .status-in-progress {
+            background-color: #ffc107;
+            color: #212529;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+        .summary-stats {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        /* Additional table styling for better readability */
+        .table td, .table th {
+            vertical-align: middle;
+            text-align: center;
+        }
+        .table th {
+            background-color: #495057;
+            color: white;
+            border: 1px solid #6c757d;
+        }
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: rgba(0,0,0,.05);
+        }
+        .table-hover tbody tr:hover {
+            background-color: rgba(0,0,0,.075);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-bar"></i> {{ app_bar_title }} - Progress Report
+            </a>
+            <div class="d-flex">
+                <form class="d-flex" id="token-form" style="display: flex; align-items: center;">
+                    <input class="form-control me-2" type="text" id="teacher-token" placeholder="Enter teacher token" style="width: 200px;" disabled>
+                    <button class="btn btn-outline-light" type="submit" style="display:none;">Login</button>
+                    <button class="btn btn-outline-light logout-btn" type="button" style="display:none;">Logout</button>
+                </form>
+                <div id="teacher-info" class="text-light" style="margin-left: 15px;">
+                    <i class="fas fa-chalkboard-teacher"></i> Teacher View
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-12">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h1><i class="fas fa-users"></i> Student Progress Report</h1>
+                    <div>
+                        <a href="/progress-report/export-csv" class="btn btn-success me-2">
+                            <i class="fas fa-file-csv"></i> Export CSV
+                        </a>
+                        <button class="btn btn-info" onclick="window.print()">
+                            <i class="fas fa-print"></i> Print Report
+                        </button>
+                    </div>
+                </div>
+
+                <div class="summary-stats">
+                    <div class="row text-center">
+                        <div class="col-md-3 col-6 mb-3 mb-md-0">
+                            <h3>{{ all_students_progress|length }}</h3>
+                            <p class="mb-0">Total Students</p>
+                        </div>
+                        <div class="col-md-3 col-6 mb-3 mb-md-0">
+                            <h3>{{ all_lessons|length }}</h3>
+                            <p class="mb-0">Total Lessons</p>
+                        </div>
+                        <div class="col-md-3 col-6 mb-3 mb-md-0">
+                            <h3 id="overall-completion">0%</h3>
+                            <p class="mb-0">Overall Completion</p>
+                        </div>
+                        <div class="col-md-3 col-6">
+                            <h3 id="total-completed">0</h3>
+                            <p class="mb-0">Lessons Completed</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Students Progress Table -->
+                <div class="card progress-card">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0"><i class="fas fa-table"></i> Student Progress Overview</h4>
+                    </div>
+                    <div class="card-body">
+                        {% if all_students_progress %}
+                            <div class="table-responsive">
+                                <table class="table table-striped table-hover table-bordered">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th scope="col">#</th>
+                                            <th scope="col">Student Name</th>
+                                            {% for lesson in all_lessons %}
+                                                <th scope="col" class="rotate-header" style="min-width: 120px;">
+                                                    <div class="text-center" title="{{ lesson.title }}">{{ lesson.title[:12] }}{% if lesson.title|length > 12 %}..{% endif %}</div>
+                                                </th>
+                                            {% endfor %}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for student in all_students_progress %}
+                                            <tr>
+                                                <th scope="row">{{ loop.index }}</th>
+                                                <td><strong>{{ student.nama_siswa }}</strong></td>
+                                                {% for lesson in all_lessons %}
+                                                    {% set lesson_key = lesson.filename.replace('.md', '') %}
+                                                    {% set status = student[lesson_key] if lesson_key in student else 'not_started' %}
+                                                    <td class="text-center">
+                                                        {% if status == 'completed' %}
+                                                            <span class="status-completed" title="Completed">
+                                                                <i class="fas fa-check"></i>
+                                                            </span>
+                                                        {% elif status == 'in_progress' %}
+                                                            <span class="status-in-progress" title="In Progress">
+                                                                <i class="fas fa-clock"></i>
+                                                            </span>
+                                                        {% else %}
+                                                            <span class="status-not-started" title="Not Started">
+                                                                <i class="fas fa-times"></i>
+                                                            </span>
+                                                        {% endif %}
+                                                    </td>
+                                                {% endfor %}
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-info text-center">
+                                <h4><i class="fas fa-info-circle"></i> No student data available</h4>
+                                <p>There are no students registered in the system yet.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer mt-5 py-4 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">{{ copyright_text }}</span>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize tooltips for status indicators
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl, {
+                    trigger: 'hover'
+                });
+            });
+
+            // Calculate statistics dynamically
+            calculateStats();
+        });
+
+        function calculateStats() {
+            // Count total cells and completed cells
+            const allCells = document.querySelectorAll('td span.status-completed');
+            const totalCells = document.querySelectorAll('td span').length;
+            const completedCount = allCells.length;
+
+            // Update completed count
+            document.getElementById('total-completed').textContent = completedCount;
+
+            // Calculate and update completion percentage
+            if (totalCells > 0) {
+                const percentage = ((completedCount / totalCells) * 100).toFixed(1);
+                document.getElementById('overall-completion').textContent = percentage + '%';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -14,16 +14,44 @@ TOKENS_FILE = '../tokens_siswa.csv'
 
 def get_lesson_names():
     """Get all lesson names from the content directory (excluding home.md)"""
-    lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
+    # First, try to get the lesson order from home.md
+    home_file_path = os.path.join(CONTENT_DIR, "home.md")
     lesson_names = []
-    
+
+    if os.path.exists(home_file_path):
+        with open(home_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        # Split content to get only the lesson list part
+        parts = content.split('---Available_Lessons---')
+        if len(parts) > 1:
+            lesson_list_content = parts[1]
+
+            # Find lesson links in the lesson list content
+            import re
+            # Look for markdown links that point to lessons
+            lesson_links = re.findall(r'\[([^\]]+)\]\(lesson/([^\)]+)\)', lesson_list_content)
+
+            if lesson_links:
+                # Create ordered list based on home.md
+                for link_text, filename in lesson_links:
+                    lesson_names.append(filename.replace('.md', ''))
+
+                return lesson_names
+
+    # If no specific order is defined in home.md, fall back to alphabetical order
+    lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
+
     for file_path in lesson_files:
         filename = os.path.basename(file_path)
         # Skip home.md as it's not a lesson
         if filename == "home.md":
             continue
         lesson_names.append(filename.replace('.md', ''))
-    
+
+    # Sort alphabetically to have consistent order
+    lesson_names.sort()
+
     return lesson_names
 
 def generate_tokens_csv():
