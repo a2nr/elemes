@@ -83,7 +83,7 @@
                                         <i class="fas fa-moon"></i> Dark
                                     </button>
                                     <button id="solution-code" class="btn btn-sm btn-outline-light me-2 d-none">
-                                        <i class="fas fa-lightbulb"></i> Show Solution
+                                        <i class="fas fa-lightbulb"></i> <span id="solution-button-text">Show Solution</span>
                                     </button>
                                     <button id="run-code" class="btn btn-sm btn-success me-2">
                                         <i class="fas fa-play"></i> Run
@@ -730,6 +730,11 @@
                                                     }
                                                 }
                                             });
+
+                                            // Show solution button with "Review Solution" text after lesson completion
+                                            if (window.updateSolutionButtonVisibility) {
+                                                window.updateSolutionButtonVisibility(true);
+                                            }
                                         } else {
                                             console.error('Failed to track progress:', data.message);
                                         }
@@ -840,6 +845,11 @@
                                                     }
                                                 }
                                             });
+
+                                            // Show solution button with "Review Solution" text after lesson completion
+                                            if (window.updateSolutionButtonVisibility) {
+                                                window.updateSolutionButtonVisibility(true);
+                                            }
                                         } else {
                                             console.error('Failed to track progress:', data.message);
                                         }
@@ -901,13 +911,45 @@
                 outputDiv.classList.add('d-none');
             });
 
-            // Add solution button functionality
-            if (solutionButton && solutionCode && solutionCode !== "None" && solutionCode !== "") {
+            // Check if solution code exists
+            if (solutionCode && solutionCode !== "None" && solutionCode !== "") {
+                // Check if the lesson is completed and show/hide button accordingly
+                const isLessonCompleted = {{ lesson_completed | tojson }};
+
+                if (isLessonCompleted) {
+                    // Show the solution button and set text to "Review Solution" if the lesson is completed
+                    solutionButton.classList.remove('d-none');
+                    document.getElementById('solution-button-text').textContent = 'Review Solution';
+                } else {
+                    // Hide the solution button if the lesson is not completed
+                    solutionButton.classList.add('d-none');
+                }
+
                 solutionButton.addEventListener('click', function() {
                     codeEditor.value = solutionCode;
                     updateLineNumbers();
                 });
             }
+
+            // Function to update solution button visibility and text based on completion status
+            function updateSolutionButtonVisibility(isCompleted) {
+                if (isCompleted) {
+                    solutionButton.classList.remove('d-none');
+                    document.getElementById('solution-button-text').textContent = 'Review Solution';
+                } else {
+                    solutionButton.classList.add('d-none');
+                }
+            }
+
+            // Function to handle lesson completion and update UI
+            function handleLessonCompletion() {
+                // Show solution button with "Review Solution" text after lesson completion
+                updateSolutionButtonVisibility(true);
+            }
+
+            // Expose the functions globally so they can be called from other parts of the code
+            window.updateSolutionButtonVisibility = updateSolutionButtonVisibility;
+            window.handleLessonCompletion = handleLessonCompletion;
 
             // Function to apply dark theme
             function applyDarkTheme() {

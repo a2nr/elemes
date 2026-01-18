@@ -44,6 +44,40 @@ body {
     margin-bottom: 20px;
 }
 
+/* Ensure proper list styling - with important to override Bootstrap */
+.lesson-content ul {
+    list-style-type: disc !important;
+    padding-left: 20px !important;
+}
+
+.lesson-content ol {
+    list-style-type: decimal !important;
+    padding-left: 20px !important;
+}
+
+/* More specific selector to override Bootstrap styles */
+.lesson-content ul li {
+    list-style-type: disc !important;
+    display: list-item !important;
+}
+
+.lesson-content ol li {
+    list-style-type: decimal !important;
+    display: list-item !important;
+}
+
+/* Alternative approach using before pseudo-element for custom bullets */
+.lesson-content ul li {
+    position: relative;
+    padding-left: 20px;
+}
+
+.lesson-content ul li:before {
+    content: "• ";
+    position: absolute;
+    left: 0;
+}
+
 .lesson-content blockquote {
     margin-top: 20px;
     margin-bottom: 20px;

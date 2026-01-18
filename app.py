@@ -60,54 +60,90 @@ Talisman(app,
 )
 
 def get_lessons():
-    """Get all lesson files from the content directory"""
-    lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
+    """Get lessons from the Available_Lessons section in home.md"""
     lessons = []
 
-    for file_path in lesson_files:
-        filename = os.path.basename(file_path)
-        # Skip home.md as it's not a lesson
-        if filename == "home.md":
-            continue
+    # Read home content to get the lesson list
+    home_file_path = os.path.join(CONTENT_DIR, "home.md")
+    if not os.path.exists(home_file_path):
+        return lessons  # Return empty list if home.md doesn't exist
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # Extract title from first line if it starts with #
-            lines = content.split('\n')
-            title = "Untitled"
-            description = "Learn C programming concepts with practical examples."
+    with open(home_file_path, 'r', encoding='utf-8') as f:
+        home_content = f.read()
 
-            for i, line in enumerate(lines):
-                if line.startswith('# '):
-                    title = line[2:].strip()
-                # Look for a line after the title that might be a description
-                elif title != "Untitled" and line.strip() != "" and not line.startswith('#') and i < 10:
-                    # Take the first substantial line as description
-                    clean_line = line.strip().replace('#', '').strip()
-                    if len(clean_line) > 10:  # Only if it's a meaningful description
-                        description = clean_line
-                        break
+    # Split content to get only the lesson list part
+    parts = home_content.split('---Available_Lessons---')
+    if len(parts) > 1:
+        lesson_list_content = parts[1]
 
-            lessons.append({
-                'filename': filename,
-                'title': title,
-                'description': description,
-                'path': file_path
-            })
+        # Find lesson links in the lesson list content
+        import re
+        # Look for markdown links that point to lessons
+        lesson_links = re.findall(r'\[([^\]]+)\]\((?:lesson/)?([^\)]+)\)', lesson_list_content)
+
+        for link_text, filename in lesson_links:
+            file_path = os.path.join(CONTENT_DIR, filename)
+
+            # Only add the lesson if the file actually exists
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                    # Extract title from first line if it starts with #
+                    lines = content.split('\n')
+                    title = link_text  # Use the link text as title
+                    description = "Learn C programming concepts with practical examples."
+
+                    for i, line in enumerate(lines):
+                        if line.startswith('# ') and title == link_text:
+                            # If title wasn't set from link text, use the heading
+                            if title == "Untitled" or title == link_text:
+                                title = line[2:].strip()
+                        # Look for a line after the title that might be a description
+                        elif title != "Untitled" and line.strip() != "" and not line.startswith('#') and i < 10:
+                            # Take the first substantial line as description
+                            clean_line = line.strip().replace('#', '').strip()
+                            if len(clean_line) > 10:  # Only if it's a meaningful description
+                                description = clean_line
+                                break
+
+                    lessons.append({
+                        'filename': filename,
+                        'title': title,
+                        'description': description,
+                        'path': file_path
+                    })
 
     return lessons
 
 def get_lesson_names():
-    """Get all lesson names from the content directory (excluding home.md)"""
-    lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
+    """Get lesson names from the Available_Lessons section in home.md"""
     lesson_names = []
 
-    for file_path in lesson_files:
-        filename = os.path.basename(file_path)
-        # Skip home.md as it's not a lesson
-        if filename == "home.md":
-            continue
-        lesson_names.append(filename.replace('.md', ''))
+    # Read home content to get the lesson list
+    home_file_path = os.path.join(CONTENT_DIR, "home.md")
+    if not os.path.exists(home_file_path):
+        return lesson_names  # Return empty list if home.md doesn't exist
+
+    with open(home_file_path, 'r', encoding='utf-8') as f:
+        home_content = f.read()
+
+    # Split content to get only the lesson list part
+    parts = home_content.split('---Available_Lessons---')
+    if len(parts) > 1:
+        lesson_list_content = parts[1]
+
+        # Find lesson links in the lesson list content
+        import re
+        # Look for markdown links that point to lessons
+        lesson_links = re.findall(r'\[([^\]]+)\]\((?:lesson/)?([^\)]+)\)', lesson_list_content)
+
+        for link_text, filename in lesson_links:
+            file_path = os.path.join(CONTENT_DIR, filename)
+
+            # Only add the lesson name if the file actually exists
+            if os.path.exists(file_path):
+                lesson_names.append(filename.replace('.md', ''))
 
     return lesson_names
 
@@ -238,71 +274,89 @@ def get_ordered_lessons():
 
 
 def get_lessons_with_learning_objectives():
-    """Get all lesson files from the content directory with learning objectives as descriptions"""
-    lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
+    """Get lessons from the Available_Lessons section in home.md with learning objectives as descriptions"""
     lessons = []
 
-    for file_path in lesson_files:
-        filename = os.path.basename(file_path)
-        # Skip home.md as it's not a lesson
-        if filename == "home.md":
-            continue
+    # Read home content to get the lesson list
+    home_file_path = os.path.join(CONTENT_DIR, "home.md")
+    if not os.path.exists(home_file_path):
+        return lessons  # Return empty list if home.md doesn't exist
 
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            # Extract title from first line if it starts with #
-            lines = content.split('\n')
-            title = "Untitled"
-            description = "Learn C programming concepts with practical examples."
+    with open(home_file_path, 'r', encoding='utf-8') as f:
+        home_content = f.read()
 
-            # Look for lesson info section to extract learning objectives
-            lesson_info_start = content.find('---LESSON_INFO---')
-            lesson_info_end = content.find('---END_LESSON_INFO---')
+    # Split content to get only the lesson list part
+    parts = home_content.split('---Available_Lessons---')
+    if len(parts) > 1:
+        lesson_list_content = parts[1]
 
-            if lesson_info_start != -1 and lesson_info_end != -1:
-                lesson_info_section = content[lesson_info_start + len('---LESSON_INFO---'):lesson_info_end]
+        # Find lesson links in the lesson list content
+        import re
+        # Look for markdown links that point to lessons
+        lesson_links = re.findall(r'\[([^\]]+)\]\((?:lesson/)?([^\)]+)\)', lesson_list_content)
 
-                # Extract learning objectives
-                objectives_start = lesson_info_section.find('**Learning Objectives:**')
-                if objectives_start != -1:
-                    objectives_section = lesson_info_section[objectives_start:]
+        for link_text, filename in lesson_links:
+            file_path = os.path.join(CONTENT_DIR, filename)
 
-                    # Find the objectives list
-                    import re
-                    # Look for bullet points after Learning Objectives
-                    objective_matches = re.findall(r'- ([^\n]+)', objectives_section)
+            # Only add the lesson if the file actually exists
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
 
-                    if objective_matches:
-                        # Combine first few objectives as description
-                        description = '; '.join(objective_matches[:3])  # Take first 3 objectives
+                    # Extract title from first line if it starts with #
+                    lines = content.split('\n')
+                    title = link_text  # Use the link text as title
+                    description = "Learn C programming concepts with practical examples."
+
+                    # Look for lesson info section to extract learning objectives
+                    lesson_info_start = content.find('---LESSON_INFO---')
+                    lesson_info_end = content.find('---END_LESSON_INFO---')
+
+                    if lesson_info_start != -1 and lesson_info_end != -1:
+                        lesson_info_section = content[lesson_info_start + len('---LESSON_INFO---'):lesson_info_end]
+
+                        # Extract learning objectives
+                        objectives_start = lesson_info_section.find('**Learning Objectives:**')
+                        if objectives_start != -1:
+                            objectives_section = lesson_info_section[objectives_start:]
+
+                            # Find the objectives list
+                            # Look for bullet points after Learning Objectives
+                            objective_matches = re.findall(r'- ([^\n]+)', objectives_section)
+
+                            if objective_matches:
+                                # Combine first few objectives as description
+                                description = '; '.join(objective_matches[:3])  # Take first 3 objectives
+                            else:
+                                # If no bullet points found, take a few lines after the heading
+                                lines_after = lesson_info_section[objectives_start:].split('\n')[1:4]
+                                description = ' '.join(line.strip() for line in lines_after if line.strip())
+
+                        # Look for the main title after the lesson info section
+                        # Find the content after END_LESSON_INFO
+                        content_after_info = content[lesson_info_end + len('---END_LESSON_INFO---'):].strip()
+                        content_lines = content_after_info.split('\n')
+
+                        # Find the first line that starts with # (the main title)
+                        for line in content_lines:
+                            if line.startswith('# '):
+                                title = line[2:].strip()
+                                break
                     else:
-                        # If no bullet points found, take a few lines after the heading
-                        lines_after = lesson_info_section[objectives_start:].split('\n')[1:4]
-                        description = ' '.join(line.strip() for line in lines_after if line.strip())
+                        # If no lesson info section, use the original method
+                        for i, line in enumerate(lines):
+                            if line.startswith('# ') and title == link_text:
+                                # If title wasn't set from link text, use the heading
+                                if title == "Untitled" or title == link_text:
+                                    title = line[2:].strip()
+                                break
 
-                # Look for the main title after the lesson info section
-                # Find the content after END_LESSON_INFO
-                content_after_info = content[lesson_info_end + len('---END_LESSON_INFO---'):].strip()
-                content_lines = content_after_info.split('\n')
-
-                # Find the first line that starts with # (the main title)
-                for line in content_lines:
-                    if line.startswith('# '):
-                        title = line[2:].strip()
-                        break
-            else:
-                # If no lesson info section, use the original method
-                for i, line in enumerate(lines):
-                    if line.startswith('# '):
-                        title = line[2:].strip()
-                        break
-
-            lessons.append({
-                'filename': filename,
-                'title': title,
-                'description': description,
-                'path': file_path
-            })
+                    lessons.append({
+                        'filename': filename,
+                        'title': title,
+                        'description': description,
+                        'path': file_path
+                    })
 
     return lessons
 
@@ -467,9 +521,9 @@ def render_markdown_content(file_path):
     lesson_content = parts[0] if len(parts) > 0 else lesson_content
     exercise_content = parts[1] if len(parts) > 1 else ""
 
-    lesson_html = markdown.markdown(lesson_content, extensions=['fenced_code', 'codehilite', 'tables'])
-    exercise_html = markdown.markdown(exercise_content, extensions=['fenced_code', 'codehilite', 'tables']) if exercise_content else ""
-    lesson_info_html = markdown.markdown(lesson_info, extensions=['fenced_code', 'codehilite', 'tables']) if lesson_info else ""
+    lesson_html = markdown.markdown(lesson_content, extensions=['fenced_code', 'codehilite', 'tables', 'nl2br', 'toc'])
+    exercise_html = markdown.markdown(exercise_content, extensions=['fenced_code', 'codehilite', 'tables', 'nl2br', 'toc']) if exercise_content else ""
+    lesson_info_html = markdown.markdown(lesson_info, extensions=['fenced_code', 'codehilite', 'tables', 'nl2br', 'toc']) if lesson_info else ""
 
     return lesson_html, exercise_html, expected_output, lesson_info_html, initial_code, solution_code, key_text
 
