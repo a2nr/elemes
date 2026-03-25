@@ -1,0 +1,261 @@
+"""
+Lesson loading, ordering, and markdown rendering.
+"""
+
+import os
+import re
+
+import markdown as md
+
+from config import CONTENT_DIR
+
+
+def _read_home_md():
+    """Read home.md and return its content, or empty string if missing."""
+    path = os.path.join(CONTENT_DIR, "home.md")
+    if not os.path.exists(path):
+        return ""
+    with open(path, 'r', encoding='utf-8') as f:
+        return f.read()
+
+
+def _parse_lesson_links(home_content):
+    """Extract (link_text, filename) pairs from the Available_Lessons section."""
+    parts = home_content.split('---Available_Lessons---')
+    if len(parts) <= 1:
+        return []
+    lesson_list_content = parts[1]
+    return re.findall(r'\[([^\]]+)\]\((?:lesson/)?([^\)]+)\)', lesson_list_content)
+
+
+# ---------------------------------------------------------------------------
+# Lesson listing
+# ---------------------------------------------------------------------------
+
+def get_lessons():
+    """Get lessons from the Available_Lessons section in home.md."""
+    lessons = []
+    home_content = _read_home_md()
+    if not home_content:
+        return lessons
+
+    for link_text, filename in _parse_lesson_links(home_content):
+        file_path = os.path.join(CONTENT_DIR, filename)
+        if not os.path.exists(file_path):
+            continue
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        lines = content.split('\n')
+        title = link_text
+        description = "Learn C programming concepts with practical examples."
+
+        for i, line in enumerate(lines):
+            if line.startswith('# ') and title == link_text:
+                if title == "Untitled" or title == link_text:
+                    title = line[2:].strip()
+            elif title != "Untitled" and line.strip() != "" and not line.startswith('#') and i < 10:
+                clean_line = line.strip().replace('#', '').strip()
+                if len(clean_line) > 10:
+                    description = clean_line
+                    break
+
+        lessons.append({
+            'filename': filename,
+            'title': title,
+            'description': description,
+            'path': file_path,
+        })
+
+    return lessons
+
+
+def get_lesson_names():
+    """Get lesson names (without .md extension) from Available_Lessons."""
+    home_content = _read_home_md()
+    if not home_content:
+        return []
+
+    names = []
+    for _link_text, filename in _parse_lesson_links(home_content):
+        file_path = os.path.join(CONTENT_DIR, filename)
+        if os.path.exists(file_path):
+            names.append(filename.replace('.md', ''))
+    return names
+
+
+def get_lessons_with_learning_objectives():
+    """Get lessons with learning objectives extracted from LESSON_INFO sections."""
+    lessons = []
+    home_content = _read_home_md()
+    if not home_content:
+        return lessons
+
+    for link_text, filename in _parse_lesson_links(home_content):
+        file_path = os.path.join(CONTENT_DIR, filename)
+        if not os.path.exists(file_path):
+            continue
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        title = link_text
+        description = "Learn C programming concepts with practical examples."
+
+        lesson_info_start = content.find('---LESSON_INFO---')
+        lesson_info_end = content.find('---END_LESSON_INFO---')
+
+        if lesson_info_start != -1 and lesson_info_end != -1:
+            lesson_info_section = content[lesson_info_start + len('---LESSON_INFO---'):lesson_info_end]
+
+            objectives_start = lesson_info_section.find('**Learning Objectives:**')
+            if objectives_start != -1:
+                objectives_section = lesson_info_section[objectives_start:]
+                objective_matches = re.findall(r'- ([^\n]+)', objectives_section)
+                if objective_matches:
+                    description = '; '.join(objective_matches[:3])
+                else:
+                    lines_after = lesson_info_section[objectives_start:].split('\n')[1:4]
+                    description = ' '.join(line.strip() for line in lines_after if line.strip())
+
+            content_after_info = content[lesson_info_end + len('---END_LESSON_INFO---'):].strip()
+            for line in content_after_info.split('\n'):
+                if line.startswith('# '):
+                    title = line[2:].strip()
+                    break
+        else:
+            lines = content.split('\n')
+            for line in lines:
+                if line.startswith('# ') and title == link_text:
+                    if title == "Untitled" or title == link_text:
+                        title = line[2:].strip()
+                    break
+
+        lessons.append({
+            'filename': filename,
+            'title': title,
+            'description': description,
+            'path': file_path,
+        })
+
+    return lessons
+
+
+def get_ordered_lessons_with_learning_objectives(progress=None):
+    """Get lessons ordered per home.md with completion status from progress dict."""
+    home_content = _read_home_md()
+    lesson_links = _parse_lesson_links(home_content) if home_content else []
+
+    all_lessons = get_lessons_with_learning_objectives()
+
+    def _add_completion(lesson, progress):
+        if progress:
+            lesson_key = lesson['filename'].replace('.md', '')
+            lesson['completed'] = progress.get(lesson_key) == 'completed'
+        else:
+            lesson['completed'] = False
+        return lesson
+
+    if lesson_links:
+        ordered = []
+        for link_text, filename in lesson_links:
+            for lesson in all_lessons:
+                if lesson['filename'] == filename:
+                    copy = lesson.copy()
+                    copy['title'] = link_text
+                    _add_completion(copy, progress)
+                    ordered.append(copy)
+                    break
+
+        seen = {l['filename'] for l in ordered}
+        for lesson in all_lessons:
+            if lesson['filename'] not in seen:
+                _add_completion(lesson, progress)
+                ordered.append(lesson)
+
+        return ordered
+
+    for lesson in all_lessons:
+        _add_completion(lesson, progress)
+    return all_lessons
+
+
+# ---------------------------------------------------------------------------
+# Markdown rendering
+# ---------------------------------------------------------------------------
+
+MD_EXTENSIONS = ['fenced_code', 'codehilite', 'tables', 'nl2br', 'toc']
+
+
+def _extract_section(content, start_marker, end_marker):
+    """Extract text between markers and return (extracted, remaining_content)."""
+    if start_marker not in content or end_marker not in content:
+        return "", content
+
+    start_idx = content.find(start_marker)
+    end_idx = content.find(end_marker)
+    if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
+        return "", content
+
+    extracted = content[start_idx + len(start_marker):end_idx].strip()
+    remaining = content[:start_idx] + content[end_idx + len(end_marker):]
+    return extracted, remaining
+
+
+def render_markdown_content(file_path):
+    """Parse a lesson markdown file and return structured HTML parts.
+
+    Returns: (lesson_html, exercise_html, expected_output, lesson_info_html,
+              initial_code, solution_code, key_text)
+    """
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    lesson_content = content
+
+    # Extract special sections (order matters — each extraction removes the section)
+    expected_output, lesson_content = _extract_section(
+        lesson_content, '---EXPECTED_OUTPUT---', '---END_EXPECTED_OUTPUT---')
+
+    key_text, lesson_content = _extract_section(
+        lesson_content, '---KEY_TEXT---', '---END_KEY_TEXT---')
+
+    # Lesson info has a special fallback for old format
+    lesson_info = ""
+    if '---LESSON_INFO---' in lesson_content and '---END_LESSON_INFO---' in lesson_content:
+        lesson_info, lesson_content = _extract_section(
+            lesson_content, '---LESSON_INFO---', '---END_LESSON_INFO---')
+    elif '---LESSON_INFO---' in lesson_content:
+        parts = lesson_content.split('---LESSON_INFO---', 1)
+        if len(parts) == 2:
+            lesson_info = parts[0].strip()
+            lesson_content = parts[1].strip()
+
+    solution_code, lesson_content = _extract_section(
+        lesson_content, '---SOLUTION_CODE---', '---END_SOLUTION_CODE---')
+
+    initial_code, lesson_content = _extract_section(
+        lesson_content, '---INITIAL_CODE---', '---END_INITIAL_CODE---')
+
+    # Split lesson vs exercise
+    parts = lesson_content.split('---EXERCISE---')
+    lesson_content = parts[0] if parts else lesson_content
+    exercise_content = parts[1] if len(parts) > 1 else ""
+
+    lesson_html = md.markdown(lesson_content, extensions=MD_EXTENSIONS)
+    exercise_html = md.markdown(exercise_content, extensions=MD_EXTENSIONS) if exercise_content else ""
+    lesson_info_html = md.markdown(lesson_info, extensions=MD_EXTENSIONS) if lesson_info else ""
+
+    return lesson_html, exercise_html, expected_output, lesson_info_html, initial_code, solution_code, key_text
+
+
+def render_home_content():
+    """Render the home.md intro section (before Available_Lessons) as HTML."""
+    home_content = _read_home_md()
+    if not home_content:
+        return ""
+
+    parts = home_content.split('---Available_Lessons---')
+    main_content = parts[0] if parts else home_content
+    return md.markdown(main_content, extensions=['fenced_code', 'codehilite', 'tables'])

@@ -1,0 +1,75 @@
+"""
+Authentication routes: login, logout, validate-token.
+"""
+
+from flask import Blueprint, request, jsonify
+
+from services.token_service import validate_token
+
+auth_bp = Blueprint('auth', __name__)
+
+
+@auth_bp.route('/login', methods=['POST'])
+def login():
+    """Handle student login with token."""
+    try:
+        data = request.get_json()
+        token = data.get('token', '').strip()
+
+        if not token:
+            return jsonify({'success': False, 'message': 'Token is required'})
+
+        student_info = validate_token(token)
+        if student_info:
+            response = jsonify({
+                'success': True,
+                'student_name': student_info['student_name'],
+                'message': 'Login successful',
+            })
+            response.set_cookie(
+                'student_token', token,
+                httponly=True, secure=False, samesite='Lax', max_age=86400,
+            )
+            return response
+        else:
+            return jsonify({'success': False, 'message': 'Invalid token'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing login: {e}'})
+
+
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    """Handle student logout."""
+    try:
+        response = jsonify({'success': True, 'message': 'Logout successful'})
+        response.set_cookie('student_token', '', expires=0)
+        return response
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error processing logout: {e}'})
+
+
+@auth_bp.route('/validate-token', methods=['POST'])
+def validate_token_route():
+    """Validate a token without logging in."""
+    try:
+        data = request.get_json()
+        token = data.get('token', '').strip()
+
+        if not token:
+            token = request.cookies.get('student_token', '').strip()
+
+        if not token:
+            return jsonify({'success': False, 'message': 'Token is required'})
+
+        student_info = validate_token(token)
+        if student_info:
+            return jsonify({
+                'success': True,
+                'student_name': student_info['student_name'],
+            })
+        else:
+            return jsonify({'success': False, 'message': 'Invalid token'})
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': f'Error validating token: {e}'})

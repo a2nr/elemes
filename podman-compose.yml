@@ -4,22 +4,35 @@ services:
   elemes:
     build: .
     container_name: elemes
-    ports:
-      5000:5000
     volumes:
       - ../content:/app/content
-      - ./static:/app/static
-      - ./templates:/app/templates
       - ../tokens_siswa.csv:/app/tokens.csv
       - ../assets:/app/assets
     env_file:
       - ../.env
+    networks:
+      lms_net:
+        ipv4_address: 10.89.100.10
 
     # production
-    # command: gunicorn --config gunicorn.conf.py app:app
+    # command: gunicorn --config gunicorn.conf.py "app:create_app()"
 
     # debug
     command: python app.py
+
+  elemes-frontend:
+    build: ./frontend
+    container_name: elemes-frontend
+    ports:
+      - 3000:3000
+    environment:
+      - ORIGIN=http://localhost:3000
+      - API_BACKEND=http://10.89.100.10:5000
+    depends_on:
+      - elemes
+    networks:
+      lms_net:
+        ipv4_address: 10.89.100.11
 
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
@@ -38,10 +51,17 @@ services:
       - net_admin
       - sys_module
     restart: unless-stopped
+    depends_on:
+      - elemes-frontend
     env_file:
       - ../.env
+    networks:
+      lms_net:
+        ipv4_address: 10.89.100.12
 
 networks:
-  main_network:
-    drive: bridge
-    network_mode: service:elemes-ts
+  lms_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.89.100.0/24

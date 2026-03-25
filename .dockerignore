@@ -1,0 +1,9 @@
+frontend/
+__pycache__/
+*.pyc
+state/
+config/
+documentation.md
+generate_tokens.py
+podman-compose.yml
+.dockerignore

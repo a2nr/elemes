@@ -26,4 +26,4 @@ USER app
 EXPOSE 5000
 
 # Run the application with Gunicorn in production mode using config file
-# CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:app"]
+CMD ["gunicorn", "--config", "gunicorn.conf.py", "app:create_app()"]
