@@ -6,17 +6,20 @@
 		code?: string;
 		language?: string;
 		readonly?: boolean;
+		noPaste?: boolean;
 		onchange?: (value: string) => void;
 	}
 
-	let { code = '', language = 'c', readonly = false, onchange }: Props = $props();
+	let { code = '', language = 'c', readonly = false, noPaste = false, onchange }: Props = $props();
 
 	let container: HTMLDivElement;
 	let view: any;
 	let ready = $state(false);
+	let lastThemeDark: boolean | undefined;
 
 	// Store module references after dynamic import
 	let CM: any;
+	let cleanupNoPaste: (() => void) | undefined;
 
 	async function loadCodeMirror() {
 		const [viewMod, stateMod, cmdsMod, langMod, autoMod, cppMod, pyMod, themeMod] =
@@ -76,6 +79,86 @@
 			);
 		}
 
+		if (noPaste) {
+			// Layer 1: DOM event handlers (catches standard paste/drop on desktop)
+			exts.push(
+				CM.EditorView.domEventHandlers({
+					paste(event: ClipboardEvent) {
+						event.preventDefault();
+						return true;
+					},
+					drop(event: DragEvent) {
+						event.preventDefault();
+						return true;
+					},
+					// Mobile browsers may use beforeinput with insertFromPaste/Drop
+					beforeinput(event: InputEvent) {
+						if (event.inputType === 'insertFromPaste' ||
+							event.inputType === 'insertFromDrop' ||
+							event.inputType === 'insertFromPasteAsQuotation') {
+							event.preventDefault();
+							return true;
+						}
+						return false;
+					},
+				})
+			);
+
+			// Layer A: Transaction filter — blocks paste at CM6 abstraction level.
+			// 1) Blocks transactions explicitly tagged 'input.paste' / 'input.drop'
+			//    (standard long-press → "Paste" on Android, and all desktop paste).
+			// 2) Heuristic for GBoard clipboard panel: GBoard injects clipboard
+			//    text through the IME as 'input.type.compose', indistinguishable
+			//    from regular typing at the event level. We detect it by checking
+			//    for unusually large insertions (multi-line or long single chunk)
+			//    that cannot come from normal keyboard input.
+			exts.push(
+				CM.EditorState.transactionFilter.of((tr: any) => {
+					if (tr.isUserEvent('input.paste') || tr.isUserEvent('input.drop')) {
+						return [];
+					}
+					// Heuristic: detect paste disguised as typing via mobile IME
+					if (tr.isUserEvent('input.type') || tr.isUserEvent('input.type.compose')) {
+						let dominated = false;
+						tr.changes.iterChanges(
+							(_fA: number, _tA: number, _fB: number, _tB: number, inserted: any) => {
+								// 3+ lines → definitely paste
+								// 2 lines with >20 chars → likely paste (Enter+indent is ~5-10 chars)
+								if (inserted.lines > 2 || (inserted.lines > 1 && inserted.length > 20)) {
+									dominated = true;
+								}
+							}
+						);
+						if (dominated) return [];
+					}
+					return tr;
+				})
+			);
+
+			// Layer C: Clipboard input filter — replaces clipboard text with ''
+			// before CM6 processes it (available since @codemirror/view 6.17.0)
+			if (CM.EditorView.clipboardInputFilter) {
+				exts.push(
+					CM.EditorView.clipboardInputFilter.of(() => '')
+				);
+			}
+
+			// Layer D: Input handler — intercepts text from DOM mutations.
+			// GBoard clipboard panel injects text via DOM mutations tagged as
+			// 'input.type.compose'. inputHandler fires for these mutations and
+			// can block them if the text looks like paste (multi-line).
+			exts.push(
+				CM.EditorView.inputHandler.of(
+					(_view: any, _from: number, _to: number, text: string) => {
+						if (text.includes('\n') && text.length > 20) {
+							return true; // block: multi-line insertion = paste
+						}
+						return false; // allow normal typing
+					}
+				)
+			);
+		}
+
 		return exts;
 	}
 
@@ -92,24 +175,66 @@
 		});
 	}
 
+	function setupNoPasteListeners() {
+		if (!noPaste || !container) return;
+		const prevent = (e: Event) => { e.preventDefault(); e.stopPropagation(); };
+		container.addEventListener('paste', prevent, true);
+		container.addEventListener('copy', prevent, true);
+		container.addEventListener('cut', prevent, true);
+		container.addEventListener('contextmenu', prevent, true);
+		container.addEventListener('drop', prevent, true);
+
+		// Layer B: Post-hoc paste revert via input event.
+		// The 'input' event fires AFTER content has been inserted, making it
+		// reliable on mobile where beforeinput may be non-cancelable.
+		// If Layer A (transactionFilter) blocks the paste, no input event fires,
+		// so there is no double-undo risk.
+		const revertPaste = (e: Event) => {
+			const ie = e as InputEvent;
+			if (ie.inputType === 'insertFromPaste' ||
+				ie.inputType === 'insertFromDrop' ||
+				ie.inputType === 'insertFromPasteAsQuotation') {
+				if (view && CM) {
+					CM.undo(view);
+				}
+			}
+		};
+		container.addEventListener('input', revertPaste, true);
+
+		cleanupNoPaste = () => {
+			container.removeEventListener('paste', prevent, true);
+			container.removeEventListener('copy', prevent, true);
+			container.removeEventListener('cut', prevent, true);
+			container.removeEventListener('contextmenu', prevent, true);
+			container.removeEventListener('drop', prevent, true);
+			container.removeEventListener('input', revertPaste, true);
+		};
+	}
+
 	onMount(async () => {
 		await loadCodeMirror();
+		lastThemeDark = $themeDark;
 		createEditor();
+		setupNoPasteListeners();
 		ready = true;
 	});
 
 	onDestroy(() => {
+		cleanupNoPaste?.();
 		view?.destroy();
 	});
 
-	// Recreate editor when theme changes
+	// Recreate editor ONLY when theme actually changes (not on ready/container changes)
 	$effect(() => {
-		const _dark = $themeDark;
-		if (ready && container && view) {
-			const currentCode = view.state.doc.toString();
-			code = currentCode;
-			createEditor();
-		}
+		const dark = $themeDark;
+		if (!ready || !container || !view) return;
+		if (lastThemeDark === dark) return;
+		lastThemeDark = dark;
+		const currentCode = view.state.doc.toString();
+		code = currentCode;
+		createEditor();
+		// Restore focus after theme-driven recreation
+		requestAnimationFrame(() => view?.focus());
 	});
 
 	/** Replace editor content programmatically (e.g. reset / load solution). */
@@ -126,7 +251,7 @@
 	}
 </script>
 
-<div class="editor-wrapper" bind:this={container}>
+<div class="editor-wrapper" class:no-paste={noPaste} bind:this={container}>
 	{#if !ready}
 		<div class="editor-loading">Memuat editor...</div>
 	{/if}
@@ -138,6 +263,7 @@
 		border-radius: var(--radius);
 		overflow: hidden;
 		font-size: 0.9rem;
+		-webkit-touch-callout: none;
 	}
 	.editor-wrapper :global(.cm-editor) {
 		min-height: 200px;
@@ -154,6 +280,9 @@
 		color: var(--color-text-muted);
 		font-size: 0.85rem;
 		background: var(--color-bg-secondary);
+	}
+	.editor-wrapper.no-paste :global(.cm-content) {
+		-webkit-touch-callout: none;
 	}
 	@media (max-width: 768px) {
 		.editor-wrapper :global(.cm-editor) {

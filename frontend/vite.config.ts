@@ -9,6 +9,10 @@ export default defineConfig({
 				target: 'http://elemes:5000',
 				changeOrigin: true,
 				rewrite: (path) => path.replace(/^\/api/, '')
+			},
+			'/assets': {
+				target: 'http://elemes:5000',
+				changeOrigin: true
 			}
 		}
 	}

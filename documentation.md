@@ -185,6 +185,41 @@ Semua endpoint Flask diakses via SvelteKit proxy (`/api/*` → Flask `:5000`):
 
 ---
 
+## Anti Copy-Paste System
+
+Sistem berlapis untuk mencegah siswa meng-copy konten pelajaran dan mem-paste kode dari sumber eksternal ke editor.
+
+### Selection & Copy Prevention (Halaman Lesson)
+
+**File:** `frontend/src/routes/lesson/[slug]/+page.svelte`
+
+Mencegah siswa men-select dan meng-copy teks dari konten pelajaran (termasuk code blocks).
+
+| Layer | Mekanisme | Target |
+|-------|-----------|--------|
+| CSS | `user-select: none`, `-webkit-touch-callout: none` | `.lesson-content`, `.lesson-info` |
+| Events | `onselectstart`, `oncopy`, `oncut`, `oncontextmenu` → `preventDefault()` | `.lesson-content`, `.lesson-info` |
+| JS | `selectionchange` + `mouseup` + `touchend` → `getSelection().removeAllRanges()` | Fallback aktif — clear selection jika terjadi di area konten (scoped, tidak mengganggu editor) |
+
+### Paste Prevention (CodeEditor)
+
+**File:** `frontend/src/lib/components/CodeEditor.svelte`
+
+Mencegah siswa mem-paste kode dari sumber eksternal ke code editor. Diaktifkan via prop `noPaste={true}`.
+
+| Layer | Mekanisme | Menangani |
+|-------|-----------|-----------|
+| 1 | `EditorView.domEventHandlers` — `paste`, `drop`, `beforeinput` → `preventDefault()` | Desktop paste, iOS paste |
+| A | `EditorState.transactionFilter` — block `input.paste` + heuristik ukuran (>2 baris atau >20 chars untuk 2 baris) | Standard paste + **GBoard clipboard panel** (paste via IME yang menyamar sebagai `input.type.compose`) |
+| C | `EditorView.clipboardInputFilter` — replace clipboard text → `''` (runtime check) | Standard paste (jika API tersedia) |
+| D | `EditorView.inputHandler` — block multi-line insertion >20 chars | GBoard clipboard via DOM mutations |
+| 2 | DOM capture-phase listeners — `paste`, `copy`, `cut`, `contextmenu`, `drop` → `preventDefault()` | Backup DOM-level |
+| B | `input` event listener — `CM.undo()` jika `insertFromPaste` | Fallback post-hoc revert |
+
+**Limitasi:** GBoard clipboard panel menyuntikkan teks lewat IME composition system (bukan clipboard API), sehingga tidak bisa dibedakan 100% dari ketikan biasa. Heuristik ukuran teks digunakan untuk mendeteksi dan memblokir mayoritas kasus paste, namun paste 1 baris pendek (<20 chars) masih bisa lolos.
+
+---
+
 ## Status Implementasi
 
 - [x] **Phase 0:** Backend decomposition (monolith → Blueprints + services)

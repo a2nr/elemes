@@ -17,8 +17,14 @@ function resolveBackend(): string {
 const API_BACKEND = resolveBackend();
 
 export const handle: Handle = async ({ event, resolve }) => {
-	if (event.url.pathname.startsWith('/api/')) {
-		const backendPath = event.url.pathname.replace(/^\/api/, '');
+	// Proxy /api/* and /assets/* to Flask backend
+	const isApi = event.url.pathname.startsWith('/api/');
+	const isAsset = event.url.pathname.startsWith('/assets/');
+
+	if (isApi || isAsset) {
+		const backendPath = isApi
+			? event.url.pathname.replace(/^\/api/, '')
+			: event.url.pathname; // /assets/* kept as-is
 		const backendUrl = `${API_BACKEND}${backendPath}${event.url.search}`;
 
 		try {
@@ -38,13 +44,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 			}
 
 			const res = await fetch(backendUrl, init);
-			const body = await res.text();
+
+			// Use arrayBuffer for binary content (images), text for API JSON
+			const resContentType = res.headers.get('content-type') ?? 'application/json';
+			const isBinary = !resContentType.startsWith('text/') && !resContentType.includes('json');
+			const body = isBinary ? await res.arrayBuffer() : await res.text();
 
 			return new Response(body, {
 				status: res.status,
-				headers: {
-					'content-type': res.headers.get('content-type') ?? 'application/json',
-				},
+				headers: { 'content-type': resContentType },
 			});
 		} catch (err) {
 			console.error(`API proxy error (${backendUrl}):`, err);

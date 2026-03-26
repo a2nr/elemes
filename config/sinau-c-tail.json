@@ -9,6 +9,9 @@
       "Handlers": {
         "/": {
           "Proxy": "http://elemes-frontend:3000"
+        },
+        "/assets/": {
+          "Proxy": "http://elemes:5000/assets/"
         }
       }
     }
