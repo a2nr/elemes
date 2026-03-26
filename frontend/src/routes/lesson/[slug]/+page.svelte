@@ -22,7 +22,7 @@
 
 	// UI state
 	let showSolution = $state(false);
-	let activeTab = $state<'editor' | 'output'>('editor');
+	let activeTab = $state<'info' | 'exercise' | 'editor' | 'output'>('info');
 
 	let editor = $state<CodeEditor | null>(null);
 	let showCelebration = $state(false);
@@ -34,7 +34,8 @@
 	let mobileExpanded = $state(true);
 	let touchStartY = 0;
 	let lessonContentEl = $state<HTMLDivElement>();
-	let lessonInfoEl = $state<HTMLDetailsElement>();
+	let infoTabEl = $state<HTMLDivElement>();
+	let exerciseTabEl = $state<HTMLDivElement>();
 
 	// Drag & resize state for floating panel
 	let dragging = $state(false);
@@ -146,10 +147,11 @@
 			const node = sel.anchorNode;
 			if (!node) return;
 
-			// Only clear if selection is inside lesson content or lesson info
+			// Only clear if selection is inside lesson content or info/exercise tab panels
 			const inLesson = lessonContentEl?.contains(node);
-			const inInfo = lessonInfoEl?.contains(node);
-			if (inLesson || inInfo) {
+			const inInfo = infoTabEl?.contains(node);
+			const inExercise = exerciseTabEl?.contains(node);
+			if (inLesson || inInfo || inExercise) {
 				sel.removeAllRanges();
 			}
 		}
@@ -208,7 +210,9 @@
 			compileError = '';
 			compileSuccess = null;
 			showSolution = false;
-			activeTab = 'editor';
+			if (lesson.lesson_info) activeTab = 'info';
+			else if (lesson.exercise_content) activeTab = 'exercise';
+			else activeTab = 'editor';
 			mobileExpanded = true;
 		}
 	});
@@ -288,16 +292,6 @@
 	<title>{data?.lesson_title ?? 'Pelajaran'} - Elemes LMS</title>
 </svelte:head>
 
-<!-- Celebration overlay -->
-{#if showCelebration}
-	<div class="celebration-overlay">
-		<div class="celebration-content">
-			<div class="celebration-icon">&#10003;</div>
-			<p class="celebration-text">Selamat! Latihan Selesai!</p>
-		</div>
-	</div>
-{/if}
-
 {#if data}
 	<!-- Navigation breadcrumb -->
 	<div class="lesson-nav">
@@ -308,17 +302,6 @@
 	</div>
 
 	<h1 class="lesson-title">{data.lesson_title}</h1>
-
-	<!-- Lesson info (collapsible, selection prevented) -->
-	{#if data.lesson_info}
-		<details class="lesson-info" bind:this={lessonInfoEl}
-			onselectstart={(e) => e.preventDefault()}
-			oncopy={(e) => e.preventDefault()}
-			oncontextmenu={(e) => e.preventDefault()}>
-			<summary>Informasi Pelajaran</summary>
-			<div class="info-content">{@html data.lesson_info}</div>
-		</details>
-	{/if}
 
 	<!-- Main content area -->
 	<div class="lesson-layout" class:single-col={editorFloating || isMobile}>
@@ -332,13 +315,6 @@
 			oncut={(e) => e.preventDefault()}
 			oncontextmenu={(e) => e.preventDefault()}>
 			<div class="prose">{@html data.lesson_content}</div>
-
-			{#if data.exercise_content}
-				<div class="exercise-section">
-					<h2>Latihan</h2>
-					<div class="prose">{@html data.exercise_content}</div>
-				</div>
-			{/if}
 		</div>
 
 		<!-- Floating restore button (visible when minimized) -->
@@ -358,21 +334,21 @@
 			class:mobile-collapsed={isMobile && !mobileExpanded}
 			style={floatStyle}>
 
-			<!-- Floating/Sheet header -->
+			<!-- Panel header -->
 			{#if isMobile}
 				<button class="panel-header sheet-handle"
 					ontouchstart={onSheetTouchStart}
 					ontouchend={onSheetTouchEnd}
 					onclick={toggleMobileSheet}>
 					<div class="sheet-handle-bar"></div>
-					<span class="panel-title">Code Editor</span>
+					<span class="panel-title">Workspace</span>
 				</button>
 			{:else if editorFloating && !editorMinimized}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="panel-header draggable" onmousedown={onDragStart}>
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<span class="resize-handle" onmousedown={(e) => { e.stopPropagation(); onResizeStart(e); }} title="Resize">&#x25F3;</span>
-					<span class="panel-title">Code Editor</span>
+					<span class="panel-title">Workspace</span>
 					<div class="panel-actions">
 						<button type="button" class="panel-btn" onclick={minimizeFloat}
 							title="Minimize">▽</button>
@@ -380,49 +356,95 @@
 							title="Dock editor">⊡</button>
 					</div>
 				</div>
+			{:else if !isMobile}
+				<div class="panel-header">
+					<span class="panel-title">Workspace</span>
+					<div class="panel-actions">
+						<button type="button" class="btn-float-toggle" onclick={toggleFloat} title="Float editor">&#x229E;</button>
+					</div>
+				</div>
 			{/if}
 
 			<!-- Editor body -->
 			<div class="editor-body" class:body-hidden={isMobile && !mobileExpanded}>
-				{#if isMobile}
-					<div class="mobile-tabs">
-						<button class="tab" class:active={activeTab === 'editor'}
-							onclick={() => (activeTab = 'editor')}>Editor</button>
-						<button class="tab" class:active={activeTab === 'output'}
-							onclick={() => (activeTab = 'output')}>Output</button>
-					</div>
-				{/if}
+				<!-- Tabs (shared 4-tab for mobile & desktop) -->
+				<div class="panel-tabs">
+					{#if data.lesson_info}
+						<button class="tab" class:active={activeTab === 'info'}
+							onclick={() => (activeTab = 'info')}>Informasi</button>
+					{/if}
+					{#if data.exercise_content}
+						<button class="tab" class:active={activeTab === 'exercise'}
+							onclick={() => (activeTab = 'exercise')}>Exercise</button>
+					{/if}
+					<button class="tab" class:active={activeTab === 'editor'}
+						onclick={() => (activeTab = 'editor')}>Code Editor</button>
+					<button class="tab" class:active={activeTab === 'output'}
+						onclick={() => (activeTab = 'output')}>Output</button>
+				</div>
 
-				<!-- Toolbar -->
-				<div class="toolbar">
-					<button type="button" class="btn btn-success" onclick={handleRun} disabled={compiling}>
-						{compiling ? 'Compiling...' : '&#9654; Run'}
-					</button>
-					<button type="button" class="btn btn-secondary" onclick={handleReset}>Reset</button>
-					{#if data.solution_code && auth.isLoggedIn && data.lesson_completed}
-						<button type="button" class="btn btn-secondary" onclick={handleShowSolution}>
-							{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
+				<!-- Info tab panel -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="tab-panel" class:tab-hidden={activeTab !== 'info'}
+					bind:this={infoTabEl}
+					onselectstart={(e) => e.preventDefault()}
+					oncopy={(e) => e.preventDefault()}
+					oncontextmenu={(e) => e.preventDefault()}>
+					{#if data.lesson_info}
+						<div class="info-content">{@html data.lesson_info}</div>
+					{/if}
+				</div>
+
+				<!-- Exercise tab panel -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="tab-panel" class:tab-hidden={activeTab !== 'exercise'}
+					bind:this={exerciseTabEl}
+					onselectstart={(e) => e.preventDefault()}
+					oncopy={(e) => e.preventDefault()}
+					oncontextmenu={(e) => e.preventDefault()}>
+					{#if data.exercise_content}
+						<div class="exercise-section">
+							<h2>Latihan</h2>
+							<div class="prose">{@html data.exercise_content}</div>
+						</div>
+					{/if}
+				</div>
+
+				<!-- Editor tab panel -->
+				<div class="tab-panel" class:tab-hidden={activeTab !== 'editor'}>
+					<div class="toolbar">
+						<button type="button" class="btn btn-success" onclick={handleRun} disabled={compiling}>
+							{compiling ? 'Compiling...' : '&#9654; Run'}
 						</button>
-					{/if}
-					<span class="lang-label">{data.language_display_name}</span>
-					{#if !isMobile && !editorFloating}
-						<button type="button" class="btn-float-toggle" onclick={toggleFloat} title="Float editor">&#x229E;</button>
+						<button type="button" class="btn btn-secondary" onclick={handleReset}>Reset</button>
+						{#if data.solution_code && auth.isLoggedIn && data.lesson_completed}
+							<button type="button" class="btn btn-secondary" onclick={handleShowSolution}>
+								{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
+							</button>
+						{/if}
+						<span class="lang-label">{data.language_display_name}</span>
+					</div>
+
+					<div class="panel">
+						<CodeEditor
+							bind:this={editor}
+							code={currentCode}
+							language={data.language}
+							noPaste={true}
+							onchange={(val) => (currentCode = val)}
+						/>
+					</div>
+
+					{#if data.expected_output}
+						<details class="expected-output">
+							<summary>Expected Output</summary>
+							<pre>{data.expected_output}</pre>
+						</details>
 					{/if}
 				</div>
 
-				<!-- Editor panel -->
-				<div class="panel" class:hidden-mobile={isMobile && activeTab !== 'editor'}>
-					<CodeEditor
-						bind:this={editor}
-						code={currentCode}
-						language={data.language}
-						noPaste={true}
-						onchange={(val) => (currentCode = val)}
-					/>
-				</div>
-
-				<!-- Output panel -->
-				<div class="panel" class:hidden-mobile={isMobile && activeTab !== 'output'}>
+				<!-- Output tab panel -->
+				<div class="tab-panel" class:tab-hidden={activeTab !== 'output'}>
 					<OutputPanel
 						output={compileOutput}
 						error={compileError}
@@ -430,15 +452,17 @@
 						success={compileSuccess}
 					/>
 				</div>
-
-				<!-- Expected output hint -->
-				{#if data.expected_output}
-					<details class="expected-output">
-						<summary>Expected Output</summary>
-						<pre>{data.expected_output}</pre>
-					</details>
-				{/if}
 			</div>
+
+			<!-- Celebration overlay (scoped to editor-area) -->
+			{#if showCelebration}
+				<div class="celebration-overlay">
+					<div class="celebration-content">
+						<div class="celebration-icon">&#10003;</div>
+						<p class="celebration-text">Selamat! Latihan Selesai!</p>
+					</div>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -473,20 +497,7 @@
 		margin-bottom: 1rem;
 	}
 
-	.lesson-info {
-		margin-bottom: 1rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		padding: 0.75rem;
-		background: var(--color-bg-secondary);
-	}
-	.lesson-info summary {
-		cursor: pointer;
-		font-weight: 600;
-		font-size: 0.9rem;
-	}
 	.info-content {
-		margin-top: 0.75rem;
 		font-size: 0.85rem;
 	}
 
@@ -502,12 +513,6 @@
 		overflow-y: auto;
 		max-height: 80vh;
 		padding-right: 0.5rem;
-		-webkit-user-select: none;
-		user-select: none;
-		-webkit-touch-callout: none;
-	}
-
-	.lesson-info {
 		-webkit-user-select: none;
 		user-select: none;
 		-webkit-touch-callout: none;
@@ -533,19 +538,31 @@
 	}
 
 	.exercise-section {
-		margin-top: 1.5rem;
-		padding-top: 1rem;
-		border-top: 2px solid var(--color-primary);
+		padding-top: 0.5rem;
 	}
 	.exercise-section h2 {
 		color: var(--color-primary);
 		font-size: 1.1rem;
 	}
 
-	/* ── Editor area (inline mode) ─────────────────────────── */
+	/* ── Editor area (docked mode — styled like floating) ──── */
 	.editor-area {
 		position: sticky;
 		top: 4rem;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius);
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		max-height: 85vh;
+	}
+	.editor-area .editor-body {
+		flex: 1;
+		overflow-y: auto;
+		padding: 0.5rem;
+		min-height: 0;
 	}
 
 	/* ── Single-column layout ──────────────────────────────── */
@@ -693,7 +710,7 @@
 		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 		display: flex;
 		flex-direction: column;
-		overflow: auto;
+		overflow: hidden;
 	}
 	.resize-handle {
 		cursor: nwse-resize;
@@ -706,12 +723,6 @@
 	.resize-handle:hover {
 		background: var(--color-border);
 		color: var(--color-text);
-	}
-	.editor-area.floating .editor-body {
-		flex: 1;
-		overflow-y: auto;
-		padding: 0.5rem;
-		min-height: 0;
 	}
 	.editor-area.floating-hidden {
 		display: none !important;
@@ -738,9 +749,6 @@
 		transform: translateY(calc(100% - 48px));
 	}
 	.mobile-sheet .editor-body {
-		flex: 1;
-		overflow-y: auto;
-		padding: 0.5rem;
 		overscroll-behavior: contain;
 	}
 	.sheet-handle {
@@ -761,8 +769,8 @@
 		margin: 0 auto 0.25rem;
 	}
 
-	/* ── Mobile tabs ───────────────────────────────────────── */
-	.mobile-tabs {
+	/* ── Tabs ─────────────────────────────────────────────── */
+	.panel-tabs {
 		display: flex;
 		gap: 0;
 		margin-bottom: 0.5rem;
@@ -778,16 +786,22 @@
 		cursor: pointer;
 		font-weight: 500;
 		font-size: 0.85rem;
+		white-space: nowrap;
 	}
 	.tab.active {
 		background: var(--color-primary);
 		color: #fff;
 	}
 
-	/* ── Utility ───────────────────────────────────────────── */
-	.hidden-mobile {
+	/* ── Tab panels ────────────────────────────────────────── */
+	.tab-panel {
+		overflow-y: auto;
+	}
+	.tab-hidden {
 		display: none;
 	}
+
+	/* ── Utility ───────────────────────────────────────────── */
 	.editor-body.body-hidden {
 		display: none;
 	}
@@ -801,17 +815,18 @@
 		border-top: 1px solid var(--color-border);
 	}
 
-	/* ── Celebration overlay ──────────────────────────────── */
+	/* ── Celebration overlay (scoped to editor-area) ─────── */
 	.celebration-overlay {
-		position: fixed;
+		position: absolute;
 		inset: 0;
-		z-index: 200;
+		z-index: 10;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		background: rgba(0, 0, 0, 0.4);
 		animation: celebFadeIn 0.3s ease-out;
 		pointer-events: none;
+		border-radius: inherit;
 	}
 	.celebration-content {
 		text-align: center;
