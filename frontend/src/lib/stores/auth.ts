@@ -37,9 +37,11 @@ export const auth = {
 				authIsTeacher.set(res.is_teacher ?? false);
 			} else {
 				localStorage.removeItem(STORAGE_KEY);
+				sessionStorage.clear();
 			}
 		} catch {
 			localStorage.removeItem(STORAGE_KEY);
+			sessionStorage.clear();
 		}
 	},
 
@@ -51,6 +53,7 @@ export const auth = {
 			authLoggedIn.set(true);
 			authIsTeacher.set(res.is_teacher ?? false);
 			localStorage.setItem(STORAGE_KEY, inputToken);
+			sessionStorage.clear();
 		}
 		return res;
 	},
@@ -62,5 +65,6 @@ export const auth = {
 		authLoggedIn.set(false);
 		authIsTeacher.set(false);
 		localStorage.removeItem(STORAGE_KEY);
+		sessionStorage.clear();
 	}
 };

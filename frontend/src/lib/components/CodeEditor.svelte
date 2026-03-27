@@ -16,8 +16,9 @@
 	let container: HTMLDivElement;
 	let view: any;
 	let ready = $state(false);
+	let saving = $state(false);
 	let lastThemeDark: boolean | undefined;
-	let lastStorageKey = storageKey;
+	let lastStorageKey = $state<string | undefined>(undefined);
 
 	// Store module references after dynamic import
 	let CM: any;
@@ -26,9 +27,11 @@
 
 	function saveToStorage(value: string) {
 		if (!storageKey) return;
+		saving = true;
 		clearTimeout(saveTimeout);
 		saveTimeout = setTimeout(() => {
 			sessionStorage.setItem(storageKey, value);
+			saving = false;
 		}, 1000);
 	}
 
@@ -286,22 +289,66 @@
 		return view?.state.doc.toString() ?? code;
 	}
 </script>
-
 <div class="editor-wrapper" class:no-paste={noPaste} bind:this={container}>
 	{#if !ready}
 		<div class="editor-loading">Memuat editor...</div>
+	{/if}
+	{#if storageKey}
+		<div class="storage-indicator" title={saving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>
+			<span class="indicator-icon" class:saving>
+				{saving ? '●' : '☁'}
+			</span>
+			<span class="indicator-text">Auto-save</span>
+		</div>
 	{/if}
 </div>
 
 <style>
 	.editor-wrapper {
+		position: relative;
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius);
 		overflow: hidden;
 		font-size: 0.9rem;
 		-webkit-touch-callout: none;
 	}
+	.storage-indicator {
+		position: absolute;
+		bottom: 8px;
+		right: 12px;
+		z-index: 10;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 8px;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+		pointer-events: none;
+		opacity: 0.8;
+		box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+	}
+	.indicator-icon {
+		line-height: 1;
+		font-size: 0.8rem;
+		color: var(--color-success);
+	}
+	.indicator-icon.saving {
+		color: var(--color-primary);
+		animation: pulse 1s infinite;
+	}
+	@keyframes pulse {
+		0% { opacity: 1; }
+		50% { opacity: 0.4; }
+		100% { opacity: 1; }
+	}
+	.indicator-text {
+		font-weight: 500;
+	}
 	.editor-wrapper :global(.cm-editor) {
+...
 		min-height: 200px;
 		max-height: 60vh;
 	}

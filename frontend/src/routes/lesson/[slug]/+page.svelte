@@ -5,7 +5,7 @@
 	import OutputPanel from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
 	import { compileCode, trackProgress } from '$services/api';
-	import { auth } from '$stores/auth';
+	import { auth, authLoggedIn } from '$stores/auth';
 	import { lessonContext } from '$stores/lessonContext';
 	import { noSelect } from '$actions/noSelect';
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
@@ -20,6 +20,7 @@
 	let lesson = $derived(pageData.lesson);
 
 	let data = $state<LessonContent | null>(null);
+	let lessonCompleted = $state(false);
 	let currentCode = $state('');
 	let compileOutput = $state('');
 	let compileError = $state('');
@@ -90,6 +91,7 @@
 	$effect(() => {
 		if (lesson) {
 			data = lesson;
+			lessonCompleted = lesson.lesson_completed;
 			currentCode = lesson.initial_code ?? '';
 			compileOutput = '';
 			compileError = '';
@@ -156,7 +158,7 @@
 						if (auth.isLoggedIn) {
 							const lessonName = slug.replace('.md', '');
 							await trackProgress(auth.token, lessonName);
-							data.lesson_completed = true;
+							lessonCompleted = true;
 							lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
 						}
 						// Auto-show solution after celebration
@@ -342,7 +344,7 @@
 							{compiling ? 'Compiling...' : '\u25B6 Run'}
 						</button>
 						<button type="button" class="btn btn-secondary" onclick={handleReset}>Reset</button>
-						{#if data.solution_code && auth.isLoggedIn && data.lesson_completed}
+						{#if data.solution_code && $authLoggedIn && lessonCompleted}
 							<button type="button" class="btn btn-secondary" onclick={handleShowSolution}>
 								{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
 							</button>
@@ -356,7 +358,7 @@
 							code={currentCode}
 							language={data.language}
 							noPaste={true}
-							storageKey={showSolution ? undefined : `elemes_draft_${slug}`}
+							storageKey={($authLoggedIn && !showSolution) ? `elemes_draft_${slug}` : undefined}
 							onchange={(val) => { if (!showSolution) currentCode = val; }}
 						/>
 					</div>
