@@ -15,6 +15,7 @@ const STORAGE_KEY = 'student_token';
 export const authToken = writable('');
 export const authStudentName = writable('');
 export const authLoggedIn = writable(false);
+export const authIsTeacher = writable(false);
 
 export const auth = {
 	/** Current token value (non-reactive). */
@@ -33,6 +34,7 @@ export const auth = {
 				authToken.set(saved);
 				authStudentName.set(res.student_name);
 				authLoggedIn.set(true);
+				authIsTeacher.set(res.is_teacher ?? false);
 			} else {
 				localStorage.removeItem(STORAGE_KEY);
 			}
@@ -47,6 +49,7 @@ export const auth = {
 			authToken.set(inputToken);
 			authStudentName.set(res.student_name);
 			authLoggedIn.set(true);
+			authIsTeacher.set(res.is_teacher ?? false);
 			localStorage.setItem(STORAGE_KEY, inputToken);
 		}
 		return res;
@@ -57,6 +60,7 @@ export const auth = {
 		authToken.set('');
 		authStudentName.set('');
 		authLoggedIn.set(false);
+		authIsTeacher.set(false);
 		localStorage.removeItem(STORAGE_KEY);
 	}
 };

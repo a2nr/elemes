@@ -48,8 +48,9 @@ export function getLessons(customFetch = fetch) {
 	return get<{ lessons: Lesson[]; home_content: string }>('/lessons', customFetch);
 }
 
-export function getLesson(slug: string, customFetch = fetch) {
-	return get<LessonContent>(`/lesson/${slug}.json`, customFetch);
+export function getLesson(slug: string, customFetch = fetch, token = '') {
+	const query = token ? `?token=${encodeURIComponent(token)}` : '';
+	return get<LessonContent>(`/lesson/${slug}.json${query}`, customFetch);
 }
 
 export function getKeyText(filename: string, customFetch = fetch) {

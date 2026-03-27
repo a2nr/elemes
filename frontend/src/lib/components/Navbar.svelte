@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { auth, authLoggedIn, authStudentName } from '$stores/auth';
 	import { theme, themeDark } from '$stores/theme';
+	import { lessonContext } from '$stores/lessonContext';
+	import ProgressBadge from '$components/ProgressBadge.svelte';
+	import { env } from '$env/dynamic/public';
 
 	let showLoginModal = $state(false);
 	let tokenInput = $state('');
@@ -16,6 +19,7 @@
 			if (res.success) {
 				showLoginModal = false;
 				tokenInput = '';
+				location.reload();
 			} else {
 				loginError = res.message;
 			}
@@ -29,18 +33,38 @@
 
 <nav class="navbar">
 	<div class="container navbar-inner">
-		<a href="/" class="navbar-brand">Elemes LMS</a>
+		{#if $lessonContext}
+			<!-- Lesson mode -->
+			<div class="navbar-left">
+				<a href="/" class="nav-home-btn" title="Semua Pelajaran">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+				</a>
+				<h1 class="navbar-lesson-title">{$lessonContext.title}</h1>
+				{#if $lessonContext.completed && $authLoggedIn}
+					<ProgressBadge completed={true} />
+				{/if}
+			</div>
+		{:else}
+			<!-- Home mode -->
+			<a href="/" class="navbar-brand">{env.PUBLIC_APP_BAR_TITLE || 'Elemes LMS'}</a>
+		{/if}
 
 		<div class="navbar-actions">
-			<button class="btn-icon" onclick={() => theme.toggle()} title="Toggle tema">
+			{#if $lessonContext?.nextLesson}
+				<a href="/lesson/{$lessonContext.nextLesson.filename}" class="btn btn-nav-next" title="{$lessonContext.nextLesson.title}">
+					{$lessonContext.nextLesson.title} &rsaquo;
+				</a>
+			{/if}
+
+			<button class="btn-icon-sm" onclick={() => theme.toggle()} title="Toggle tema">
 				{$themeDark ? '\u2600\uFE0F' : '\uD83C\uDF19'}
 			</button>
 
 			{#if $authLoggedIn}
 				<span class="user-label">{$authStudentName}</span>
-				<button class="btn btn-danger btn-sm" onclick={() => auth.logout()}>Keluar</button>
+				<button class="btn btn-danger btn-xs" onclick={() => auth.logout()}>Keluar</button>
 			{:else}
-				<button class="btn btn-primary btn-sm" onclick={() => (showLoginModal = true)}>
+				<button class="btn btn-primary btn-xs" onclick={() => (showLoginModal = true)}>
 					Masuk
 				</button>
 			{/if}
@@ -77,7 +101,7 @@
 	.navbar {
 		background: var(--color-primary);
 		color: #fff;
-		padding: 0.75rem 0;
+		padding: 0.5rem 0;
 		position: sticky;
 		top: 0;
 		z-index: 100;
@@ -86,7 +110,10 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		gap: 0.5rem;
 	}
+
+	/* ── Home mode ─────────────────────────────────── */
 	.navbar-brand {
 		color: #fff;
 		font-weight: 700;
@@ -97,28 +124,86 @@
 		color: #fff;
 		text-decoration: none;
 	}
+
+	/* ── Lesson mode (left section) ────────────────── */
+	.navbar-left {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 0;
+		flex: 1;
+	}
+	.nav-home-btn {
+		color: rgba(255, 255, 255, 0.85);
+		text-decoration: none;
+		padding: 0.3rem;
+		border-radius: 6px;
+		transition: background 0.15s, color 0.15s;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+	}
+	.nav-home-btn:hover {
+		background: rgba(255, 255, 255, 0.15);
+		color: #fff;
+		text-decoration: none;
+	}
+	.navbar-lesson-title {
+		font-size: 1.15rem;
+		font-weight: 700;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		min-width: 0;
+		margin: 0;
+		line-height: 1.3;
+	}
+
+	/* ── Right section ─────────────────────────────── */
 	.navbar-actions {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
+		gap: 0.5rem;
+		flex-shrink: 0;
+	}
+	.btn-nav-next {
+		background: rgba(255, 255, 255, 0.2);
+		color: #fff;
+		border: none;
+		border-radius: 6px;
+		padding: 0.25rem 0.6rem;
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-decoration: none;
+		transition: background 0.15s;
+		white-space: nowrap;
+		max-width: 180px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.btn-nav-next:hover {
+		background: rgba(255, 255, 255, 0.3);
+		color: #fff;
+		text-decoration: none;
 	}
 	.user-label {
-		font-size: 0.875rem;
+		font-size: 0.8rem;
 		opacity: 0.9;
 	}
-	.btn-icon {
+	.btn-icon-sm {
 		background: none;
 		border: none;
 		cursor: pointer;
-		font-size: 1.25rem;
+		font-size: 1rem;
 		line-height: 1;
+		padding: 0.2rem;
 	}
-	.btn-sm {
-		padding: 0.35rem 0.75rem;
-		font-size: 0.8rem;
+	.btn-xs {
+		padding: 0.25rem 0.6rem;
+		font-size: 0.75rem;
 	}
 
-	/* Modal */
+	/* ── Modal ──────────────────────────────────────── */
 	.modal-overlay {
 		position: fixed;
 		inset: 0;
@@ -158,5 +243,20 @@
 		color: var(--color-danger);
 		font-size: 0.85rem;
 		margin-bottom: 0.5rem;
+	}
+
+	/* ── Mobile ─────────────────────────────────────── */
+	@media (max-width: 768px) {
+		.navbar-lesson-title {
+			font-size: 0.9rem;
+		}
+		.user-label {
+			display: none;
+		}
+		.btn-nav-next {
+			font-size: 0.7rem;
+			padding: 0.2rem 0.4rem;
+			max-width: 100px;
+		}
 	}
 </style>

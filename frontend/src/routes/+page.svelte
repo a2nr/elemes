@@ -1,11 +1,12 @@
 <script lang="ts">
 	import LessonCard from '$components/LessonCard.svelte';
+	import { env } from '$env/dynamic/public';
 
 	let { data } = $props();
 </script>
 
 <svelte:head>
-	<title>Elemes LMS</title>
+	<title>{env.PUBLIC_PAGE_TITLE_SUFFIX || 'Elemes LMS'}</title>
 </svelte:head>
 
 {#if data.homeContent}

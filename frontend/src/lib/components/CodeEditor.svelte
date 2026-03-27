@@ -7,19 +7,30 @@
 		language?: string;
 		readonly?: boolean;
 		noPaste?: boolean;
+		storageKey?: string;
 		onchange?: (value: string) => void;
 	}
 
-	let { code = '', language = 'c', readonly = false, noPaste = false, onchange }: Props = $props();
+	let { code = '', language = 'c', readonly = false, noPaste = false, storageKey, onchange }: Props = $props();
 
 	let container: HTMLDivElement;
 	let view: any;
 	let ready = $state(false);
 	let lastThemeDark: boolean | undefined;
+	let lastStorageKey = storageKey;
 
 	// Store module references after dynamic import
 	let CM: any;
 	let cleanupNoPaste: (() => void) | undefined;
+	let saveTimeout: any;
+
+	function saveToStorage(value: string) {
+		if (!storageKey) return;
+		clearTimeout(saveTimeout);
+		saveTimeout = setTimeout(() => {
+			sessionStorage.setItem(storageKey, value);
+		}, 1000);
+	}
 
 	async function loadCodeMirror() {
 		const [viewMod, stateMod, cmdsMod, langMod, autoMod, cppMod, pyMod, themeMod] =
@@ -69,11 +80,13 @@
 			exts.push(CM.oneDark);
 		}
 
-		if (onchange) {
+		if (onchange || storageKey) {
 			exts.push(
 				CM.EditorView.updateListener.of((update: any) => {
 					if (update.docChanged) {
-						onchange(update.state.doc.toString());
+						const val = update.state.doc.toString();
+						onchange?.(val);
+						saveToStorage(val);
 					}
 				})
 			);
@@ -166,9 +179,17 @@
 		if (!CM || !container) return;
 		if (view) view.destroy();
 
+		let initialCode = code;
+		if (storageKey) {
+			const saved = sessionStorage.getItem(storageKey);
+			if (saved !== null) {
+				initialCode = saved;
+			}
+		}
+
 		view = new CM.EditorView({
 			state: CM.EditorState.create({
-				doc: code,
+				doc: initialCode,
 				extensions: buildExtensions(),
 			}),
 			parent: container,
@@ -235,6 +256,21 @@
 		createEditor();
 		// Restore focus after theme-driven recreation
 		requestAnimationFrame(() => view?.focus());
+	});
+
+	// Handle navigation (change of slug/storageKey)
+	$effect(() => {
+		if (storageKey !== lastStorageKey) {
+			lastStorageKey = storageKey;
+			if (!ready || !view || !storageKey) return;
+
+			const saved = sessionStorage.getItem(storageKey);
+			if (saved !== null) {
+				setCode(saved);
+			} else {
+				setCode(code);
+			}
+		}
 	});
 
 	/** Replace editor content programmatically (e.g. reset / load solution). */

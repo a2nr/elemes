@@ -13,7 +13,8 @@ const config = {
 			$components: 'src/lib/components',
 			$stores: 'src/lib/stores',
 			$services: 'src/lib/services',
-			$types: 'src/lib/types'
+			$types: 'src/lib/types',
+			$actions: 'src/lib/actions'
 		}
 	}
 };

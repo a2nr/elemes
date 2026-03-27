@@ -25,6 +25,9 @@ services:
     environment:
       - ORIGIN=http://localhost:3000
       - API_BACKEND=http://elemes:5000
+      - PUBLIC_APP_BAR_TITLE=${APP_BAR_TITLE}
+      - PUBLIC_COPYRIGHT_TEXT=${COPYRIGHT_TEXT}
+      - PUBLIC_PAGE_TITLE_SUFFIX=${PAGE_TITLE_SUFFIX}
     depends_on:
       - elemes
 

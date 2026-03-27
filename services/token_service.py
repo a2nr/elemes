@@ -9,6 +9,24 @@ import os
 from config import TOKENS_FILE
 
 
+def get_teacher_token():
+    """Return the teacher token (first data row in CSV)."""
+    if not os.path.exists(TOKENS_FILE):
+        return None
+
+    with open(TOKENS_FILE, 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile, delimiter=';')
+        for row in reader:
+            return row['token']
+
+    return None
+
+
+def is_teacher_token(token):
+    """Check if the given token belongs to the teacher (first row)."""
+    return token == get_teacher_token()
+
+
 def validate_token(token):
     """Validate if a token exists in the CSV file and return student info."""
     if not os.path.exists(TOKENS_FILE):
@@ -21,6 +39,7 @@ def validate_token(token):
                 return {
                     'token': row['token'],
                     'student_name': row['nama_siswa'],
+                    'is_teacher': is_teacher_token(token),
                 }
 
     return None

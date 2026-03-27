@@ -24,6 +24,7 @@ def login():
             response = jsonify({
                 'success': True,
                 'student_name': student_info['student_name'],
+                'is_teacher': student_info.get('is_teacher', False),
                 'message': 'Login successful',
             })
             response.set_cookie(
@@ -67,6 +68,7 @@ def validate_token_route():
             return jsonify({
                 'success': True,
                 'student_name': student_info['student_name'],
+                'is_teacher': student_info.get('is_teacher', False),
             })
         else:
             return jsonify({'success': False, 'message': 'Invalid token'})

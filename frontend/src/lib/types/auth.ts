@@ -7,11 +7,13 @@ export interface AuthState {
 export interface LoginResponse {
 	success: boolean;
 	student_name?: string;
+	is_teacher?: boolean;
 	message: string;
 }
 
 export interface ValidateTokenResponse {
 	success: boolean;
 	student_name?: string;
+	is_teacher?: boolean;
 	message?: string;
 }

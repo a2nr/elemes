@@ -1,3 +1,6 @@
+/* ── highlight.js light theme ─────────────────────────────────── */
+@import 'highlight.js/styles/github.css';
+
 /* ── Reset & base ─────────────────────────────────────────────── */
 *,
 *::before,
@@ -30,6 +33,47 @@
 	--color-text-muted: #a0a0a0;
 	--color-border: #2a2a4a;
 	--shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* ── highlight.js dark theme overrides ───────────────────────── */
+[data-theme='dark'] .hljs {
+	background: #16213e;
+	color: #c9d1d9;
+}
+[data-theme='dark'] .hljs-keyword,
+[data-theme='dark'] .hljs-selector-tag {
+	color: #ff7b72;
+}
+[data-theme='dark'] .hljs-string,
+[data-theme='dark'] .hljs-attr {
+	color: #a5d6ff;
+}
+[data-theme='dark'] .hljs-comment,
+[data-theme='dark'] .hljs-quote {
+	color: #8b949e;
+}
+[data-theme='dark'] .hljs-number,
+[data-theme='dark'] .hljs-literal {
+	color: #79c0ff;
+}
+[data-theme='dark'] .hljs-type,
+[data-theme='dark'] .hljs-built_in {
+	color: #ffa657;
+}
+[data-theme='dark'] .hljs-title,
+[data-theme='dark'] .hljs-function {
+	color: #d2a8ff;
+}
+[data-theme='dark'] .hljs-meta {
+	color: #79c0ff;
+}
+[data-theme='dark'] .hljs-section {
+	color: #1f6feb;
+	font-weight: bold;
+}
+[data-theme='dark'] .hljs-symbol,
+[data-theme='dark'] .hljs-bullet {
+	color: #f2cc60;
 }
 
 html {
@@ -97,6 +141,12 @@ a:hover {
 pre code {
 	font-family: var(--font-mono);
 	font-size: 0.85rem;
+}
+
+/* ── Responsive images ───────────────────────────────────────── */
+img {
+	max-width: 100%;
+	height: auto;
 }
 
 /* ── Cards ────────────────────────────────────────────────────── */

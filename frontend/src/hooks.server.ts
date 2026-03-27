@@ -33,6 +33,8 @@ export const handle: Handle = async ({ event, resolve }) => {
 			if (contentType) headers['content-type'] = contentType;
 			const accept = event.request.headers.get('accept');
 			if (accept) headers['accept'] = accept;
+			const cookie = event.request.headers.get('cookie');
+			if (cookie) headers['cookie'] = cookie;
 
 			const init: RequestInit = {
 				method: event.request.method,
@@ -50,9 +52,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 			const isBinary = !resContentType.startsWith('text/') && !resContentType.includes('json');
 			const body = isBinary ? await res.arrayBuffer() : await res.text();
 
+			const resHeaders: Record<string, string> = { 'content-type': resContentType };
+			const setCookie = res.headers.get('set-cookie');
+			if (setCookie) resHeaders['set-cookie'] = setCookie;
+
 			return new Response(body, {
 				status: res.status,
-				headers: { 'content-type': resContentType },
+				headers: resHeaders,
 			});
 		} catch (err) {
 			console.error(`API proxy error (${backendUrl}):`, err);
