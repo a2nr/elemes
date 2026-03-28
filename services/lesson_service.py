@@ -4,12 +4,14 @@ Lesson loading, ordering, and markdown rendering.
 
 import os
 import re
+from functools import lru_cache
 
 import markdown as md
 
 from config import CONTENT_DIR
 
 
+@lru_cache(maxsize=1)
 def _read_home_md():
     """Read home.md and return its content, or empty string if missing."""
     path = os.path.join(CONTENT_DIR, "home.md")
@@ -32,6 +34,7 @@ def _parse_lesson_links(home_content):
 # Lesson listing
 # ---------------------------------------------------------------------------
 
+@lru_cache(maxsize=32)
 def get_lessons():
     """Get lessons from the Available_Lessons section in home.md."""
     lessons = []
@@ -71,6 +74,7 @@ def get_lessons():
     return lessons
 
 
+@lru_cache(maxsize=32)
 def get_lesson_names():
     """Get lesson names (without .md extension) from Available_Lessons."""
     home_content = _read_home_md()
@@ -85,6 +89,7 @@ def get_lesson_names():
     return names
 
 
+@lru_cache(maxsize=32)
 def get_lessons_with_learning_objectives():
     """Get lessons with learning objectives extracted from LESSON_INFO sections."""
     lessons = []
@@ -171,14 +176,18 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
         seen = {l['filename'] for l in ordered}
         for lesson in all_lessons:
             if lesson['filename'] not in seen:
-                _add_completion(lesson, progress)
-                ordered.append(lesson)
+                copy = lesson.copy()
+                _add_completion(copy, progress)
+                ordered.append(copy)
 
         return ordered
 
+    ordered_fallback = []
     for lesson in all_lessons:
-        _add_completion(lesson, progress)
-    return all_lessons
+        copy = lesson.copy()
+        _add_completion(copy, progress)
+        ordered_fallback.append(copy)
+    return ordered_fallback
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +212,7 @@ def _extract_section(content, start_marker, end_marker):
     return extracted, remaining
 
 
+@lru_cache(maxsize=32)
 def render_markdown_content(file_path):
     """Parse a lesson markdown file and return structured HTML parts.
 
@@ -250,6 +260,7 @@ def render_markdown_content(file_path):
     return lesson_html, exercise_html, expected_output, lesson_info_html, initial_code, solution_code, key_text
 
 
+@lru_cache(maxsize=1)
 def render_home_content():
     """Render the home.md intro section (before Available_Lessons) as HTML."""
     home_content = _read_home_md()
