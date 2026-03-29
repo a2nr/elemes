@@ -214,15 +214,28 @@ def _extract_section(content, start_marker, end_marker):
 
 @lru_cache(maxsize=32)
 def render_markdown_content(file_path):
-    """Parse a lesson markdown file and return structured HTML parts.
-
-    Returns: (lesson_html, exercise_html, expected_output, lesson_info_html,
-              initial_code, solution_code, key_text)
-    """
+    """Parse a lesson markdown file and return structured HTML parts as a dictionary."""
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
     lesson_content = content
+    active_tabs = []
+
+    # Check for collective tags before extracting them
+    if '---INITIAL_CODE---' in lesson_content:
+        active_tabs.append('c')
+    if '---INITIAL_PYTHON---' in lesson_content:
+        active_tabs.append('python')
+    if '---INITIAL_CIRCUIT---' in lesson_content:
+        active_tabs.append('circuit')
+    if '---INITIAL_QUIZ---' in lesson_content:
+        active_tabs.append('quiz')
+
+    # Default to 'c' if nothing specified (for backwards compatibility)
+    if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_QUIZ---' not in lesson_content:
+        # If it's a completely plain old file, assume it has a code editor available
+        if '---EXERCISE---' in lesson_content:
+            active_tabs.append('c')
 
     # Extract special sections (order matters — each extraction removes the section)
     expected_output, lesson_content = _extract_section(
@@ -245,8 +258,26 @@ def render_markdown_content(file_path):
     solution_code, lesson_content = _extract_section(
         lesson_content, '---SOLUTION_CODE---', '---END_SOLUTION_CODE---')
 
-    initial_code, lesson_content = _extract_section(
+    solution_circuit, lesson_content = _extract_section(
+        lesson_content, '---SOLUTION_CIRCUIT---', '---END_SOLUTION_CIRCUIT---')
+
+    # Initial codes (C, Python, Circuit, Quiz)
+    initial_code_c, lesson_content = _extract_section(
         lesson_content, '---INITIAL_CODE---', '---END_INITIAL_CODE---')
+    
+    initial_python, lesson_content = _extract_section(
+        lesson_content, '---INITIAL_PYTHON---', '---END_INITIAL_PYTHON---')
+        
+    initial_circuit, lesson_content = _extract_section(
+        lesson_content, '---INITIAL_CIRCUIT---', '---END_INITIAL_CIRCUIT---')
+        
+    initial_quiz, lesson_content = _extract_section(
+        lesson_content, '---INITIAL_QUIZ---', '---END_INITIAL_QUIZ---')
+
+    # Just use whichever initial code matched as the generic 'initial_code' for simplicity 
+    # if only one type exists, but return all as dictionary values.
+    # Typically frontend uses 'initial_code' for legacy. 
+    initial_code = initial_code_c or initial_python or initial_circuit or initial_quiz
 
     # Split lesson vs exercise
     parts = lesson_content.split('---EXERCISE---')
@@ -257,7 +288,21 @@ def render_markdown_content(file_path):
     exercise_html = md.markdown(exercise_content, extensions=MD_EXTENSIONS) if exercise_content else ""
     lesson_info_html = md.markdown(lesson_info, extensions=MD_EXTENSIONS) if lesson_info else ""
 
-    return lesson_html, exercise_html, expected_output, lesson_info_html, initial_code, solution_code, key_text
+    return {
+        'lesson_html': lesson_html,
+        'exercise_html': exercise_html,
+        'expected_output': expected_output,
+        'lesson_info': lesson_info_html,
+        'initial_code': initial_code,
+        'solution_code': solution_code,
+        'solution_circuit': solution_circuit,
+        'key_text': key_text,
+        'initial_code_c': initial_code_c,
+        'initial_python': initial_python,
+        'initial_circuit': initial_circuit,
+        'initial_quiz': initial_quiz,
+        'active_tabs': active_tabs
+    }
 
 
 @lru_cache(maxsize=1)

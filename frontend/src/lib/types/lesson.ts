@@ -11,6 +11,10 @@ export interface LessonContent {
 	expected_output: string;
 	lesson_info: string;
 	initial_code: string;
+	initial_code_c: string;
+	initial_python: string;
+	initial_circuit: string;
+	initial_quiz: string;
 	solution_code: string;
 	key_text: string;
 	lesson_title: string;
@@ -20,4 +24,5 @@ export interface LessonContent {
 	ordered_lessons: Lesson[];
 	language: string;
 	language_display_name: string;
+	active_tabs: string[];
 }

@@ -44,8 +44,22 @@ def api_lesson(filename):
     if not os.path.exists(file_path):
         return jsonify({'error': 'Lesson not found'}), 404
 
-    (lesson_html, exercise_html, expected_output,
-     lesson_info, initial_code, solution_code, key_text) = render_markdown_content(file_path)
+    parsed_data = render_markdown_content(file_path)
+    lesson_html = parsed_data['lesson_html']
+    exercise_html = parsed_data['exercise_html']
+    expected_output = parsed_data['expected_output']
+    lesson_info = parsed_data['lesson_info']
+    initial_code = parsed_data['initial_code']
+    solution_code = parsed_data['solution_code']
+    solution_circuit = parsed_data.get('solution_circuit', '')
+    key_text = parsed_data['key_text']
+    active_tabs = parsed_data['active_tabs']
+
+    # New specific fields for hybrid lessons
+    initial_circuit = parsed_data.get('initial_circuit', '')
+    initial_code_c = parsed_data.get('initial_code_c', '')
+    initial_python = parsed_data.get('initial_python', '')
+    initial_quiz = parsed_data.get('initial_quiz', '')
 
     if not initial_code:
         initial_code = (
@@ -83,8 +97,14 @@ def api_lesson(filename):
         'expected_output': expected_output,
         'lesson_info': lesson_info,
         'initial_code': initial_code,
+        'initial_circuit': initial_circuit,
+        'initial_code_c': initial_code_c,
+        'initial_python': initial_python,
+        'initial_quiz': initial_quiz,
         'solution_code': solution_code,
+        'solution_circuit': solution_circuit,
         'key_text': key_text,
+        'active_tabs': active_tabs,
         'lesson_title': full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,
         'prev_lesson': prev_lesson,
@@ -102,8 +122,8 @@ def get_key_text(filename):
     if not os.path.exists(file_path):
         return jsonify({'success': False, 'error': 'Lesson not found'}), 404
 
-    _, _, _, _, _, _, key_text = render_markdown_content(file_path)
-    return jsonify({'success': True, 'key_text': key_text})
+    parsed_data = render_markdown_content(file_path)
+    return jsonify({'success': True, 'key_text': parsed_data['key_text']})
 
 
 @lessons_bp.route('/assets/<path:path>')

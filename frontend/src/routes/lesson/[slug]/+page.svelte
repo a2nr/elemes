@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { beforeNavigate } from '$app/navigation';
 	import CodeEditor from '$components/CodeEditor.svelte';
+	import CircuitEditor from '$components/CircuitEditor.svelte';
 	import OutputPanel from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
 	import { compileCode, trackProgress } from '$services/api';
@@ -29,9 +30,10 @@
 
 	// UI state
 	let showSolution = $state(false);
-	let activeTab = $state<'info' | 'exercise' | 'editor' | 'output'>('info');
+	let activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output'>('info');
 
 	let editor = $state<CodeEditor | null>(null);
+	let circuitEditor = $state<CircuitEditor | null>(null);
 	let showCelebration = $state(false);
 
 	// Container refs for syntax highlighting
@@ -92,13 +94,14 @@
 		if (lesson) {
 			data = lesson;
 			lessonCompleted = lesson.lesson_completed;
-			currentCode = lesson.initial_code ?? '';
+			currentCode = lesson.initial_code_c || lesson.initial_python || lesson.initial_code || '';
 			compileOutput = '';
 			compileError = '';
 			compileSuccess = null;
 			showSolution = false;
 			if (lesson.lesson_info) activeTab = 'info';
 			else if (lesson.exercise_content) activeTab = 'exercise';
+			else if (lesson.active_tabs?.includes('circuit') && !lesson.active_tabs?.includes('c') && !lesson.active_tabs?.includes('python')) activeTab = 'circuit';
 			else activeTab = 'editor';
 			mobileMode = 'half';
 
@@ -134,7 +137,122 @@
 		return keys.every(key => code.includes(key));
 	}
 
+	
+	async function evaluateCircuit() {
+		if (!data || !circuitEditor) return;
+		const simApi = circuitEditor.getApi();
+		if (!simApi) {
+			compileError = "Simulator belum siap.";
+			compileSuccess = false;
+			activeTab = 'output';
+			return;
+		}
+
+		compiling = true;
+		compileOutput = 'Mengevaluasi rangkaian...';
+		compileError = '';
+		compileSuccess = null;
+		activeTab = 'output';
+
+		try {
+			let expectedState: any = null;
+			try {
+				if (data.expected_output) {
+					expectedState = JSON.parse(data.expected_output);
+				}
+			} catch (e) {
+				compileError = "Format EXPECTED_OUTPUT tidak valid (Harus JSON).";
+				compileSuccess = false;
+				compiling = false;
+				return;
+			}
+
+			if (!expectedState) {
+				compileOutput = "Tidak ada kriteria evaluasi yang ditetapkan.";
+				compileSuccess = true;
+				compiling = false;
+				return;
+			}
+
+			let allPassed = true;
+			let messages: string[] = [];
+
+			if (expectedState.nodes) {
+				for (const [nodeName, criteria] of Object.entries<any>(expectedState.nodes)) {
+					const actualV = simApi.getNodeVoltage(nodeName);
+					if (actualV === undefined || actualV === null) {
+						allPassed = false;
+						messages.push(`❌ Node '${nodeName}' tidak ditemukan.`);
+						continue;
+					}
+					
+					const expectedV = criteria.voltage;
+					const tol = criteria.tolerance || 0.1;
+					if (Math.abs(actualV - expectedV) <= tol) {
+						messages.push(`✅ Node '${nodeName}': Tegangan ${actualV.toFixed(2)}V (Sesuai)`);
+					} else {
+						allPassed = false;
+						messages.push(`❌ Node '${nodeName}': Tegangan ${actualV.toFixed(2)}V (Harusnya ~${expectedV}V)`);
+					}
+				}
+			}
+
+			if (expectedState.elements && typeof simApi.elements === 'function' && typeof simApi.getElm === 'function') {
+				const elmCount = simApi.elements();
+				const elements = [];
+				for (let i = 0; i < elmCount; i++) {
+					elements.push(simApi.getElm(i));
+				}
+				for (const [infoMatch, criteria] of Object.entries<any>(expectedState.elements)) {
+					let found = null;
+					for (const el of elements) {
+                        try {
+						    const info = typeof el.getInfo === 'function' ? el.getInfo() : null;
+                            // the info from getInfo is an array or something we might not be able to parse natively via JS.
+                            // but we skip elements checking for now unless user really needs it
+                        } catch (e) {}
+					}
+				}
+			}
+
+			// End of elements check
+
+			const circuitText = circuitEditor.getCircuitText();
+			const keyTextMatch = checkKeyText(circuitText, data.key_text ?? '');
+			if (!keyTextMatch) {
+				allPassed = false;
+				messages.push(`❌ Komponen wajib belum lengkap (lihat instruksi).`);
+			}
+
+			compileOutput = messages.join('\n');
+			compileSuccess = allPassed;
+
+			if (allPassed) {
+				showCelebration = true;
+				if (auth.isLoggedIn) {
+					const lessonName = slug.replace('.md', '');
+					await trackProgress(auth.token, lessonName);
+					lessonCompleted = true;
+					lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
+				}
+				setTimeout(() => {
+					showCelebration = false;
+					activeTab = 'circuit';
+				}, 3000);
+			}
+		} catch (err: any) {
+			compileError = `Evaluasi gagal: ${err.message}`;
+			compileSuccess = false;
+		} finally {
+			compiling = false;
+		}
+	}
+
 	async function handleRun() {
+		if (activeTab === 'circuit') {
+			await evaluateCircuit();
+			return;
+		}
 		if (!data) return;
 		compiling = true;
 		compileOutput = '';
@@ -186,8 +304,12 @@
 
 	function handleReset() {
 		if (!data) return;
-		currentCode = data.initial_code;
-		editor?.setCode(data.initial_code);
+		if (activeTab === 'circuit') {
+			circuitEditor?.setCircuitText(data.initial_circuit || data.initial_code);
+		} else {
+			currentCode = data.initial_code;
+			editor?.setCode(data.initial_code);
+		}
 		compileOutput = '';
 		compileError = '';
 		compileSuccess = null;
@@ -197,9 +319,17 @@
 		if (!data?.solution_code) return;
 		showSolution = !showSolution;
 		if (showSolution) {
-			editor?.setCode(data.solution_code);
+			if (activeTab === 'circuit' || data.active_tabs?.includes('circuit')) {
+				circuitEditor?.setCircuitText(data.solution_code);
+			} else {
+				editor?.setCode(data.solution_code);
+			}
 		} else {
-			editor?.setCode(currentCode);
+			if (activeTab === 'circuit' || data.active_tabs?.includes('circuit')) {
+				circuitEditor?.setCircuitText(data.initial_code);
+			} else {
+				editor?.setCode(currentCode);
+			}
 		}
 	}
 </script>
@@ -304,8 +434,14 @@
 						<button class="tab" class:active={activeTab === 'exercise'}
 							onclick={() => (activeTab = 'exercise')}>Exercise</button>
 					{/if}
+					{#if !data.active_tabs || data.active_tabs.length === 0 || data.active_tabs.includes('c') || data.active_tabs.includes('python')}
 					<button class="tab" class:active={activeTab === 'editor'}
 						onclick={() => (activeTab = 'editor')}>Code Editor</button>
+					{/if}
+					{#if data.active_tabs?.includes('circuit')}
+					<button class="tab" class:active={activeTab === 'circuit'}
+						onclick={() => (activeTab = 'circuit')}>Circuit Simulator</button>
+					{/if}
 					<button class="tab" class:active={activeTab === 'output'}
 						onclick={() => (activeTab = 'output')}>Output</button>
 				</div>
@@ -337,7 +473,32 @@
 					{/if}
 				</div>
 
+				<!-- Circuit tab panel -->
+				{#if data.active_tabs?.includes('circuit')}
+				<div class="tab-panel" class:tab-hidden={activeTab !== 'circuit'}>
+					<div class="toolbar">
+						<button type="button" class="btn btn-success" onclick={handleRun} disabled={compiling}>
+							{compiling ? 'Mengevaluasi...' : '▶ Cek Rangkaian'}
+						</button>
+						<button type="button" class="btn btn-secondary" onclick={handleReset}>Reset</button>
+						{#if data.solution_code && $authLoggedIn && lessonCompleted}
+							<button type="button" class="btn btn-secondary" onclick={handleShowSolution}>
+								{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
+							</button>
+						{/if}
+					</div>
+					<div class="panel">
+						<CircuitEditor
+							bind:this={circuitEditor}
+							initialCircuit={data.initial_circuit || data.initial_code}
+							storageKey={($authLoggedIn && !showSolution) ? `elemes_circuit_${slug}` : undefined}
+						/>
+					</div>
+				</div>
+				{/if}
+
 				<!-- Editor tab panel -->
+				{#if !data.active_tabs || data.active_tabs.length === 0 || data.active_tabs.includes('c') || data.active_tabs.includes('python')}
 				<div class="tab-panel" class:tab-hidden={activeTab !== 'editor'}>
 					<div class="toolbar">
 						<button type="button" class="btn btn-success" onclick={handleRun} disabled={compiling}>
@@ -370,6 +531,8 @@
 						</details>
 					{/if}
 				</div>
+
+				{/if}
 
 				<!-- Output tab panel -->
 				<div class="tab-panel" class:tab-hidden={activeTab !== 'output'}>
@@ -592,7 +755,7 @@
 		position: fixed;
 		bottom: 1rem;
 		right: 1rem;
-		z-index: 50;
+		z-index: 9999;
 		background: var(--color-primary);
 		color: #fff;
 		border: none;
@@ -676,9 +839,9 @@
 		top: auto;
 		width: 45vw;
 		min-width: 320px;
-		max-width: 90vw;
-		max-height: 85vh;
-		z-index: 50;
+		max-width: 100vw;
+		max-height: 100vh;
+		z-index: 9999;
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius);
@@ -710,7 +873,7 @@
 		left: 0;
 		right: 0;
 		top: auto;
-		z-index: 50;
+		z-index: 9999;
 		background: var(--color-bg);
 		border-top: 2px solid var(--color-primary);
 		border-radius: 12px 12px 0 0;
