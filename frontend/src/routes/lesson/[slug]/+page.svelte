@@ -38,6 +38,16 @@
 	let circuitLoading = $state(false);
 	let circuitSuccess = $state<boolean | null>(null);
 
+	// AND-logic: track whether each exercise type has passed (persists across runs)
+	let codePassed = $state(false);
+	let circuitPassed = $state(false);
+
+	// Derived: is this a hybrid lesson (has both code and circuit)?
+	let isHybrid = $derived(
+		(data?.active_tabs?.includes('c') || data?.active_tabs?.includes('python')) &&
+		data?.active_tabs?.includes('circuit')
+	);
+
 	// Derived: any loading state (for disabling Run button)
 	let compiling = $derived(codeLoading || circuitLoading);
 
@@ -90,6 +100,8 @@
 			circuitOutput = '';
 			circuitError = '';
 			circuitSuccess = null;
+			codePassed = false;
+			circuitPassed = false;
 			showSolution = false;
 			if (lesson.lesson_info) activeTab = 'info';
 			else if (lesson.exercise_content) activeTab = 'exercise';
@@ -135,7 +147,23 @@
 		return keys.every(key => code.includes(key));
 	}
 
-	
+	/** Mark lesson as complete: track progress + celebration. Called when ALL exercises pass. */
+	async function completeLesson() {
+		showCelebration = true;
+		if (auth.isLoggedIn) {
+			const lessonName = slug.replace('.md', '');
+			await trackProgress(auth.token, lessonName);
+			lessonCompleted = true;
+			lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
+		}
+	}
+
+	/** For hybrid lessons, check if all exercise types have passed (AND logic). */
+	function checkAllPassed(): boolean {
+		if (!isHybrid) return true; // not hybrid, each evaluator handles itself
+		return codePassed && circuitPassed;
+	}
+
 	async function evaluateCircuit() {
 		if (!data || !circuitEditor) return;
 		const simApi = circuitEditor.getApi();
@@ -153,10 +181,15 @@
 		activeTab = 'output';
 
 		try {
+			// For hybrid lessons, use expected_circuit_output; otherwise fallback to expected_output
+			const circuitExpected = (isHybrid && data.expected_circuit_output)
+				? data.expected_circuit_output
+				: data.expected_output;
+
 			let expectedState: any = null;
 			try {
-				if (data.expected_output) {
-					expectedState = JSON.parse(data.expected_output);
+				if (circuitExpected) {
+					expectedState = JSON.parse(circuitExpected);
 				}
 			} catch (e) {
 				circuitError = "Format EXPECTED_OUTPUT tidak valid (Harus JSON).";
@@ -199,7 +232,11 @@
 			// GWT getInfo() returns Java array yang sulit di-parse dari JS.
 
 			const circuitText = circuitEditor.getCircuitText();
-			const keyTextMatch = checkKeyText(circuitText, data.key_text ?? '');
+			// For hybrid lessons, use key_text_circuit; otherwise fallback to key_text
+			const circuitKeyText = (isHybrid && data.key_text_circuit)
+				? data.key_text_circuit
+				: data.key_text;
+			const keyTextMatch = checkKeyText(circuitText, circuitKeyText ?? '');
 			if (!keyTextMatch) {
 				allPassed = false;
 				messages.push(`❌ Komponen wajib belum lengkap (lihat instruksi).`);
@@ -209,17 +246,20 @@
 			circuitSuccess = allPassed;
 
 			if (allPassed) {
-				showCelebration = true;
-				if (auth.isLoggedIn) {
-					const lessonName = slug.replace('.md', '');
-					await trackProgress(auth.token, lessonName);
-					lessonCompleted = true;
-					lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
+				circuitPassed = true;
+				if (isHybrid) {
+					circuitOutput += '\n✅ Rangkaian benar!';
+					if (!codePassed) {
+						circuitOutput += '\n⏳ Selesaikan juga tantangan kode untuk menyelesaikan pelajaran ini.';
+					}
 				}
-				setTimeout(() => {
-					showCelebration = false;
-					activeTab = 'circuit';
-				}, 3000);
+				if (checkAllPassed()) {
+					await completeLesson();
+					setTimeout(() => {
+						showCelebration = false;
+						activeTab = 'circuit';
+					}, 3000);
+				}
 			}
 		} catch (err: any) {
 			circuitError = `Evaluasi gagal: ${err.message}`;
@@ -253,22 +293,23 @@
 					const outputMatch = res.output.trim() === data.expected_output.trim();
 					const keyTextMatch = checkKeyText(code, data.key_text ?? '');
 					if (outputMatch && keyTextMatch) {
-						showCelebration = true;
-						if (auth.isLoggedIn) {
-							const lessonName = slug.replace('.md', '');
-							await trackProgress(auth.token, lessonName);
-							lessonCompleted = true;
-							lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
+						codePassed = true;
+						if (isHybrid && !circuitPassed) {
+							codeOutput += '\n✅ Kode benar!';
+							codeOutput += '\n⏳ Selesaikan juga tantangan rangkaian untuk menyelesaikan pelajaran ini.';
 						}
-						// Auto-show solution after celebration
-						if (data.solution_code) {
-							showSolution = true;
-							editor?.setCode(data.solution_code);
+						if (checkAllPassed()) {
+							await completeLesson();
+							// Auto-show solution after celebration
+							if (data.solution_code) {
+								showSolution = true;
+								editor?.setCode(data.solution_code);
+							}
+							setTimeout(() => {
+								showCelebration = false;
+								activeTab = 'editor';
+							}, 3000);
 						}
-						setTimeout(() => {
-							showCelebration = false;
-							activeTab = 'editor';
-						}, 3000);
 					}
 				}
 			} else {

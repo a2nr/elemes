@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """
-Script to generate the tokens CSV file based on lessons in the content directory
+Script to generate/update the tokens CSV file based on lessons in the content directory.
+
+If the CSV already exists, new lesson columns are added (with 'not_started')
+and existing student data is preserved.  If it doesn't exist, a fresh file
+is created with a dummy example row.
 """
 
-import os
 import csv
 import glob
-import uuid
+import os
+import re
+import stat
 
 # Configuration
 CONTENT_DIR = '../content'
 TOKENS_FILE = '../tokens_siswa.csv'
 
+
 def get_lesson_names():
-    """Get all lesson names from the content directory (excluding home.md)"""
-    # First, try to get the lesson order from home.md
+    """Get all lesson names from the content directory (excluding home.md)."""
     home_file_path = os.path.join(CONTENT_DIR, "home.md")
     lesson_names = []
 
@@ -22,68 +27,89 @@ def get_lesson_names():
         with open(home_file_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        # Split content to get only the lesson list part
         parts = content.split('---Available_Lessons---')
         if len(parts) > 1:
             lesson_list_content = parts[1]
-
-            # Find lesson links in the lesson list content
-            import re
-            # Look for markdown links that point to lessons
-            lesson_links = re.findall(r'\[([^\]]+)\]\(lesson/([^\)]+)\)', lesson_list_content)
-
+            lesson_links = re.findall(
+                r'\[([^\]]+)\]\(lesson/([^\)]+)\)', lesson_list_content
+            )
             if lesson_links:
-                # Create ordered list based on home.md
-                for link_text, filename in lesson_links:
+                for _link_text, filename in lesson_links:
                     lesson_names.append(filename.replace('.md', ''))
-
                 return lesson_names
 
-    # If no specific order is defined in home.md, fall back to alphabetical order
+    # Fallback: alphabetical order
     lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
-
     for file_path in lesson_files:
         filename = os.path.basename(file_path)
-        # Skip home.md as it's not a lesson
         if filename == "home.md":
             continue
         lesson_names.append(filename.replace('.md', ''))
-
-    # Sort alphabetically to have consistent order
     lesson_names.sort()
-
     return lesson_names
 
-def generate_tokens_csv():
-    """Generate the tokens CSV file with headers and lesson columns"""
-    lesson_names = get_lesson_names()
 
-    # Create the file with headers
-    headers = ['token', 'nama_siswa'] + lesson_names
-
-    with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile, delimiter=';')
-        writer.writerow(headers)
-
-        # Add a dummy example row for reference
-        dummy_row = ['dummy_token_12345', 'Example Student'] + ['not_started'] * len(lesson_names)
-        writer.writerow(dummy_row)
-
-    # Set file permissions to allow read/write access for all users
-    # This ensures the container can update the file when progress is tracked
+def _set_permissions(path):
+    """Set rw-rw-rw- so the container can update the file."""
     try:
-        import stat
-        import os
-        current_permissions = os.stat(TOKENS_FILE).st_mode
-        os.chmod(TOKENS_FILE, current_permissions | stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH)
-        print(f"Set permissions for {TOKENS_FILE} to allow container access")
+        cur = os.stat(path).st_mode
+        os.chmod(path, cur | stat.S_IRUSR | stat.S_IWUSR
+                           | stat.S_IRGRP | stat.S_IWGRP
+                           | stat.S_IROTH | stat.S_IWOTH)
+        print(f"Set permissions for {path} to allow container access")
     except Exception as e:
         print(f"Warning: Could not set file permissions: {e}")
 
-    print(f"Created tokens file: {TOKENS_FILE} with headers: {headers}")
-    print("Teachers can now add student tokens and names directly to this file.")
-    print("An example row has been added with token 'dummy_token_12345' for reference.")
-    print("To add new students, add new rows with format: token;nama_siswa;lesson1_status;lesson2_status;...")
+
+def generate_tokens_csv():
+    """Generate or update the tokens CSV file."""
+    lesson_names = get_lesson_names()
+    new_headers = ['token', 'nama_siswa'] + lesson_names
+
+    if os.path.exists(TOKENS_FILE):
+        # ── Merge mode: preserve existing data, add new columns ──
+        with open(TOKENS_FILE, 'r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            old_headers = list(reader.fieldnames) if reader.fieldnames else []
+            rows = list(reader)
+
+        added_cols = [h for h in new_headers if h not in old_headers]
+        removed_cols = [h for h in old_headers if h not in new_headers
+                        and h not in ('token', 'nama_siswa')]
+
+        # Rebuild each row with the new header order
+        merged_rows = []
+        for row in rows:
+            new_row = {}
+            for h in new_headers:
+                new_row[h] = row.get(h, 'not_started')
+            merged_rows.append(new_row)
+
+        with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=new_headers, delimiter=';')
+            writer.writeheader()
+            writer.writerows(merged_rows)
+
+        if added_cols:
+            print(f"Kolom baru ditambahkan: {added_cols}")
+        if removed_cols:
+            print(f"Kolom lama dihapus: {removed_cols}")
+        print(f"Updated {TOKENS_FILE} — {len(merged_rows)} siswa dipertahankan.")
+
+    else:
+        # ── Fresh mode: create new file ──
+        with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f, delimiter=';')
+            writer.writerow(new_headers)
+            dummy_row = ['dummy_token_12345', 'Example Student'] + \
+                        ['not_started'] * len(lesson_names)
+            writer.writerow(dummy_row)
+        print(f"Created tokens file: {TOKENS_FILE}")
+        print("Tambahkan siswa dengan format: token;nama_siswa;status;...")
+
+    _set_permissions(TOKENS_FILE)
+    print(f"Headers: {new_headers}")
+
 
 if __name__ == '__main__':
     generate_tokens_csv()

@@ -48,6 +48,8 @@ def api_lesson(filename):
     lesson_html = parsed_data['lesson_html']
     exercise_html = parsed_data['exercise_html']
     expected_output = parsed_data['expected_output']
+    expected_circuit_output = parsed_data.get('expected_circuit_output', '')
+    key_text_circuit = parsed_data.get('key_text_circuit', '')
     lesson_info = parsed_data['lesson_info']
     initial_code = parsed_data['initial_code']
     solution_code = parsed_data['solution_code']
@@ -95,6 +97,7 @@ def api_lesson(filename):
         'lesson_content': lesson_html,
         'exercise_content': exercise_html,
         'expected_output': expected_output,
+        'expected_circuit_output': expected_circuit_output,
         'lesson_info': lesson_info,
         'initial_code': initial_code,
         'initial_circuit': initial_circuit,
@@ -104,6 +107,7 @@ def api_lesson(filename):
         'solution_code': solution_code,
         'solution_circuit': solution_circuit,
         'key_text': key_text,
+        'key_text_circuit': key_text_circuit,
         'active_tabs': active_tabs,
         'lesson_title': full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,

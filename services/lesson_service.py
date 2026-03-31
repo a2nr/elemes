@@ -278,8 +278,14 @@ def render_markdown_content(file_path):
     expected_output, lesson_content = _extract_section(
         lesson_content, '---EXPECTED_OUTPUT---', '---END_EXPECTED_OUTPUT---')
 
+    expected_circuit_output, lesson_content = _extract_section(
+        lesson_content, '---EXPECTED_CIRCUIT_OUTPUT---', '---END_EXPECTED_CIRCUIT_OUTPUT---')
+
     key_text, lesson_content = _extract_section(
         lesson_content, '---KEY_TEXT---', '---END_KEY_TEXT---')
+
+    key_text_circuit, lesson_content = _extract_section(
+        lesson_content, '---KEY_TEXT_CIRCUIT---', '---END_KEY_TEXT_CIRCUIT---')
 
     # Lesson info has a special fallback for old format
     lesson_info = ""
@@ -336,11 +342,13 @@ def render_markdown_content(file_path):
         'lesson_html': lesson_html,
         'exercise_html': exercise_html,
         'expected_output': expected_output,
+        'expected_circuit_output': expected_circuit_output,
         'lesson_info': lesson_info_html,
         'initial_code': initial_code,
         'solution_code': solution_code,
         'solution_circuit': solution_circuit,
         'key_text': key_text,
+        'key_text_circuit': key_text_circuit,
         'initial_code_c': initial_code_c,
         'initial_python': initial_python,
         'initial_circuit': initial_circuit,
