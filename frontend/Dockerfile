@@ -6,7 +6,7 @@ COPY package.json ./
 RUN npm install
 
 COPY . .
-RUN npm run build
+RUN npx svelte-kit sync && npm run build
 
 ## ── Runner ───────────────────────────────────────────────────────
 FROM node:20-slim

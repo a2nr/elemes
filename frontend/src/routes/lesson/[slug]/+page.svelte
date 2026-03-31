@@ -5,12 +5,15 @@
 	import CircuitEditor from '$components/CircuitEditor.svelte';
 	import OutputPanel from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
+	import WorkspaceHeader from '$components/WorkspaceHeader.svelte';
+	import LessonList from '$components/LessonList.svelte';
 	import { compileCode, trackProgress } from '$services/api';
 	import { auth, authLoggedIn } from '$stores/auth';
 	import { lessonContext } from '$stores/lessonContext';
 	import { noSelect } from '$actions/noSelect';
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
 	import { highlightAllCode } from '$actions/highlightCode';
+	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
 	import { tick } from 'svelte';
 	import type { LessonContent } from '$types/lesson';
 
@@ -23,10 +26,20 @@
 	let data = $state<LessonContent | null>(null);
 	let lessonCompleted = $state(false);
 	let currentCode = $state('');
-	let compileOutput = $state('');
-	let compileError = $state('');
-	let compiling = $state(false);
-	let compileSuccess = $state<boolean | null>(null);
+
+	// Separate output state for code and circuit
+	let codeOutput = $state('');
+	let codeError = $state('');
+	let codeLoading = $state(false);
+	let codeSuccess = $state<boolean | null>(null);
+
+	let circuitOutput = $state('');
+	let circuitError = $state('');
+	let circuitLoading = $state(false);
+	let circuitSuccess = $state<boolean | null>(null);
+
+	// Derived: any loading state (for disabling Run button)
+	let compiling = $derived(codeLoading || circuitLoading);
 
 	// UI state
 	let showSolution = $state(false);
@@ -46,7 +59,6 @@
 	// Mobile state: 'hidden' (only handle bar), 'half' (60%), 'full' (100%)
 	let isMobile = $state(false);
 	let mobileMode = $state<'hidden' | 'half' | 'full'>('half');
-	let touchStartY = 0;
 
 	// Media query detection
 	$effect(() => {
@@ -64,29 +76,6 @@
 		return () => mql.removeEventListener('change', handler);
 	});
 
-	function cycleMobileSheet() {
-		if (mobileMode === 'hidden') mobileMode = 'half';
-		else if (mobileMode === 'half') mobileMode = 'full';
-		else mobileMode = 'hidden';
-	}
-
-	function onSheetTouchStart(e: TouchEvent) {
-		touchStartY = e.touches[0].clientY;
-	}
-
-	function onSheetTouchEnd(e: TouchEvent) {
-		const delta = e.changedTouches[0].clientY - touchStartY;
-		if (delta > 60) {
-			// Swipe down: full→half→hidden
-			if (mobileMode === 'full') mobileMode = 'half';
-			else mobileMode = 'hidden';
-		} else if (delta < -60) {
-			// Swipe up: hidden→half→full
-			if (mobileMode === 'hidden') mobileMode = 'half';
-			else mobileMode = 'full';
-		}
-	}
-
 	const slug = $derived($page.params.slug);
 
 	// Sync lesson data when navigating between lessons
@@ -95,9 +84,12 @@
 			data = lesson;
 			lessonCompleted = lesson.lesson_completed;
 			currentCode = lesson.initial_code_c || lesson.initial_python || lesson.initial_code || '';
-			compileOutput = '';
-			compileError = '';
-			compileSuccess = null;
+			codeOutput = '';
+			codeError = '';
+			codeSuccess = null;
+			circuitOutput = '';
+			circuitError = '';
+			circuitSuccess = null;
 			showSolution = false;
 			if (lesson.lesson_info) activeTab = 'info';
 			else if (lesson.exercise_content) activeTab = 'exercise';
@@ -120,12 +112,18 @@
 		lessonContext.set(null);
 	});
 
-	// Apply syntax highlighting after content renders
+	// Apply syntax highlighting + circuit embeds after content renders
 	$effect(() => {
 		if (data) {
 			tick().then(() => {
-				if (contentEl) highlightAllCode(contentEl);
-				if (tabsEl) highlightAllCode(tabsEl);
+				if (contentEl) {
+					highlightAllCode(contentEl);
+					renderCircuitEmbeds(contentEl);
+				}
+				if (tabsEl) {
+					highlightAllCode(tabsEl);
+					renderCircuitEmbeds(tabsEl);
+				}
 			});
 		}
 	});
@@ -142,16 +140,16 @@
 		if (!data || !circuitEditor) return;
 		const simApi = circuitEditor.getApi();
 		if (!simApi) {
-			compileError = "Simulator belum siap.";
-			compileSuccess = false;
+			circuitError = "Simulator belum siap.";
+			circuitSuccess = false;
 			activeTab = 'output';
 			return;
 		}
 
-		compiling = true;
-		compileOutput = 'Mengevaluasi rangkaian...';
-		compileError = '';
-		compileSuccess = null;
+		circuitLoading = true;
+		circuitOutput = 'Mengevaluasi rangkaian...';
+		circuitError = '';
+		circuitSuccess = null;
 		activeTab = 'output';
 
 		try {
@@ -161,16 +159,16 @@
 					expectedState = JSON.parse(data.expected_output);
 				}
 			} catch (e) {
-				compileError = "Format EXPECTED_OUTPUT tidak valid (Harus JSON).";
-				compileSuccess = false;
-				compiling = false;
+				circuitError = "Format EXPECTED_OUTPUT tidak valid (Harus JSON).";
+				circuitSuccess = false;
+				circuitLoading = false;
 				return;
 			}
 
 			if (!expectedState) {
-				compileOutput = "Tidak ada kriteria evaluasi yang ditetapkan.";
-				compileSuccess = true;
-				compiling = false;
+				circuitOutput = "Tidak ada kriteria evaluasi yang ditetapkan.";
+				circuitSuccess = true;
+				circuitLoading = false;
 				return;
 			}
 
@@ -185,7 +183,7 @@
 						messages.push(`❌ Node '${nodeName}' tidak ditemukan.`);
 						continue;
 					}
-					
+
 					const expectedV = criteria.voltage;
 					const tol = criteria.tolerance || 0.1;
 					if (Math.abs(actualV - expectedV) <= tol) {
@@ -197,25 +195,8 @@
 				}
 			}
 
-			if (expectedState.elements && typeof simApi.elements === 'function' && typeof simApi.getElm === 'function') {
-				const elmCount = simApi.elements();
-				const elements = [];
-				for (let i = 0; i < elmCount; i++) {
-					elements.push(simApi.getElm(i));
-				}
-				for (const [infoMatch, criteria] of Object.entries<any>(expectedState.elements)) {
-					let found = null;
-					for (const el of elements) {
-                        try {
-						    const info = typeof el.getInfo === 'function' ? el.getInfo() : null;
-                            // the info from getInfo is an array or something we might not be able to parse natively via JS.
-                            // but we skip elements checking for now unless user really needs it
-                        } catch (e) {}
-					}
-				}
-			}
-
-			// End of elements check
+			// TODO: Element-level checking (e.g. expectedState.elements) belum diimplementasi.
+			// GWT getInfo() returns Java array yang sulit di-parse dari JS.
 
 			const circuitText = circuitEditor.getCircuitText();
 			const keyTextMatch = checkKeyText(circuitText, data.key_text ?? '');
@@ -224,8 +205,8 @@
 				messages.push(`❌ Komponen wajib belum lengkap (lihat instruksi).`);
 			}
 
-			compileOutput = messages.join('\n');
-			compileSuccess = allPassed;
+			circuitOutput = messages.join('\n');
+			circuitSuccess = allPassed;
 
 			if (allPassed) {
 				showCelebration = true;
@@ -241,10 +222,10 @@
 				}, 3000);
 			}
 		} catch (err: any) {
-			compileError = `Evaluasi gagal: ${err.message}`;
-			compileSuccess = false;
+			circuitError = `Evaluasi gagal: ${err.message}`;
+			circuitSuccess = false;
 		} finally {
-			compiling = false;
+			circuitLoading = false;
 		}
 	}
 
@@ -254,10 +235,10 @@
 			return;
 		}
 		if (!data) return;
-		compiling = true;
-		compileOutput = '';
-		compileError = '';
-		compileSuccess = null;
+		codeLoading = true;
+		codeOutput = '';
+		codeError = '';
+		codeSuccess = null;
 		activeTab = 'output';
 
 		try {
@@ -265,8 +246,8 @@
 			const res = await compileCode({ code, language: data.language });
 
 			if (res.success) {
-				compileOutput = res.output;
-				compileSuccess = true;
+				codeOutput = res.output;
+				codeSuccess = true;
 
 				if (data.expected_output) {
 					const outputMatch = res.output.trim() === data.expected_output.trim();
@@ -291,14 +272,14 @@
 					}
 				}
 			} else {
-				compileError = res.error || 'Compilation failed';
-				compileSuccess = false;
+				codeError = res.error || 'Compilation failed';
+				codeSuccess = false;
 			}
 		} catch {
-			compileError = 'Gagal terhubung ke server';
-			compileSuccess = false;
+			codeError = 'Gagal terhubung ke server';
+			codeSuccess = false;
 		} finally {
-			compiling = false;
+			codeLoading = false;
 		}
 	}
 
@@ -306,13 +287,16 @@
 		if (!data) return;
 		if (activeTab === 'circuit') {
 			circuitEditor?.setCircuitText(data.initial_circuit || data.initial_code);
+			circuitOutput = '';
+			circuitError = '';
+			circuitSuccess = null;
 		} else {
 			currentCode = data.initial_code;
 			editor?.setCode(data.initial_code);
+			codeOutput = '';
+			codeError = '';
+			codeSuccess = null;
 		}
-		compileOutput = '';
-		compileError = '';
-		compileSuccess = null;
 	}
 
 	function handleShowSolution() {
@@ -352,24 +336,7 @@
 			oncontextmenu={(e) => e.preventDefault()}>
 			<div class="prose">{@html data.lesson_content}</div>
 
-			<!-- All lessons list -->
-			{#if data.ordered_lessons?.length}
-				<div class="all-lessons">
-					<h3 class="all-lessons-heading">Semua Pelajaran</h3>
-					<div class="all-lessons-list">
-						{#each data.ordered_lessons as lesson (lesson.filename)}
-							<a href="/lesson/{lesson.filename}"
-								class="lesson-item"
-								class:lesson-item-active={lesson.filename === slug}>
-								{#if lesson.completed}
-									<span class="lesson-check">&#10003;</span>
-								{/if}
-								<span class="lesson-item-title">{lesson.title}</span>
-							</a>
-						{/each}
-					</div>
-				</div>
-			{/if}
+			<LessonList lessons={data.ordered_lessons ?? []} currentSlug={slug} />
 		</div>
 
 		<!-- Floating restore button (visible when minimized) -->
@@ -391,60 +358,23 @@
 			class:mobile-full={isMobile && mobileMode === 'full'}
 			style={float.style}>
 
-			<!-- Panel header -->
-			{#if isMobile}
-				<button class="panel-header sheet-handle"
-					ontouchstart={onSheetTouchStart}
-					ontouchend={onSheetTouchEnd}
-					onclick={cycleMobileSheet}>
-					<div class="sheet-handle-bar"></div>
-					<span class="panel-title">Workspace</span>
-				</button>
-			{:else if float.floating && !float.minimized}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="panel-header draggable" onmousedown={float.onDragStart}>
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<span class="resize-handle" onmousedown={(e) => { e.stopPropagation(); float.onResizeStart(e); }} title="Resize">&#x25F3;</span>
-					<span class="panel-title">Workspace</span>
-					<div class="panel-actions">
-						<button type="button" class="panel-btn" onclick={float.minimize}
-							title="Minimize">▽</button>
-						<button type="button" class="panel-btn" onclick={float.toggle}
-							title="Dock editor">⊡</button>
-					</div>
-				</div>
-			{:else if !isMobile}
-				<div class="panel-header">
-					<span class="panel-title">Workspace</span>
-					<div class="panel-actions">
-						<button type="button" class="btn-float-toggle" onclick={float.toggle} title="Float editor">&#x229E;</button>
-					</div>
-				</div>
-			{/if}
+			<WorkspaceHeader
+				{isMobile}
+				bind:mobileMode
+				bind:activeTab
+				hasInfo={!!data.lesson_info}
+				hasExercise={!!data.exercise_content}
+				activeTabs={data.active_tabs ?? []}
+				floating={float.floating}
+				minimized={float.minimized}
+				onDragStart={float.onDragStart}
+				onResizeStart={float.onResizeStart}
+				onFloatToggle={float.toggle}
+				onMinimize={float.minimize}
+			/>
 
 			<!-- Editor body -->
-			<div class="editor-body" bind:this={tabsEl} class:body-hidden={isMobile && mobileMode === 'hidden'}>
-				<!-- Tabs -->
-				<div class="panel-tabs">
-					{#if data.lesson_info}
-						<button class="tab" class:active={activeTab === 'info'}
-							onclick={() => (activeTab = 'info')}>Informasi</button>
-					{/if}
-					{#if data.exercise_content}
-						<button class="tab" class:active={activeTab === 'exercise'}
-							onclick={() => (activeTab = 'exercise')}>Exercise</button>
-					{/if}
-					{#if !data.active_tabs || data.active_tabs.length === 0 || data.active_tabs.includes('c') || data.active_tabs.includes('python')}
-					<button class="tab" class:active={activeTab === 'editor'}
-						onclick={() => (activeTab = 'editor')}>Code Editor</button>
-					{/if}
-					{#if data.active_tabs?.includes('circuit')}
-					<button class="tab" class:active={activeTab === 'circuit'}
-						onclick={() => (activeTab = 'circuit')}>Circuit Simulator</button>
-					{/if}
-					<button class="tab" class:active={activeTab === 'output'}
-						onclick={() => (activeTab = 'output')}>Output</button>
-				</div>
+			<div class="editor-body" bind:this={tabsEl}>
 
 				<!-- Info tab panel -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -537,10 +467,10 @@
 				<!-- Output tab panel -->
 				<div class="tab-panel" class:tab-hidden={activeTab !== 'output'}>
 					<OutputPanel
-						output={compileOutput}
-						error={compileError}
-						loading={compiling}
-						success={compileSuccess}
+						code={{ output: codeOutput, error: codeError, loading: codeLoading, success: codeSuccess }}
+						circuit={{ output: circuitOutput, error: circuitError, loading: circuitLoading, success: circuitSuccess }}
+						hasCode={!data.active_tabs || data.active_tabs.length === 0 || data.active_tabs.includes('c') || data.active_tabs.includes('python')}
+						hasCircuit={data.active_tabs?.includes('circuit') ?? false}
 					/>
 				</div>
 			</div>
@@ -623,64 +553,6 @@
 	.prose :global(h3) {
 		margin-top: 1.25rem;
 		margin-bottom: 0.5rem;
-	}
-
-	/* ── All lessons list ──────────────────────────────────── */
-	.all-lessons {
-		margin-top: 2rem;
-		padding-top: 1.5rem;
-		border-top: 1px solid var(--color-border);
-	}
-	.all-lessons-heading {
-		font-size: 0.9rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		margin-bottom: 0.5rem;
-	}
-	.all-lessons-list {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-	.lesson-item {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0.45rem 0.6rem;
-		border-radius: 6px;
-		font-size: 0.82rem;
-		color: var(--color-text);
-		text-decoration: none;
-		transition: background 0.12s;
-	}
-	.lesson-item:hover {
-		background: var(--color-bg-secondary);
-		text-decoration: none;
-		color: var(--color-text);
-	}
-	.lesson-item-active {
-		background: var(--color-primary);
-		color: #fff;
-		font-weight: 600;
-	}
-	.lesson-item-active:hover {
-		background: var(--color-primary-dark);
-		color: #fff;
-	}
-	.lesson-check {
-		color: var(--color-success);
-		font-size: 0.75rem;
-		flex-shrink: 0;
-	}
-	.lesson-item-active .lesson-check {
-		color: #fff;
-	}
-	.lesson-item-title {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 
 	/* ── Editor area (docked mode) ──────────────────────────── */
@@ -774,63 +646,6 @@
 		transform: scale(0.95);
 	}
 
-	/* ── Float toggle button ───────────────────────────────── */
-	.btn-float-toggle {
-		background: none;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		padding: 0.2rem 0.5rem;
-		cursor: pointer;
-		font-size: 0.95rem;
-		color: var(--color-text-muted);
-		line-height: 1;
-	}
-	.btn-float-toggle:hover {
-		background: var(--color-bg-secondary);
-		color: var(--color-text);
-	}
-
-	/* ── Panel header ───────────────────────────────────────── */
-	.panel-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 0.75rem;
-		background: var(--color-bg-secondary);
-		border-bottom: 1px solid var(--color-border);
-		user-select: none;
-		cursor: default;
-		flex-wrap: wrap;
-	}
-	.panel-header.draggable {
-		cursor: grab;
-	}
-	.panel-header.draggable:active {
-		cursor: grabbing;
-	}
-	.panel-title {
-		font-size: 0.85rem;
-		font-weight: 600;
-		flex: 1;
-	}
-	.panel-actions {
-		display: flex;
-		gap: 0.25rem;
-	}
-	.panel-btn {
-		background: none;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		padding: 0.15rem 0.5rem;
-		cursor: pointer;
-		font-size: 0.8rem;
-		color: var(--color-text);
-		line-height: 1;
-	}
-	.panel-btn:hover {
-		background: var(--color-border);
-	}
-
 	/* ── Desktop floating mode ─────────────────────────────── */
 	.editor-area.floating {
 		position: fixed;
@@ -850,29 +665,17 @@
 		flex-direction: column;
 		overflow: hidden;
 	}
-	.resize-handle {
-		cursor: nwse-resize;
-		font-size: 0.9rem;
-		color: var(--color-text-muted);
-		line-height: 1;
-		padding: 0.1rem 0.3rem;
-		border-radius: 3px;
-	}
-	.resize-handle:hover {
-		background: var(--color-border);
-		color: var(--color-text);
-	}
 	.editor-area.floating-hidden {
 		display: none !important;
 	}
 
-	/* ── Mobile bottom sheet ───────────────────────────────── */
+	/* ── Mobile bottom sheet ──────────────────────────────── */
 	.editor-area.mobile-sheet {
 		position: fixed;
+		top: auto;
 		bottom: 0;
 		left: 0;
 		right: 0;
-		top: auto;
 		z-index: 9999;
 		background: var(--color-bg);
 		border-top: 2px solid var(--color-primary);
@@ -880,66 +683,64 @@
 		box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
 		display: flex;
 		flex-direction: column;
-		transition: max-height 0.3s ease, transform 0.3s ease;
+		overflow: hidden;
+		transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.2s ease;
 	}
 	.editor-area.mobile-hidden {
-		max-height: 100vh;
-		transform: translateY(calc(100% - 48px));
+		height: 52px;
 	}
 	.editor-area.mobile-half {
-		max-height: 60vh;
-		transform: translateY(0);
+		height: 60vh;
 	}
 	.editor-area.mobile-full {
-		max-height: calc(100vh - 3rem);
-		top: 3rem;
+		height: calc(100vh - 3rem);
 		border-radius: 0;
-		transform: translateY(0);
 	}
 	.mobile-sheet .editor-body {
 		overscroll-behavior: contain;
 	}
-	.sheet-handle {
-		flex-direction: column;
-		border: none;
-		border-bottom: 1px solid var(--color-border);
-		cursor: pointer;
-		width: 100%;
-		color: inherit;
-		font: inherit;
-		text-align: center;
-	}
-	.sheet-handle-bar {
-		width: 36px;
-		height: 4px;
-		background: var(--color-border);
-		border-radius: 2px;
-		margin: 0 auto 0.25rem;
-	}
-
-	/* ── Tabs ─────────────────────────────────────────────── */
-	.panel-tabs {
-		display: flex;
-		gap: 0;
-		margin-bottom: 0.5rem;
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		overflow: hidden;
-	}
-	.tab {
+	/* ── Mobile full: expand content to fill ────────────── */
+	.editor-area.mobile-full .editor-body {
 		flex: 1;
-		padding: 0.5rem;
-		border: none;
-		background: var(--color-bg-secondary);
-		color: var(--color-text);
-		cursor: pointer;
-		font-weight: 500;
-		font-size: 0.85rem;
-		white-space: nowrap;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
 	}
-	.tab.active {
-		background: var(--color-primary);
-		color: #fff;
+	.editor-area.mobile-full .tab-panel:not(.tab-hidden) {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.editor-area.mobile-full .panel {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.editor-area.mobile-full :global(.circuit-container) {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.editor-area.mobile-full :global(.circuit-wrapper) {
+		flex: 1;
+		height: auto;
+	}
+	.editor-area.mobile-full :global(.editor-wrapper) {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.editor-area.mobile-full :global(.cm-editor) {
+		flex: 1;
+		max-height: none;
+		min-height: 0;
+	}
+	.editor-area.mobile-full :global(.cm-scroller) {
+		flex: 1;
 	}
 
 	/* ── Tab panels ────────────────────────────────────────── */
@@ -950,8 +751,4 @@
 		display: none;
 	}
 
-	/* ── Utility ───────────────────────────────────────────── */
-	.editor-body.body-hidden {
-		display: none;
-	}
 </style>

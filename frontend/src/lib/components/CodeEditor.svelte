@@ -348,7 +348,6 @@
 		font-weight: 500;
 	}
 	.editor-wrapper :global(.cm-editor) {
-...
 		min-height: 200px;
 		max-height: 60vh;
 	}

@@ -1,17 +1,21 @@
 <script lang="ts">
+	import CrosshairOverlay from './CrosshairOverlay.svelte';
+	import type { CircuitJSApi } from '$lib/types/circuitjs';
+
 	interface Props {
 		initialCircuit?: string;
 		storageKey?: string;
-		onready?: (api: any) => void;
+		onready?: (api: CircuitJSApi) => void;
 	}
 
 	let { initialCircuit = '', storageKey, onready }: Props = $props();
 
-	let iframe: HTMLIFrameElement;
+	let iframe = $state<HTMLIFrameElement>(null!);
 	let ready = $state(false);
-	let simApi = $state<any>(null);
+	let simApi = $state<CircuitJSApi | null>(null);
 	let saving = $state(false);
-	let saveTimeout: any;
+	let saveTimeout: ReturnType<typeof setTimeout>;
+	let autoSaveInterval: ReturnType<typeof setInterval>;
 	let lastLoadedCircuit = $state('');
 
 	function saveToStorage(text: string) {
@@ -25,46 +29,26 @@
 	}
 
 	export function loadCircuitToSim(text: string) {
-		if (!simApi) {
-			console.warn("CircuitEditor: simApi not ready yet");
-			return;
-		}
-		if (!text) return;
-        
-		const trimmed = text.trim();
+		if (!simApi) return;
+		const trimmed = text?.trim();
 		if (!trimmed) return;
-		
-		console.log("CircuitEditor: Attempting to load circuit text (length:", trimmed.length, ")");
-		
+
 		try {
-			if (typeof simApi.setCircuitText === 'function') {
-				simApi.setCircuitText(trimmed);
-			} else if (typeof simApi.setupText === 'function') {
-				simApi.setupText(trimmed);
-			} else if (typeof simApi.importCircuit === 'function') {
-				console.log("CircuitEditor: Calling importCircuit()...");
-				simApi.importCircuit(trimmed, false);
-			} else {
-				console.error("CircuitEditor: No import function found on simApi", simApi);
-			}
-			
-			// Ensure it's running & rendering
-			if (typeof simApi.setSimRunning === 'function') simApi.setSimRunning(true);
-			if (typeof simApi.updateCircuit === 'function') simApi.updateCircuit();
+			simApi.importCircuit(trimmed, false);
+			simApi.setSimRunning(true);
+			simApi.updateCircuit();
 		} catch (err) {
 			console.error("CircuitEditor: Error loading circuit:", err);
 		}
 	}
 
 	function initSimulator(apiFromArg?: any) {
-		console.log("CircuitEditor: initSimulator triggered!");
 		const win = iframe?.contentWindow as any;
 		
 		// Priority: Object from callback argument, then from window object
 		simApi = apiFromArg || (win ? win.CircuitJS1 : null);
 
 		if (simApi) {
-			console.log("CircuitEditor: API Object acquired successfully");
 			ready = true;
 
 			// Load initial circuit or draft
@@ -72,7 +56,6 @@
 			if (storageKey) {
 				const saved = sessionStorage.getItem(storageKey);
 				if (saved) {
-					console.log("CircuitEditor: Found draft in sessionStorage");
 					toLoad = saved;
 				}
 			}
@@ -89,9 +72,9 @@
 
 			// Setup auto-save polling
 			if (storageKey) {
-				setInterval(() => {
+				autoSaveInterval = setInterval(() => {
 					if (simApi && ready) {
-						const currentText = typeof simApi.exportCircuit === 'function' ? simApi.exportCircuit() : '';
+						const currentText = simApi.exportCircuit();
 						const saved = sessionStorage.getItem(storageKey);
 						if (currentText && currentText !== saved && currentText.trim().length > 10) {
 							saveToStorage(currentText);
@@ -105,20 +88,17 @@
 	}
 
 	function handleIframeLoad() {
-		console.log("CircuitEditor: Iframe DOM loaded, setting up callback...");
 		if (iframe && iframe.contentWindow) {
 			const win = iframe.contentWindow as any;
 			
 			// Define the callback that CircuitJS1 calls internally
 			win.oncircuitjsloaded = (api: any) => {
-				console.log("CircuitEditor: Callback oncircuitjsloaded received API argument");
 				initSimulator(api);
 			};
 			
 			// Fallback: if already loaded or callback doesn't fire
 			setTimeout(() => {
 				if (!ready) {
-					console.log("CircuitEditor: Fallback check for API...");
 					initSimulator();
 				}
 			}, 3000);
@@ -128,22 +108,29 @@
 	// Re-apply if initialCircuit prop changes
 	$effect(() => {
 		if (simApi && ready && initialCircuit && initialCircuit !== lastLoadedCircuit) {
-			console.log("CircuitEditor: initialCircuit prop changed, re-loading...");
 			lastLoadedCircuit = initialCircuit;
 			loadCircuitToSim(initialCircuit);
 		}
 	});
 
+	// Cleanup timers on destroy
+	$effect(() => {
+		return () => {
+			clearInterval(autoSaveInterval);
+			clearTimeout(saveTimeout);
+		};
+	});
+
 	export function getCircuitText(): string {
 		if (!simApi) return '';
-		return typeof simApi.exportCircuit === 'function' ? simApi.exportCircuit() : '';
+		return simApi.exportCircuit();
 	}
 
 	export function setCircuitText(text: string) {
 		loadCircuitToSim(text);
 	}
 
-	export function getApi() {
+	export function getApi(): CircuitJSApi | null {
 		return simApi;
 	}
 </script>
@@ -161,6 +148,10 @@
 			onload={handleIframeLoad}
 			class:visible={ready}
 		></iframe>
+
+		{#if ready}
+			<CrosshairOverlay {iframe} />
+		{/if}
 
 		{#if storageKey && ready}
 			<div class="storage-indicator" title={saving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>

@@ -6,7 +6,6 @@
  */
 
 import type { Handle } from '@sveltejs/kit';
-import { execSync } from 'child_process';
 
 function resolveBackend(): string {
 	const env = process.env.API_BACKEND;
