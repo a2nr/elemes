@@ -29,6 +29,20 @@ Penjelasan:
 - `\n` — membuat baris baru
 - `return 0` — menandakan program selesai tanpa error
 
+## Versi Python
+
+Dalam Python, mencetak teks jauh lebih sederhana:
+
+```python
+print("Hello, World!")
+```
+
+Penjelasan:
+- Tidak perlu `#include` — Python sudah menyediakan `print()` secara bawaan
+- Tidak perlu fungsi `main()` — kode langsung dijalankan dari atas ke bawah
+- Tidak perlu `\n` — `print()` otomatis menambahkan baris baru
+- Tidak perlu `return 0` atau titik koma
+
 ---EXERCISE---
 ### Latihan
 Buat program yang mencetak teks berikut:
@@ -51,6 +65,11 @@ int main() {
 ---EXPECTED_OUTPUT---
 Halo Dunia
 ---END_EXPECTED_OUTPUT---
+
+---INITIAL_PYTHON---
+# Tulis kode kamu di sini
+
+---END_INITIAL_PYTHON---
 
 ---KEY_TEXT---
 printf

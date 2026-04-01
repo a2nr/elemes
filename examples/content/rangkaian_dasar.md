@@ -43,6 +43,24 @@ Berikut rangkaian voltage divider sederhana:
 
 Perhatikan tegangan di **Vout** adalah ~2.5V.
 
+## Versi Python
+
+Perhitungan yang sama bisa dilakukan dengan Python:
+
+```python
+vin = 5
+r1 = 1000
+r2 = 1000
+
+vout = vin * (r2 / (r1 + r2))
+print(f"Vout = {vout:.2f}V")
+```
+
+Perbedaan utama:
+- Tidak perlu mendeklarasikan tipe data
+- Python menggunakan **float division** secara default (di C, `1000/2000` menghasilkan `0` karena integer division)
+- f-string `{vout:.2f}` setara dengan `%.2f` di C
+
 ---EXERCISE---
 ### Tantangan 1: Pemrograman C
 Buat program yang mencetak hasil perhitungan voltage divider.
@@ -82,6 +100,12 @@ Vout = 2.50V
   }
 }
 ---END_EXPECTED_CIRCUIT_OUTPUT---
+
+---INITIAL_PYTHON---
+# Hitung voltage divider: Vout = Vin * R2 / (R1 + R2)
+# Vin=5, R1=1000, R2=1000
+
+---END_INITIAL_PYTHON---
 
 ---KEY_TEXT---
 printf

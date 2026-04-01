@@ -44,6 +44,25 @@ Format specifier untuk `printf()`:
 - `%f` — float (gunakan `%.1f` untuk 1 desimal)
 - `%c` — character
 
+## Versi Python
+
+Python tidak perlu mendeklarasikan tipe data secara eksplisit:
+
+```python
+umur = 17
+tinggi = 165.5
+huruf = 'A'
+
+print(f"Umur: {umur} tahun")
+print(f"Tinggi: {tinggi:.1f} cm")
+print(f"Huruf: {huruf}")
+```
+
+Perbedaan utama:
+- Tidak perlu menuliskan tipe (`int`, `float`, `char`) — Python mengenali otomatis
+- Gunakan **f-string** (`f"..."`) untuk menyisipkan variabel ke dalam teks
+- `{tinggi:.1f}` sama fungsinya dengan `%.1f` di C
+
 ---EXERCISE---
 ### Latihan
 Buat program yang mendeklarasikan variabel `nama_panjang` bertipe `int` dengan nilai `10`,
@@ -69,6 +88,12 @@ int main() {
 ---EXPECTED_OUTPUT---
 Panjang nama: 10
 ---END_EXPECTED_OUTPUT---
+
+---INITIAL_PYTHON---
+# Deklarasikan variabel nama_panjang
+# Cetak hasilnya menggunakan print
+
+---END_INITIAL_PYTHON---
 
 ---KEY_TEXT---
 int
