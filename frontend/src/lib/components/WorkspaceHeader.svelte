@@ -5,6 +5,7 @@
 		isMobile: boolean;
 		mobileMode: 'hidden' | 'half' | 'full';
 		activeTab: TabType;
+		currentLanguage: string;
 		hasInfo: boolean;
 		hasExercise: boolean;
 		activeTabs: string[];
@@ -20,6 +21,7 @@
 		isMobile,
 		mobileMode = $bindable(),
 		activeTab = $bindable(),
+		currentLanguage = $bindable(),
 		hasInfo,
 		hasExercise,
 		activeTabs,
@@ -33,9 +35,12 @@
 
 	let touchStartY = 0;
 
+	const hasC = $derived(activeTabs?.includes('c') ?? false);
+	const hasPython = $derived(activeTabs?.includes('python') ?? false);
 	const hasCodeEditor = $derived(
-		!activeTabs || activeTabs.length === 0 || activeTabs.includes('c') || activeTabs.includes('python')
+		!activeTabs || activeTabs.length === 0 || hasC || hasPython
 	);
+	const hasMultiLang = $derived(hasC && hasPython);
 	const hasCircuit = $derived(activeTabs?.includes('circuit') ?? false);
 
 	function cycleMobileSheet() {
@@ -70,7 +75,12 @@
 		<button class="chrome-tab" class:active={activeTab === 'exercise'} onclick={() => (activeTab = 'exercise')}>Exercise</button>
 	{/if}
 	{#if hasCodeEditor}
-		<button class="chrome-tab" class:active={activeTab === 'editor'} onclick={() => (activeTab = 'editor')}>Code</button>
+		{#if hasMultiLang}
+			<button class="chrome-tab" class:active={activeTab === 'editor' && currentLanguage === 'c'} onclick={() => { activeTab = 'editor'; currentLanguage = 'c'; }}>C</button>
+			<button class="chrome-tab" class:active={activeTab === 'editor' && currentLanguage === 'python'} onclick={() => { activeTab = 'editor'; currentLanguage = 'python'; }}>Python</button>
+		{:else}
+			<button class="chrome-tab" class:active={activeTab === 'editor'} onclick={() => (activeTab = 'editor')}>Code</button>
+		{/if}
 	{/if}
 	{#if hasCircuit}
 		<button class="chrome-tab" class:active={activeTab === 'circuit'} onclick={() => (activeTab = 'circuit')}>Circuit</button>

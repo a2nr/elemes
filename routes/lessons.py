@@ -90,8 +90,8 @@ def api_lesson(filename):
     prev_lesson = all_lessons[current_idx - 1] if current_idx > 0 else None
     next_lesson = all_lessons[current_idx + 1] if 0 <= current_idx < len(all_lessons) - 1 else None
 
-    # Derive language from active_tabs instead of global env var
-    if 'python' in active_tabs:
+    # Derive default language from active_tabs (frontend manages switching)
+    if 'python' in active_tabs and 'c' not in active_tabs:
         programming_language = 'python'
     else:
         programming_language = 'c'

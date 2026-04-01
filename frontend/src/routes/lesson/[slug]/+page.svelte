@@ -3,11 +3,12 @@
 	import { beforeNavigate } from '$app/navigation';
 	import CodeEditor from '$components/CodeEditor.svelte';
 	import CircuitEditor from '$components/CircuitEditor.svelte';
-	import OutputPanel from '$components/OutputPanel.svelte';
+	import OutputPanel, { type OutputEntry } from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
 	import WorkspaceHeader from '$components/WorkspaceHeader.svelte';
 	import LessonList from '$components/LessonList.svelte';
 	import { compileCode, trackProgress } from '$services/api';
+	import { checkKeyText, validateNodes } from '$services/exercise';
 	import { auth, authLoggedIn } from '$stores/auth';
 	import { lessonContext } from '$stores/lessonContext';
 	import { noSelect } from '$actions/noSelect';
@@ -26,17 +27,20 @@
 	let data = $state<LessonContent | null>(null);
 	let lessonCompleted = $state(false);
 	let currentCode = $state('');
+	let currentLanguage = $state<string>('c');
 
-	// Separate output state for code and circuit
-	let codeOutput = $state('');
-	let codeError = $state('');
-	let codeLoading = $state(false);
-	let codeSuccess = $state<boolean | null>(null);
+	// Per-language code tracking
+	let cCode = $state('');
+	let pythonCode = $state('');
 
-	let circuitOutput = $state('');
-	let circuitError = $state('');
-	let circuitLoading = $state(false);
-	let circuitSuccess = $state<boolean | null>(null);
+	// Output state per language + circuit
+	const freshOutput = () => ({ output: '', error: '', loading: false, success: null as boolean | null });
+	let cOut = $state(freshOutput());
+	let pyOut = $state(freshOutput());
+	let circuitOut = $state(freshOutput());
+
+	// Helper: get the active code output object for current language
+	function getCodeOut() { return currentLanguage === 'python' ? pyOut : cOut; }
 
 	// AND-logic: track whether each exercise type has passed (persists across runs)
 	let codePassed = $state(false);
@@ -49,7 +53,23 @@
 	);
 
 	// Derived: any loading state (for disabling Run button)
-	let compiling = $derived(codeLoading || circuitLoading);
+	let compiling = $derived(cOut.loading || pyOut.loading || circuitOut.loading);
+
+	// Build output sections for OutputPanel
+	let outputSections = $derived.by(() => {
+		const tabs = data?.active_tabs ?? [];
+		const secs: OutputEntry[] = [];
+		if (tabs.includes('c') || (!tabs.length && !tabs.includes('python'))) {
+			secs.push({ key: 'c', label: 'C', icon: '\u{1F4BB}', data: cOut, placeholder: 'Klik "Run" untuk menjalankan kode C', loadingText: 'Mengompilasi C...' });
+		}
+		if (tabs.includes('python')) {
+			secs.push({ key: 'python', label: 'Python', icon: '\u{1F40D}', data: pyOut, placeholder: 'Klik "Run" untuk menjalankan kode Python', loadingText: 'Menjalankan Python...' });
+		}
+		if (tabs.includes('circuit')) {
+			secs.push({ key: 'circuit', label: 'Circuit', icon: '\u26A1', data: circuitOut, placeholder: 'Klik "Cek Rangkaian" untuk mengevaluasi', loadingText: 'Mengevaluasi rangkaian...' });
+		}
+		return secs;
+	});
 
 	// UI state
 	let showSolution = $state(false);
@@ -93,19 +113,28 @@
 		if (lesson) {
 			data = lesson;
 			lessonCompleted = lesson.lesson_completed;
-			currentCode = lesson.initial_code_c || lesson.initial_python || lesson.initial_code || '';
-			codeOutput = '';
-			codeError = '';
-			codeSuccess = null;
-			circuitOutput = '';
-			circuitError = '';
-			circuitSuccess = null;
+
+			// Initialize per-language code
+			cCode = lesson.initial_code_c || '';
+			pythonCode = lesson.initial_python || '';
+
+			// Determine initial language (use local var to avoid reactive dependency on currentLanguage)
+			const hasC = lesson.active_tabs?.includes('c');
+			const hasPython = lesson.active_tabs?.includes('python');
+			const initLang = (hasPython && !hasC) ? 'python' : 'c';
+			currentLanguage = initLang;
+			prevLanguage = initLang;
+			currentCode = initLang === 'python' ? pythonCode : (cCode || lesson.initial_code || '');
+
+			cOut = freshOutput();
+			pyOut = freshOutput();
+			circuitOut = freshOutput();
 			codePassed = false;
 			circuitPassed = false;
 			showSolution = false;
 			if (lesson.lesson_info) activeTab = 'info';
 			else if (lesson.exercise_content) activeTab = 'exercise';
-			else if (lesson.active_tabs?.includes('circuit') && !lesson.active_tabs?.includes('c') && !lesson.active_tabs?.includes('python')) activeTab = 'circuit';
+			else if (lesson.active_tabs?.includes('circuit') && !hasC && !hasPython) activeTab = 'circuit';
 			else activeTab = 'editor';
 			mobileMode = 'half';
 
@@ -117,6 +146,21 @@
 				nextLesson: lesson.next_lesson
 			});
 		}
+	});
+
+	// Switch editor content when language tab changes
+	let prevLanguage = $state<string>('c');
+	$effect(() => {
+		if (!data || currentLanguage === prevLanguage) return;
+		// Save current code to the previous language slot
+		const code = editor?.getCode() ?? currentCode;
+		if (prevLanguage === 'c') cCode = code;
+		else if (prevLanguage === 'python') pythonCode = code;
+		// Load code for the new language
+		const newCode = currentLanguage === 'python' ? pythonCode : (cCode || data.initial_code || '');
+		currentCode = newCode;
+		editor?.setCode(newCode);
+		prevLanguage = currentLanguage;
 	});
 
 	// Clear lesson context when leaving page
@@ -140,13 +184,6 @@
 		}
 	});
 
-	/** Check if student code contains all required key_text keywords. */
-	function checkKeyText(code: string, keyText: string): boolean {
-		if (!keyText.trim()) return true;
-		const keys = keyText.split('\n').map(k => k.trim()).filter(k => k.length > 0);
-		return keys.every(key => code.includes(key));
-	}
-
 	/** Mark lesson as complete: track progress + celebration. Called when ALL exercises pass. */
 	async function completeLesson() {
 		showCelebration = true;
@@ -168,159 +205,102 @@
 		if (!data || !circuitEditor) return;
 		const simApi = circuitEditor.getApi();
 		if (!simApi) {
-			circuitError = "Simulator belum siap.";
-			circuitSuccess = false;
+			Object.assign(circuitOut, { error: "Simulator belum siap.", success: false });
 			activeTab = 'output';
 			return;
 		}
 
-		circuitLoading = true;
-		circuitOutput = 'Mengevaluasi rangkaian...';
-		circuitError = '';
-		circuitSuccess = null;
+		Object.assign(circuitOut, { loading: true, output: 'Mengevaluasi rangkaian...', error: '', success: null });
 		activeTab = 'output';
 
 		try {
-			// For hybrid lessons, use expected_circuit_output; otherwise fallback to expected_output
 			const circuitExpected = (isHybrid && data.expected_circuit_output)
 				? data.expected_circuit_output
 				: data.expected_output;
 
 			let expectedState: any = null;
 			try {
-				if (circuitExpected) {
-					expectedState = JSON.parse(circuitExpected);
-				}
-			} catch (e) {
-				circuitError = "Format EXPECTED_OUTPUT tidak valid (Harus JSON).";
-				circuitSuccess = false;
-				circuitLoading = false;
+				if (circuitExpected) expectedState = JSON.parse(circuitExpected);
+			} catch {
+				Object.assign(circuitOut, { error: "Format EXPECTED_OUTPUT tidak valid (Harus JSON).", success: false, loading: false });
 				return;
 			}
 
 			if (!expectedState) {
-				circuitOutput = "Tidak ada kriteria evaluasi yang ditetapkan.";
-				circuitSuccess = true;
-				circuitLoading = false;
+				Object.assign(circuitOut, { output: "Tidak ada kriteria evaluasi yang ditetapkan.", success: true, loading: false });
 				return;
 			}
 
-			let allPassed = true;
-			let messages: string[] = [];
-
-			if (expectedState.nodes) {
-				for (const [nodeName, criteria] of Object.entries<any>(expectedState.nodes)) {
-					const actualV = simApi.getNodeVoltage(nodeName);
-					if (actualV === undefined || actualV === null) {
-						allPassed = false;
-						messages.push(`❌ Node '${nodeName}' tidak ditemukan.`);
-						continue;
-					}
-
-					const expectedV = criteria.voltage;
-					const tol = criteria.tolerance || 0.1;
-					if (Math.abs(actualV - expectedV) <= tol) {
-						messages.push(`✅ Node '${nodeName}': Tegangan ${actualV.toFixed(2)}V (Sesuai)`);
-					} else {
-						allPassed = false;
-						messages.push(`❌ Node '${nodeName}': Tegangan ${actualV.toFixed(2)}V (Harusnya ~${expectedV}V)`);
-					}
-				}
-			}
-
-			// TODO: Element-level checking (e.g. expectedState.elements) belum diimplementasi.
-			// GWT getInfo() returns Java array yang sulit di-parse dari JS.
+			let { allPassed, messages } = expectedState.nodes
+				? validateNodes(simApi, expectedState.nodes)
+				: { allPassed: true, messages: [] as string[] };
 
 			const circuitText = circuitEditor.getCircuitText();
-			// For hybrid lessons, use key_text_circuit; otherwise fallback to key_text
-			const circuitKeyText = (isHybrid && data.key_text_circuit)
-				? data.key_text_circuit
-				: data.key_text;
-			const keyTextMatch = checkKeyText(circuitText, circuitKeyText ?? '');
-			if (!keyTextMatch) {
+			const circuitKeyText = (isHybrid && data.key_text_circuit) ? data.key_text_circuit : data.key_text;
+			if (!checkKeyText(circuitText, circuitKeyText ?? '')) {
 				allPassed = false;
 				messages.push(`❌ Komponen wajib belum lengkap (lihat instruksi).`);
 			}
 
-			circuitOutput = messages.join('\n');
-			circuitSuccess = allPassed;
+			circuitOut.output = messages.join('\n');
+			circuitOut.success = allPassed;
 
 			if (allPassed) {
 				circuitPassed = true;
 				if (isHybrid) {
-					circuitOutput += '\n✅ Rangkaian benar!';
-					if (!codePassed) {
-						circuitOutput += '\n⏳ Selesaikan juga tantangan kode untuk menyelesaikan pelajaran ini.';
-					}
+					circuitOut.output += '\n✅ Rangkaian benar!';
+					if (!codePassed) circuitOut.output += '\n⏳ Selesaikan juga tantangan kode untuk menyelesaikan pelajaran ini.';
 				}
 				if (checkAllPassed()) {
 					await completeLesson();
-					setTimeout(() => {
-						showCelebration = false;
-						activeTab = 'circuit';
-					}, 3000);
+					setTimeout(() => { showCelebration = false; activeTab = 'circuit'; }, 3000);
 				}
 			}
 		} catch (err: any) {
-			circuitError = `Evaluasi gagal: ${err.message}`;
-			circuitSuccess = false;
+			Object.assign(circuitOut, { error: `Evaluasi gagal: ${err.message}`, success: false });
 		} finally {
-			circuitLoading = false;
+			circuitOut.loading = false;
 		}
 	}
 
 	async function handleRun() {
-		if (activeTab === 'circuit') {
-			await evaluateCircuit();
-			return;
-		}
+		if (activeTab === 'circuit') { await evaluateCircuit(); return; }
 		if (!data) return;
-		codeLoading = true;
-		codeOutput = '';
-		codeError = '';
-		codeSuccess = null;
+
+		const out = getCodeOut();
+		Object.assign(out, { loading: true, output: '', error: '', success: null });
 		activeTab = 'output';
 
 		try {
 			const code = editor?.getCode() ?? currentCode;
-			const res = await compileCode({ code, language: data.language });
+			const res = await compileCode({ code, language: currentLanguage });
 
-			if (res.success) {
-				codeOutput = res.output;
-				codeSuccess = true;
+			if (!res.success) {
+				Object.assign(out, { error: res.error || 'Compilation failed', success: false });
+				return;
+			}
 
-				if (data.expected_output) {
-					const outputMatch = res.output.trim() === data.expected_output.trim();
-					const keyTextMatch = checkKeyText(code, data.key_text ?? '');
-					if (outputMatch && keyTextMatch) {
-						codePassed = true;
-						if (isHybrid && !circuitPassed) {
-							codeOutput += '\n✅ Kode benar!';
-							codeOutput += '\n⏳ Selesaikan juga tantangan rangkaian untuk menyelesaikan pelajaran ini.';
-						}
-						if (checkAllPassed()) {
-							await completeLesson();
-							// Auto-show solution after celebration
-							if (data.solution_code) {
-								showSolution = true;
-								editor?.setCode(data.solution_code);
-							}
-							setTimeout(() => {
-								showCelebration = false;
-								activeTab = 'editor';
-							}, 3000);
-						}
+			out.output = res.output;
+			out.success = true;
+
+			if (data.expected_output) {
+				const passed = res.output.trim() === data.expected_output.trim() && checkKeyText(code, data.key_text ?? '');
+				if (passed) {
+					codePassed = true;
+					if (isHybrid && !circuitPassed) {
+						out.output += '\n✅ Kode benar!\n⏳ Selesaikan juga tantangan rangkaian untuk menyelesaikan pelajaran ini.';
+					}
+					if (checkAllPassed()) {
+						await completeLesson();
+						if (data.solution_code) { showSolution = true; editor?.setCode(data.solution_code); }
+						setTimeout(() => { showCelebration = false; activeTab = 'editor'; }, 3000);
 					}
 				}
-			} else {
-				codeError = res.error || 'Compilation failed';
-				codeSuccess = false;
 			}
 		} catch {
-			codeError = 'Gagal terhubung ke server';
-			codeSuccess = false;
+			Object.assign(out, { error: 'Gagal terhubung ke server', success: false });
 		} finally {
-			codeLoading = false;
+			out.loading = false;
 		}
 	}
 
@@ -328,15 +308,16 @@
 		if (!data) return;
 		if (activeTab === 'circuit') {
 			circuitEditor?.setCircuitText(data.initial_circuit || data.initial_code);
-			circuitOutput = '';
-			circuitError = '';
-			circuitSuccess = null;
+			Object.assign(circuitOut, freshOutput());
 		} else {
-			currentCode = data.initial_code;
-			editor?.setCode(data.initial_code);
-			codeOutput = '';
-			codeError = '';
-			codeSuccess = null;
+			const resetCode = currentLanguage === 'python'
+				? (data.initial_python || '')
+				: (data.initial_code_c || data.initial_code || '');
+			currentCode = resetCode;
+			if (currentLanguage === 'c') cCode = resetCode;
+			else pythonCode = resetCode;
+			editor?.setCode(resetCode);
+			Object.assign(getCodeOut(), freshOutput());
 		}
 	}
 
@@ -403,6 +384,7 @@
 				{isMobile}
 				bind:mobileMode
 				bind:activeTab
+				bind:currentLanguage
 				hasInfo={!!data.lesson_info}
 				hasExercise={!!data.exercise_content}
 				activeTabs={data.active_tabs ?? []}
@@ -481,18 +463,20 @@
 								{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
 							</button>
 						{/if}
-						<span class="lang-label">{data.language_display_name}</span>
+						<span class="lang-label">{currentLanguage === 'python' ? 'Python' : 'C'}</span>
 					</div>
 
 					<div class="panel">
+						{#key currentLanguage}
 						<CodeEditor
 							bind:this={editor}
 							code={currentCode}
-							language={data.language}
+							language={currentLanguage}
 							noPaste={true}
-							storageKey={($authLoggedIn && !showSolution) ? `elemes_draft_${slug}` : undefined}
+							storageKey={($authLoggedIn && !showSolution) ? `elemes_draft_${slug}_${currentLanguage}` : undefined}
 							onchange={(val) => { if (!showSolution) currentCode = val; }}
 						/>
+						{/key}
 					</div>
 
 					{#if data.expected_output}
@@ -507,12 +491,7 @@
 
 				<!-- Output tab panel -->
 				<div class="tab-panel" class:tab-hidden={activeTab !== 'output'}>
-					<OutputPanel
-						code={{ output: codeOutput, error: codeError, loading: codeLoading, success: codeSuccess }}
-						circuit={{ output: circuitOutput, error: circuitError, loading: circuitLoading, success: circuitSuccess }}
-						hasCode={!data.active_tabs || data.active_tabs.length === 0 || data.active_tabs.includes('c') || data.active_tabs.includes('python')}
-						hasCircuit={data.active_tabs?.includes('circuit') ?? false}
-					/>
+					<OutputPanel sections={outputSections} />
 				</div>
 			</div>
 
@@ -523,26 +502,35 @@
 {/if}
 
 <style>
+	/* ── Shared rich-text styles (.prose + .tab-content) ──── */
 	.tab-content {
 		font-size: 0.85rem;
 		padding: 0.75rem 0.5rem;
 		line-height: 1.65;
 	}
+	.tab-heading {
+		color: var(--color-primary);
+		font-size: 1.1rem;
+		margin-top: 0;
+	}
+	.prose :global(pre),
 	.tab-content :global(pre) {
 		background: var(--color-bg-secondary);
 		padding: 0.75rem;
 		border-radius: var(--radius);
 		overflow-x: auto;
 	}
+	.prose :global(code),
 	.tab-content :global(code) {
 		font-family: var(--font-mono);
-		font-size: 0.8rem;
+		font-size: 0.85rem;
 	}
+	.prose :global(p),
 	.tab-content :global(p) {
 		margin-bottom: 0.75rem;
 	}
-	.tab-content :global(h2),
-	.tab-content :global(h3) {
+	.prose :global(h2), .prose :global(h3),
+	.tab-content :global(h2), .tab-content :global(h3) {
 		margin-top: 1.25rem;
 		margin-bottom: 0.5rem;
 	}
@@ -553,11 +541,6 @@
 	}
 	.tab-content :global(li) {
 		margin-bottom: 0.25rem;
-	}
-	.tab-heading {
-		color: var(--color-primary);
-		font-size: 1.1rem;
-		margin-top: 0;
 	}
 
 	/* ── Two-column layout ─────────────────────────────────── */
@@ -575,25 +558,6 @@
 		-webkit-user-select: none;
 		user-select: none;
 		-webkit-touch-callout: none;
-	}
-
-	.prose :global(pre) {
-		background: var(--color-bg-secondary);
-		padding: 0.75rem;
-		border-radius: var(--radius);
-		overflow-x: auto;
-	}
-	.prose :global(code) {
-		font-family: var(--font-mono);
-		font-size: 0.85rem;
-	}
-	.prose :global(p) {
-		margin-bottom: 0.75rem;
-	}
-	.prose :global(h2),
-	.prose :global(h3) {
-		margin-top: 1.25rem;
-		margin-bottom: 0.5rem;
 	}
 
 	/* ── Editor area (docked mode) ──────────────────────────── */
@@ -741,25 +705,11 @@
 		overscroll-behavior: contain;
 	}
 	/* ── Mobile full: expand content to fill ────────────── */
-	.editor-area.mobile-full .editor-body {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-	}
-	.editor-area.mobile-full .tab-panel:not(.tab-hidden) {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-	}
-	.editor-area.mobile-full .panel {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-	}
-	.editor-area.mobile-full :global(.circuit-container) {
+	.editor-area.mobile-full .editor-body,
+	.editor-area.mobile-full .tab-panel:not(.tab-hidden),
+	.editor-area.mobile-full .panel,
+	.editor-area.mobile-full :global(.circuit-container),
+	.editor-area.mobile-full :global(.editor-wrapper) {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
@@ -768,12 +718,6 @@
 	.editor-area.mobile-full :global(.circuit-wrapper) {
 		flex: 1;
 		height: auto;
-	}
-	.editor-area.mobile-full :global(.editor-wrapper) {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
 	}
 	.editor-area.mobile-full :global(.cm-editor) {
 		flex: 1;

@@ -1,34 +1,32 @@
 <script lang="ts">
-	interface OutputSection {
+	export interface OutputSection {
 		output?: string;
 		error?: string;
 		loading?: boolean;
 		success?: boolean | null;
 	}
 
-	interface Props {
-		code?: OutputSection;
-		circuit?: OutputSection;
-		hasCode?: boolean;
-		hasCircuit?: boolean;
+	export interface OutputEntry {
+		key: string;
+		label: string;
+		icon: string;
+		data: OutputSection;
+		placeholder: string;
+		loadingText: string;
 	}
 
-	let {
-		code = { output: '', error: '', loading: false, success: null },
-		circuit = { output: '', error: '', loading: false, success: null },
-		hasCode = true,
-		hasCircuit = false,
-	}: Props = $props();
+	interface Props {
+		sections?: OutputEntry[];
+	}
 
-	// Determine overall loading state for header badge
-	let anyLoading = $derived(code.loading || circuit.loading);
+	let { sections = [] }: Props = $props();
 
-	// Determine overall success state: null if idle, true if all ran successfully, false if any error
+	let anyLoading = $derived(sections.some(s => s.data.loading));
+
 	let overallSuccess = $derived.by(() => {
-		const codeRan = code.success !== null && code.success !== undefined;
-		const circuitRan = circuit.success !== null && circuit.success !== undefined;
-		if (!codeRan && !circuitRan) return null;
-		if ((codeRan && code.success === false) || (circuitRan && circuit.success === false)) return false;
+		const ran = sections.filter(s => s.data.success !== null && s.data.success !== undefined);
+		if (ran.length === 0) return null;
+		if (ran.some(s => s.data.success === false)) return false;
 		return true;
 	});
 </script>
@@ -46,42 +44,23 @@
 	</div>
 
 	<div class="output-sections">
-		<!-- Code output section -->
-		{#if hasCode}
-		<div class="output-section" class:has-error={!!code.error} class:has-success={code.success === true}>
+		{#each sections as sec (sec.key)}
+		<div class="output-section" class:has-error={!!sec.data.error} class:has-success={sec.data.success === true}>
 			<div class="section-label">
-				<span class="section-icon">&#x1F4BB;</span> Code
-				{#if code.loading}
-					<span class="section-badge running">Compiling...</span>
-				{:else if code.success === true}
+				<span class="section-icon">{sec.icon}</span> {sec.label}
+				{#if sec.data.loading}
+					<span class="section-badge running">{sec.loadingText}</span>
+				{:else if sec.data.success === true}
 					<span class="section-badge success">OK</span>
-				{:else if code.success === false}
+				{:else if sec.data.success === false}
 					<span class="section-badge error">Error</span>
 				{/if}
 			</div>
-			<pre class="output-body">{#if code.loading}Mengompilasi dan menjalankan kode...{:else if code.error}{code.error}{:else if code.output}{code.output}{:else}<span class="placeholder">Klik "Run" untuk menjalankan kode</span>{/if}</pre>
+			<pre class="output-body">{#if sec.data.loading}{sec.loadingText}{:else if sec.data.error}{sec.data.error}{:else if sec.data.output}{sec.data.output}{:else}<span class="placeholder">{sec.placeholder}</span>{/if}</pre>
 		</div>
-		{/if}
+		{/each}
 
-		<!-- Circuit output section -->
-		{#if hasCircuit}
-		<div class="output-section" class:has-error={!!circuit.error} class:has-success={circuit.success === true}>
-			<div class="section-label">
-				<span class="section-icon">&#x26A1;</span> Circuit
-				{#if circuit.loading}
-					<span class="section-badge running">Evaluating...</span>
-				{:else if circuit.success === true}
-					<span class="section-badge success">OK</span>
-				{:else if circuit.success === false}
-					<span class="section-badge error">Error</span>
-				{/if}
-			</div>
-			<pre class="output-body">{#if circuit.loading}Mengevaluasi rangkaian...{:else if circuit.error}{circuit.error}{:else if circuit.output}{circuit.output}{:else}<span class="placeholder">Klik "Cek Rangkaian" untuk mengevaluasi</span>{/if}</pre>
-		</div>
-		{/if}
-
-		<!-- Fallback when neither section has run -->
-		{#if !hasCode && !hasCircuit}
+		{#if sections.length === 0}
 		<pre class="output-body"><span class="placeholder">Tidak ada output</span></pre>
 		{/if}
 	</div>
