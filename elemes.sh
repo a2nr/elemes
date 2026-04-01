@@ -3,6 +3,7 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 EXAMPLES_DIR="$SCRIPT_DIR/examples"
+PROJECT_NAME="$(basename "$PARENT_DIR")"
 
 case "$1" in
 init)
@@ -46,15 +47,15 @@ init)
   ;;
 stop | run | runbuild)
   echo "Stop Container..."
-  podman-compose --env-file ../.env down
+  podman-compose -p "$PROJECT_NAME" --env-file ../.env down
   ;;&
 runbuild)
   echo "Build and Run Container..."
-  podman-compose --env-file ../.env up --build --force-recreate -d
+  podman-compose -p "$PROJECT_NAME" --env-file ../.env up --build --force-recreate -d
   ;;&
 run)
   echo "Run Container..."
-  podman-compose --env-file ../.env up -d
+  podman-compose -p "$PROJECT_NAME" --env-file ../.env up -d
   ;;&
 generatetoken)
   echo "Generating tokens_siswa.csv from content..."
