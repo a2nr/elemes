@@ -7,7 +7,7 @@ import os
 from flask import Blueprint, request, jsonify, send_from_directory
 
 from compiler import compiler_factory
-from config import CONTENT_DIR, DEFAULT_PROGRAMMING_LANGUAGE
+from config import CONTENT_DIR
 from services.lesson_service import (
     get_ordered_lessons_with_learning_objectives,
     render_markdown_content,
@@ -90,7 +90,11 @@ def api_lesson(filename):
     prev_lesson = all_lessons[current_idx - 1] if current_idx > 0 else None
     next_lesson = all_lessons[current_idx + 1] if 0 <= current_idx < len(all_lessons) - 1 else None
 
-    programming_language = DEFAULT_PROGRAMMING_LANGUAGE
+    # Derive language from active_tabs instead of global env var
+    if 'python' in active_tabs:
+        programming_language = 'python'
+    else:
+        programming_language = 'c'
     language_display_name = compiler_factory.get_language_display_name(programming_language)
 
     return jsonify({

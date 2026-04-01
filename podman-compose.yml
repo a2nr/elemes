@@ -3,7 +3,6 @@ version: '3.8'
 services:
   elemes:
     build: .
-    container_name: elemes
     volumes:
       - ../content:/app/content
       - ../tokens_siswa.csv:/app/tokens.csv
@@ -19,7 +18,6 @@ services:
 
   elemes-frontend:
     build: ./frontend
-    container_name: elemes-frontend
     # ports:
     #  - 3000:3000
     environment:
@@ -34,7 +32,6 @@ services:
 
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
-    container_name: elemes-ts
     hostname: ${ELEMES_HOST}
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}

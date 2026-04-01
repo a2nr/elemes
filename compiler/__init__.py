@@ -2,7 +2,6 @@
 Compiler Factory for managing different language compilers
 """
 
-import os
 from .c_compiler import CCompiler
 from .python_compiler import PythonCompiler
 
@@ -11,16 +10,13 @@ class CompilerFactory:
     """
     Factory class to create and manage different language compilers
     """
-    
+
     def __init__(self):
         self.compilers = {
             'c': CCompiler(),
             'python': PythonCompiler()
         }
-        
-        # Get default language from environment variable
-        default_language = os.environ.get('DEFAULT_PROGRAMMING_LANGUAGE', 'c').lower()
-        self.default_compiler = self.compilers.get(default_language, self.compilers['c'])
+        self.default_compiler = self.compilers['c']
     
     def get_compiler(self, language=None):
         """
