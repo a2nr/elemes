@@ -30,6 +30,22 @@ services:
     depends_on:
       - elemes
 
+  velxio:
+    # image: ghcr.io/a2nr/velxio-elemes:latest
+    build:
+      context: ./velxio
+      dockerfile: Dockerfile.standalone
+      args:
+        VITE_BASE_PATH: /velxio/
+        VITE_API_BASE: /velxio/api
+    environment:
+      - SECRET_KEY=embed-only-no-auth-needed
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/velxio.db
+      - DATA_DIR=/app/data
+    volumes:
+      - velxio-data:/app/data
+      - velxio-arduino-libs:/root/.arduino15
+
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
     hostname: ${ELEMES_HOST}
@@ -50,6 +66,10 @@ services:
       - elemes-frontend
     env_file:
       - ../.env
+
+volumes:
+  velxio-data:
+  velxio-arduino-libs:
 
 networks:
   main_network:

@@ -63,6 +63,12 @@ def api_lesson(filename):
     initial_python = parsed_data.get('initial_python', '')
     initial_quiz = parsed_data.get('initial_quiz', '')
 
+    # Arduino/Velxio fields
+    initial_code_arduino = parsed_data.get('initial_code_arduino', '')
+    velxio_circuit = parsed_data.get('velxio_circuit', '')
+    expected_serial_output = parsed_data.get('expected_serial_output', '')
+    expected_wiring = parsed_data.get('expected_wiring', '')
+
     if not initial_code:
         initial_code = (
             '#include <stdio.h>\n\nint main() {\n'
@@ -108,6 +114,10 @@ def api_lesson(filename):
         'initial_code_c': initial_code_c,
         'initial_python': initial_python,
         'initial_quiz': initial_quiz,
+        'initial_code_arduino': initial_code_arduino,
+        'velxio_circuit': velxio_circuit,
+        'expected_serial_output': expected_serial_output,
+        'expected_wiring': expected_wiring,
         'solution_code': solution_code,
         'solution_circuit': solution_circuit,
         'key_text': key_text,

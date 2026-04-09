@@ -9,6 +9,7 @@
 	import LessonList from '$components/LessonList.svelte';
 	import { compileCode, trackProgress } from '$services/api';
 	import { checkKeyText, validateNodes } from '$services/exercise';
+	import { VelxioBridge, type EvaluationResult } from '$services/velxio-bridge';
 	import { auth, authLoggedIn } from '$stores/auth';
 	import { lessonContext } from '$stores/lessonContext';
 	import { noSelect } from '$actions/noSelect';
@@ -46,6 +47,15 @@
 	let codePassed = $state(false);
 	let circuitPassed = $state(false);
 
+	// Velxio (Arduino simulator) state
+	let isVelxio = $derived(data?.active_tabs?.includes('velxio') ?? false);
+	let velxioBridge = $state<VelxioBridge | null>(null);
+	let velxioReady = $state(false);
+	let velxioError = $state(false);
+	let velxioIframe = $state<HTMLIFrameElement | null>(null);
+	let velxioOut = $state(freshOutput());
+	let hasArduinoCode = $derived(!!data?.initial_code_arduino);
+
 	// Derived: is this a hybrid lesson (has both code and circuit)?
 	let isHybrid = $derived(
 		(data?.active_tabs?.includes('c') || data?.active_tabs?.includes('python')) &&
@@ -68,12 +78,15 @@
 		if (tabs.includes('circuit')) {
 			secs.push({ key: 'circuit', label: 'Circuit', icon: '\u26A1', data: circuitOut, placeholder: 'Klik "Cek Rangkaian" untuk mengevaluasi', loadingText: 'Mengevaluasi rangkaian...' });
 		}
+		if (tabs.includes('velxio')) {
+			secs.push({ key: 'velxio', label: 'Arduino', icon: '\u{1F4DF}', data: velxioOut, placeholder: 'Klik "Submit" untuk mengevaluasi', loadingText: 'Mengevaluasi...' });
+		}
 		return secs;
 	});
 
 	// UI state
 	let showSolution = $state(false);
-	let activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output'>('info');
+	let activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio'>('info');
 
 	let editor = $state<CodeEditor | null>(null);
 	let circuitEditor = $state<CircuitEditor | null>(null);
@@ -129,11 +142,19 @@
 			cOut = freshOutput();
 			pyOut = freshOutput();
 			circuitOut = freshOutput();
+			velxioOut = freshOutput();
 			codePassed = false;
 			circuitPassed = false;
 			showSolution = false;
+
+			// Cleanup previous Velxio bridge
+			if (velxioBridge) { velxioBridge.destroy(); velxioBridge = null; }
+			velxioReady = false;
+			velxioError = false;
+			const isVelxioLesson = lesson.active_tabs?.includes('velxio');
 			if (lesson.lesson_info) activeTab = 'info';
 			else if (lesson.exercise_content) activeTab = 'exercise';
+			else if (isVelxioLesson) activeTab = 'velxio' as any;
 			else if (lesson.active_tabs?.includes('circuit') && !hasC && !hasPython) activeTab = 'circuit';
 			else activeTab = 'editor';
 			mobileMode = 'half';
@@ -163,9 +184,10 @@
 		prevLanguage = currentLanguage;
 	});
 
-	// Clear lesson context when leaving page
+	// Clear lesson context and Velxio bridge when leaving page
 	beforeNavigate(() => {
 		lessonContext.set(null);
+		if (velxioBridge) { velxioBridge.destroy(); velxioBridge = null; }
 	});
 
 	// Apply syntax highlighting + circuit embeds after content renders
@@ -338,6 +360,234 @@
 			}
 		}
 	}
+
+	// === Velxio (Arduino simulator) ===
+
+	/** Try to directly read Velxio Zustand stores from iframe (same-origin). */
+	function getVelxioStores(iframe: HTMLIFrameElement): { editor: any; simulator: any } | null {
+		try {
+			const win = iframe.contentWindow as any;
+			if (!win) return null;
+			// Zustand stores expose getState() on the hook; we look for the global store refs
+			// that Velxio's EmbedBridge.ts imports. As a fallback, walk __ZUSTAND__ if available.
+			const editorState = win.__VELXIO_EDITOR_STORE__?.getState?.();
+			const simState = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
+			if (editorState && simState) return { editor: editorState, simulator: simState };
+			return null;
+		} catch { return null; }
+	}
+
+	function initVelxioBridge(iframe: HTMLIFrameElement) {
+		velxioIframe = iframe;
+
+		let settled = false;
+		const onMessage = (e: MessageEvent) => {
+			const type = e.data?.type;
+			if (!type) return;
+
+			if (!settled && type === 'velxio:ready') {
+				settled = true;
+				velxioBridge = new VelxioBridge(iframe);
+				velxioReady = true;
+				if (!data) return;
+				velxioBridge.setEmbedMode({ hideAuth: true, hideComponentPicker: true });
+				if (data.velxio_circuit) velxioBridge.loadCircuit(data.velxio_circuit);
+				if (data.initial_code_arduino) {
+					velxioBridge.loadCode([{ name: 'sketch.ino', content: data.initial_code_arduino }]);
+				}
+			}
+
+			if (type === 'velxio:compile_result' && e.data.success) {
+				setTimeout(() => handleVelxioSubmit(), 5000);
+			}
+		};
+		window.addEventListener('message', onMessage);
+
+		// Fallback: if PostMessage bridge never connects, try direct iframe access (same-origin)
+		// and also use it to send initial data via postMessage directly
+		const pollReady = setInterval(() => {
+			if (settled) { clearInterval(pollReady); return; }
+			try {
+				const win = iframe.contentWindow as any;
+				if (!win || !win.document) return;
+				// Check if React app loaded by looking for the root element with content
+				const root = win.document.getElementById('root');
+				if (!root || !root.children.length) return;
+
+				// Iframe loaded — mark as ready even without velxio:ready message
+				settled = true;
+				clearInterval(pollReady);
+				velxioReady = true;
+
+				// Try sending commands directly via postMessage (same-origin, should work)
+				if (data) {
+					win.postMessage({ type: 'elemes:set_embed_mode', hideAuth: true, hideComponentPicker: true }, '*');
+					if (data.velxio_circuit) {
+						try {
+							const circuitData = JSON.parse(data.velxio_circuit);
+							win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
+						} catch {}
+					}
+					if (data.initial_code_arduino) {
+						win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: data.initial_code_arduino }] }, '*');
+					}
+				}
+			} catch { /* cross-origin or not ready yet */ }
+		}, 1000);
+
+		setTimeout(() => {
+			clearInterval(pollReady);
+			if (settled) return;
+			settled = true;
+			window.removeEventListener('message', onMessage);
+			// Don't show error — the Submit button + direct access still works
+			// velxioError = true;
+		}, 30_000);
+	}
+
+	async function handleVelxioSubmit() {
+		if (!data) return;
+
+		Object.assign(velxioOut, { loading: true, output: 'Mengevaluasi...', error: '', success: null });
+		activeTab = 'output';
+
+		try {
+			// === Gather data: try PostMessage bridge first, fall back to direct iframe access ===
+			let sourceCode = '';
+			let serialLog = '';
+			let wireList: { start: { componentId: string; pinName: string }; end: { componentId: string; pinName: string } }[] = [];
+			const dbg: string[] = [];
+
+			if (velxioBridge) {
+				// Try bridge (PostMessage)
+				dbg.push('[metode: PostMessage bridge]');
+				const srcResp = await velxioBridge['request']('elemes:get_source_code', 'velxio:source_code');
+				if (srcResp) sourceCode = (srcResp.files as any[]).map((f: any) => f.content).join('\n');
+				else dbg.push('[!] get_source_code timeout');
+
+				const serResp = await velxioBridge['request']('elemes:get_serial_log', 'velxio:serial_log');
+				if (serResp) serialLog = serResp.log as string;
+				else dbg.push('[!] get_serial_log timeout');
+
+				const wireResp = await velxioBridge['request']('elemes:get_wires', 'velxio:wires');
+				if (wireResp) wireList = wireResp.wires as any[];
+				else dbg.push('[!] get_wires timeout');
+			}
+
+			// Fallback: direct iframe store access (same-origin)
+			if (!sourceCode && velxioIframe) {
+				dbg.push('[fallback: direct iframe access]');
+				try {
+					const win = velxioIframe.contentWindow as any;
+					// Access Zustand stores via window globals (we'll expose them)
+					// Or try to find the stores on the module scope
+					const editorStore = win.__VELXIO_EDITOR_STORE__?.getState?.();
+					const simStore = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
+
+					if (editorStore?.files) {
+						sourceCode = editorStore.files.map((f: any) => f.content).join('\n');
+						dbg.push(`[direct] source: ${sourceCode.length} chars`);
+					} else {
+						dbg.push('[direct] editor store not found');
+					}
+
+					if (simStore) {
+						const board = simStore.boards?.find((b: any) => b.id === simStore.activeBoardId);
+						serialLog = board?.serialOutput ?? simStore.serialOutput ?? '';
+						dbg.push(`[direct] serial: ${serialLog.length} chars`);
+						wireList = simStore.wires ?? [];
+						dbg.push(`[direct] wires: ${wireList.length}`);
+					} else {
+						dbg.push('[direct] simulator store not found');
+					}
+				} catch (e: any) {
+					dbg.push(`[direct] error: ${e.message}`);
+				}
+			}
+
+			// === Evaluate ===
+			const messages: string[] = [];
+			let keyTextPass: boolean | undefined;
+			let serialPass: boolean | undefined;
+			let wiringPass: boolean | undefined;
+
+			// 1. Key text
+			if (data.key_text) {
+				const keys = data.key_text.split('\n').map(k => k.trim()).filter(k => k.length > 0);
+				keyTextPass = keys.every(key => sourceCode.includes(key));
+				messages.push(keyTextPass
+					? '✅ Kata kunci ditemukan dalam kode'
+					: '❌ Kata kunci belum ada dalam kode');
+				dbg.push(`[key_text] keys="${keys.join(', ')}" → ${keyTextPass}`);
+			}
+
+			// 2. Serial output
+			if (data.expected_serial_output) {
+				const actualLines = serialLog.trim().split('\n').map(l => l.trim());
+				const expectedLines = data.expected_serial_output.trim().split('\n').map(l => l.trim());
+				let j = 0;
+				for (const line of actualLines) {
+					if (j < expectedLines.length && line === expectedLines[j]) j++;
+					if (j === expectedLines.length) break;
+				}
+				serialPass = j === expectedLines.length;
+				messages.push(serialPass
+					? '✅ Serial output sesuai'
+					: '❌ Serial output belum sesuai');
+				const preview = serialLog.substring(0, 150).replace(/\n/g, '↵');
+				dbg.push(`[serial] actual(${serialLog.length}ch)="${preview}" → ${serialPass}`);
+			}
+
+			// 3. Wiring
+			if (data.expected_wiring) {
+				let expectedPairs: [string, string][] = [];
+				try { expectedPairs = JSON.parse(data.expected_wiring); } catch {}
+
+				// Normalize power pin names (e.g., GND.2 → GND, VCC.1 → VCC)
+				const normalizePin = (pin: string) => pin.replace(/^(GND|VCC|5V|3V3|3\.3V)\.\d+$/i, '$1');
+				
+				const norm = (a: string, b: string) => {
+					const normA = a.replace(/:(.+)$/, (_, pin) => ':' + normalizePin(pin));
+					const normB = b.replace(/:(.+)$/, (_, pin) => ':' + normalizePin(pin));
+					return [normA, normB].sort().join('↔');
+				};
+				const studentEdges = new Set(
+					wireList.map(w => norm(
+						`${w.start.componentId}:${w.start.pinName}`,
+						`${w.end.componentId}:${w.end.pinName}`
+					))
+				);
+				wiringPass = expectedPairs.every(([a, b]) => studentEdges.has(norm(a, b)));
+				messages.push(wiringPass
+					? '✅ Rangkaian wiring benar'
+					: '❌ Wiring belum sesuai');
+
+				const edgesStr = wireList.map(w =>
+					`${w.start.componentId}:${w.start.pinName}↔${w.end.componentId}:${w.end.pinName}`
+				);
+				dbg.push(`[wiring] student: ${edgesStr.join(' | ') || '(kosong)'}`);
+				dbg.push(`[wiring] expected: ${expectedPairs.map(p => p.join('↔')).join(' | ')}`);
+				dbg.push(`[wiring] → ${wiringPass}`);
+			}
+
+			const checks = [keyTextPass, serialPass, wiringPass].filter(v => v !== undefined);
+			const pass = checks.length > 0 && checks.every(Boolean);
+
+			messages.push('', '── Debug ──', ...dbg);
+
+			velxioOut.output = messages.join('\n');
+			velxioOut.success = pass;
+
+			if (pass) {
+				await completeLesson();
+				setTimeout(() => { showCelebration = false; activeTab = 'velxio'; }, 3000);
+			}
+		} catch (err: any) {
+			Object.assign(velxioOut, { error: `Evaluasi gagal: ${err.message}`, success: false });
+		} finally {
+			velxioOut.loading = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -447,6 +697,35 @@
 							storageKey={($authLoggedIn && !showSolution) ? `elemes_circuit_${slug}` : undefined}
 						/>
 					</div>
+				</div>
+				{/if}
+
+				<!-- Velxio (Arduino) tab panel -->
+				{#if isVelxio}
+				<div class="tab-panel velxio-panel" class:tab-hidden={activeTab !== 'velxio'}>
+					{#if velxioError}
+						<div class="velxio-fallback">
+							Simulator Arduino sedang tidak tersedia.
+							Hubungi guru jika masalah berlanjut.
+						</div>
+					{:else}
+						<div class="velxio-toolbar">
+							<button type="button" class="btn btn-success" onclick={handleVelxioSubmit}
+								disabled={velxioOut.loading}>
+								{velxioOut.loading ? 'Mengevaluasi...' : '✓ Submit'}
+							</button>
+							<span class="velxio-status">
+								{velxioReady ? '🟢 Bridge' : '🔵 Direct'}
+							</span>
+						</div>
+						<!-- svelte-ignore a11y_missing_attribute -->
+						<iframe
+							class="velxio-iframe"
+							src="/velxio/editor?embed=true{hasArduinoCode ? '' : '&hideEditor=true'}"
+							onload={(e) => initVelxioBridge(e.currentTarget as HTMLIFrameElement)}
+							allow="cross-origin-isolated"
+						></iframe>
+					{/if}
 				</div>
 				{/if}
 
@@ -575,6 +854,8 @@
 	}
 	.editor-area .editor-body {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
 		overflow-y: auto;
 		padding: 0.5rem;
 		min-height: 0;
@@ -658,6 +939,7 @@
 		right: 1rem;
 		top: auto;
 		width: 45vw;
+		height: 70vh;
 		min-width: 320px;
 		max-width: 100vw;
 		max-height: 100vh;
@@ -734,6 +1016,44 @@
 	}
 	.tab-hidden {
 		display: none;
+	}
+
+	/* ── Velxio (Arduino simulator) ─────────────────────── */
+	.velxio-toolbar {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.4rem 0.5rem;
+		border-bottom: 1px solid var(--color-border);
+		flex-shrink: 0;
+	}
+	.velxio-status {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+	}
+	.velxio-panel {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+	}
+	.velxio-panel.tab-hidden {
+		display: none;
+	}
+	.velxio-iframe {
+		flex: 1;
+		width: 100%;
+		min-height: 400px;
+		border: none;
+		border-radius: var(--radius);
+	}
+	.velxio-fallback {
+		padding: 2rem;
+		text-align: center;
+		color: var(--color-text-muted);
+		background: var(--color-bg-secondary);
+		border-radius: var(--radius);
+		margin: 0.5rem 0;
 	}
 
 </style>

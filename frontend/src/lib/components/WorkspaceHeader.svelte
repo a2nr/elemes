@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabType = 'info' | 'exercise' | 'editor' | 'circuit' | 'output';
+	type TabType = 'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio';
 
 	interface Props {
 		isMobile: boolean;
@@ -37,8 +37,9 @@
 
 	const hasC = $derived(activeTabs?.includes('c') ?? false);
 	const hasPython = $derived(activeTabs?.includes('python') ?? false);
+	const hasVelxio = $derived(activeTabs?.includes('velxio') ?? false);
 	const hasCodeEditor = $derived(
-		!activeTabs || activeTabs.length === 0 || hasC || hasPython
+		!hasVelxio && (!activeTabs || activeTabs.length === 0 || hasC || hasPython)
 	);
 	const hasMultiLang = $derived(hasC && hasPython);
 	const hasCircuit = $derived(activeTabs?.includes('circuit') ?? false);
@@ -84,6 +85,9 @@
 	{/if}
 	{#if hasCircuit}
 		<button class="chrome-tab" class:active={activeTab === 'circuit'} onclick={() => (activeTab = 'circuit')}>Circuit</button>
+	{/if}
+	{#if hasVelxio}
+		<button class="chrome-tab" class:active={activeTab === 'velxio'} onclick={() => (activeTab = 'velxio')}>Arduino</button>
 	{/if}
 	<button class="chrome-tab" class:active={activeTab === 'output'} onclick={() => (activeTab = 'output')}>Output</button>
 {/snippet}

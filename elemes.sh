@@ -45,23 +45,34 @@ init)
   echo "  3. Edit ../tokens_siswa.csv untuk data siswa"
   echo "  4. Jalankan:  ./elemes.sh runbuild"
   ;;
-stop | run | runbuild)
+stop | run | runbuild | runclearbuild)
   echo "Stop Container..."
   podman-compose -p "$PROJECT_NAME" --env-file ../.env down
   ;;&
-runbuild)
-  echo "Build and Run Container..."
-  podman-compose -p "$PROJECT_NAME" --env-file ../.env up --build --force-recreate -d
+stop) ;;
+runclearbuild)
+  echo "Cleanup dangling images..."
+  podman image prune -f
+  echo "Build Container (no cache)..."
+  podman-compose -p "$PROJECT_NAME" --env-file ../.env build --no-cache
   ;;&
+runbuild)
+  echo "Build Container..."
+  podman-compose -p "$PROJECT_NAME" --env-file ../.env build
+  ;;&
+runbuild | runclearbuild)
+  echo "Run Container..."
+  podman-compose -p "$PROJECT_NAME" --env-file ../.env up --force-recreate -d
+  ;;
 run)
   echo "Run Container..."
   podman-compose -p "$PROJECT_NAME" --env-file ../.env up -d
-  ;;&
+  ;;
 generatetoken)
   echo "Generating tokens_siswa.csv from content..."
   python3 "$SCRIPT_DIR/generate_tokens.py"
-  ;;&
+  ;;
 *)
-  echo "elemes.sh ( init | run | runbuild | stop | generatetoken )"
+  echo "elemes.sh ( init | run | runbuild | runclearbuild | stop | generatetoken )"
   ;;
 esac

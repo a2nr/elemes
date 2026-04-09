@@ -12,6 +12,9 @@
         },
         "/assets/": {
           "Proxy": "http://elemes:5000/assets/"
+        },
+        "/velxio/": {
+          "Proxy": "http://velxio:80/"
         }
       }
     }

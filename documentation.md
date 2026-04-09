@@ -1,7 +1,7 @@
 # Elemes LMS — Dokumentasi Teknis
 
-**Project:** LMS-C (Learning Management System untuk Pemrograman C)
-**Terakhir diupdate:** 30 Maret 2026
+**Project:** LMS-C (Learning Management System untuk Pemrograman C & Arduino)
+**Terakhir diupdate:** 8 April 2026
 
 ---
 
@@ -13,11 +13,16 @@ Internet (HTTPS :443)
     ▼
 Tailscale Funnel (elemes-ts)
     │
+    ├── /              → SvelteKit Frontend (elemes-frontend :3000)
+    ├── /assets/       → Flask Backend (elemes :5000)
+    ├── /velxio/       → Velxio Arduino Simulator (velxio :80)
+    │
     ▼
 SvelteKit Frontend (elemes-frontend :3000)
   ├── SSR pages (lesson content embedded in HTML)
   ├── CodeMirror 6 editor (lazy-loaded)
-  ├── CircuitJS simulator (iframe, GWT-compiled)
+  ├── CircuitJS simulator (iframe, GWT-compiled) — mode "circuit"
+  ├── Velxio Arduino simulator (iframe, React) — mode "velxio"
   ├── API proxy: /api/* → Flask
   └── PWA manifest
     │
@@ -27,17 +32,24 @@ Flask API Backend (elemes :5000)
   ├── Token authentication (CSV)
   ├── Progress tracking
   └── Lesson content parsing (markdown)
+    │
+Velxio Arduino Simulator (velxio :80)
+  ├── React + Vite frontend (editor + simulator canvas)
+  ├── FastAPI backend (arduino-cli compile)
+  ├── AVR8 / RP2040 CPU emulation (browser)
+  └── PostMessage bridge ↔ Elemes (EmbedBridge.ts)
 ```
 
 ### Container Setup
 
-| Container | Image | IP (static) | Port | Fungsi |
-|-----------|-------|-------------|------|--------|
-| `elemes` | Python 3.11 + gcc | 10.89.100.10 | 5000 | Flask API |
-| `elemes-frontend` | Node 20 | 10.89.100.11 | 3000 | SvelteKit SSR |
-| `elemes-ts` | Tailscale | 10.89.100.12 | 443 | HTTPS Funnel |
+| Container | Image | Port | Fungsi |
+|-----------|-------|------|--------|
+| `elemes` | Python 3.11 + gcc | 5000 | Flask API (compile, auth, lessons, progress) |
+| `elemes-frontend` | Node 20 | 3000 | SvelteKit SSR |
+| `velxio` | Node + Python + arduino-cli | 80 | Simulator Arduino (React + FastAPI) |
+| `elemes-ts` | Tailscale | 443 | HTTPS Funnel + reverse proxy |
 
-Static IPs karena aardvark-dns (podman DNS) tidak resolve hostname antar container.
+Container berkomunikasi via hostname Podman (compose service name). Proxy rules di `config/sinau-c-tail.json`.
 
 ---
 
@@ -45,21 +57,30 @@ Static IPs karena aardvark-dns (podman DNS) tidak resolve hostname antar contain
 
 ```
 lms-c/
-├── content/                     # 25 lesson markdown
+├── content/                     # Lesson markdown files
+│   ├── home.md                  # Daftar lesson + landing page
+│   ├── hello_world.md           # Lesson C
+│   ├── variabel.md              # Lesson C
+│   ├── rangkaian_dasar.md       # Lesson Circuit
+│   └── led_blink_arduino.md     # Lesson Arduino/Velxio
 ├── assets/                      # Gambar untuk lesson
 ├── tokens_siswa.csv             # Data siswa & progress
-├── config/sinau-c-tail.json     # Tailscale serve config
 ├── state/                       # Tailscale runtime state
 ├── .env                         # Environment variables
 │
 └── elemes/                      # Semua kode aplikasi
     ├── app.py                   # Flask create_app() factory
-    ├── config.py                # Environment config
+    ├── config.py                # CONTENT_DIR, TOKENS_FILE
     ├── Dockerfile               # Flask container
     ├── gunicorn.conf.py         # Production WSGI
     ├── requirements.txt         # Python deps
-    ├── podman-compose.yml       # 3 services
+    ├── podman-compose.yml       # 4 services (elemes, frontend, velxio, ts)
+    ├── elemes.sh                # CLI: init, run, runbuild, stop, generatetoken
     ├── generate_tokens.py       # Utility: generate CSV tokens
+    ├── proposal.md              # Proposal integrasi Velxio (referensi arsitektur)
+    │
+    ├── config/
+    │   └── sinau-c-tail.json    # Tailscale Serve proxy rules
     │
     ├── compiler/                # Code compilation
     │   ├── __init__.py          # CompilerFactory
@@ -70,60 +91,83 @@ lms-c/
     ├── routes/                  # Flask Blueprints
     │   ├── auth.py              # /login, /logout, /validate-token
     │   ├── compile.py           # /compile
-    │   ├── lessons.py           # /lessons, /lesson/<slug>.json
-    │   └── progress.py          # /track-progress, /progress-report.json
+    │   ├── lessons.py           # /lessons, /lesson/<slug>.json, /get-key-text/<slug>
+    │   └── progress.py          # /track-progress, /progress-report.json, export-csv
     │
     ├── services/                # Business logic
     │   ├── token_service.py     # CSV token CRUD
-    │   └── lesson_service.py    # Markdown parsing
+    │   └── lesson_service.py    # Markdown parsing + rendering
     │
-    └── frontend/                # SvelteKit PWA
-        ├── package.json
-        ├── svelte.config.js     # adapter-node + path aliases
-        ├── vite.config.ts       # API proxy (dev only)
-        ├── Dockerfile           # Multi-stage build
-        └── src/
-            ├── hooks.server.ts  # API proxy (production)
-            ├── app.html
-            ├── app.css
-            ├── lib/
-            │   ├── components/
-            │   │   ├── CircuitEditor.svelte  # CircuitJS iframe wrapper
-            │   │   ├── CrosshairOverlay.svelte # Touch precision overlay (fat finger fix)
-            │   │   ├── CodeEditor.svelte   # CodeMirror 6 (lazy-loaded)
-            │   │   ├── Navbar.svelte
-            │   │   ├── LessonCard.svelte
-            │   │   ├── OutputPanel.svelte
-            │   │   ├── ProgressBadge.svelte
-            │   │   └── Footer.svelte
-            │   ├── stores/
-            │   │   ├── auth.ts             # Svelte writable stores
-            │   │   └── theme.ts            # Dark/light toggle
-            │   ├── services/
-            │   │   └── api.ts              # Flask API client
-            │   └── types/
-            │       ├── lesson.ts
-            │       ├── auth.ts
-            │       ├── compiler.ts
-            │       └── circuitjs.ts         # CircuitJSApi interface
-            ├── routes/
-            │   ├── +layout.svelte
-            │   ├── +page.svelte            # Home (lesson grid)
-            │   ├── +page.ts                # SSR data loader
-            │   ├── lesson/[slug]/
-            │   │   ├── +page.svelte        # Lesson viewer + editor
-            │   │   └── +page.ts            # SSR data loader
-            │   └── progress/
-            │       └── +page.svelte        # Teacher dashboard
-            └── static/
-                ├── manifest.json           # PWA manifest
-                └── circuitjs1/             # CircuitJS simulator (GWT-compiled)
-                    ├── circuitjs.html      # GWT entry point (loaded in iframe)
-                    ├── lz-string.min.js    # LZ compression (circuit export)
-                    └── circuitjs1/         # GWT compiled output
-                        ├── *.cache.js      # Compiled permutations
-                        ├── circuitjs1.nocache.js  # Bootstrap loader
-                        └── circuits/       # Bundled example circuits
+    ├── frontend/                # SvelteKit (Svelte 5)
+    │   ├── package.json
+    │   ├── svelte.config.js     # adapter-node + path aliases
+    │   ├── vite.config.ts
+    │   ├── Dockerfile           # Multi-stage build
+    │   └── src/
+    │       ├── hooks.server.ts  # API proxy: /api/* → Flask, /assets/* → Flask
+    │       ├── app.html
+    │       ├── app.css
+    │       ├── lib/
+    │       │   ├── components/
+    │       │   │   ├── CodeEditor.svelte       # CodeMirror 6 (lazy-loaded, anti-paste)
+    │       │   │   ├── CircuitEditor.svelte    # CircuitJS iframe wrapper
+    │       │   │   ├── CrosshairOverlay.svelte # Touch precision overlay (CircuitJS)
+    │       │   │   ├── OutputPanel.svelte      # Multi-section output (C, Python, Circuit, Arduino)
+    │       │   │   ├── CelebrationOverlay.svelte # Lesson completion animation
+    │       │   │   ├── WorkspaceHeader.svelte  # Tab switcher + floating/mobile controls
+    │       │   │   ├── LessonFooterNav.svelte  # Prev/next lesson navigation
+    │       │   │   ├── Navbar.svelte
+    │       │   │   ├── LessonCard.svelte
+    │       │   │   ├── LessonList.svelte
+    │       │   │   ├── ProgressBadge.svelte
+    │       │   │   └── Footer.svelte
+    │       │   ├── stores/
+    │       │   │   ├── auth.ts             # Svelte writable stores (login, token)
+    │       │   │   ├── lessonContext.ts     # Current lesson nav context
+    │       │   │   └── theme.ts            # Dark/light toggle
+    │       │   ├── services/
+    │       │   │   ├── api.ts              # Flask API client
+    │       │   │   ├── exercise.ts         # checkKeyText(), validateNodes()
+    │       │   │   └── velxio-bridge.ts    # PostMessage bridge ke Velxio iframe
+    │       │   ├── actions/
+    │       │   │   ├── floatingPanel.svelte.ts  # Draggable/resizable editor panel
+    │       │   │   ├── highlightCode.ts         # Syntax highlighting post-render
+    │       │   │   ├── noSelect.ts              # Anti-select directive
+    │       │   │   └── renderCircuitEmbeds.ts   # Inline circuit embed renderer
+    │       │   └── types/
+    │       │       ├── lesson.ts           # LessonContent interface
+    │       │       ├── auth.ts
+    │       │       ├── compiler.ts
+    │       │       └── circuitjs.ts        # CircuitJSApi interface
+    │       ├── routes/
+    │       │   ├── +layout.svelte          # App shell (Navbar, theme)
+    │       │   ├── +page.svelte            # Home (lesson grid)
+    │       │   ├── +page.ts                # SSR data loader
+    │       │   ├── lesson/[slug]/
+    │       │   │   ├── +page.svelte        # Lesson viewer (semua mode)
+    │       │   │   └── +page.ts            # SSR data loader
+    │       │   └── progress/
+    │       │       └── +page.svelte        # Teacher dashboard
+    │       └── static/
+    │           ├── manifest.json           # PWA manifest
+    │           └── circuitjs1/             # CircuitJS simulator (GWT-compiled)
+    │
+    └── velxio/                  # Velxio fork (Git submodule)
+        ├── frontend/            # React + Vite + TypeScript
+        │   └── src/
+        │       ├── services/EmbedBridge.ts       # PostMessage listener (Velxio side)
+        │       ├── pages/EditorPage.tsx           # Editor + embed mode
+        │       ├── components/editor/EditorToolbar.tsx
+        │       ├── components/simulator/SimulatorCanvas.tsx  # Canvas + touch/pinch + undo/redo toolbar
+        │       ├── components/simulator/SimulatorCanvas.css # Canvas styling (undo-controls class)
+        │       ├── components/simulator/WireInProgressRenderer.tsx  # Wire preview + crosshair
+        │       ├── components/simulator/WireLayer.tsx      # Wire SVG rendering + segment handles
+        │       ├── components/simulator/PinOverlay.tsx
+        │       ├── store/useEditorStore.ts        # Multi-file workspace
+        │       └── store/useSimulatorStore.ts     # Simulation state, wires, undo/redo stacks
+        ├── backend/             # FastAPI + arduino-cli
+        ├── Dockerfile.standalone
+        └── CLAUDE.md            # Dokumentasi teknis lengkap Velxio
 ```
 
 ---
@@ -136,50 +180,59 @@ lms-c/
 - SSR untuk konten markdown (instant first paint)
 - PWA installable tanpa app store
 
-### Kenapa Svelte writable stores, bukan runes ($state)?
-Svelte 5 runes (`$state`, `$derived`) hanya bekerja di dalam file `.svelte`. File `.ts` biasa tidak diproses oleh Svelte compiler, sehingga `$state()` menjadi `ReferenceError` saat runtime di server. Solusi: gunakan `writable()` dari `svelte/store` di file `.ts`, dan `$storeName` auto-subscription di `.svelte`.
-
-### Kenapa static IP, bukan DNS?
-Podman's aardvark-dns tidak berfungsi di environment ini (getaddrinfo EAI_AGAIN). Workaround: assign static IP per container via IPAM config di podman-compose.yml.
+### Svelte 5 Runes vs Writable Stores
+Proyek ini menggunakan **Svelte 5** dengan dua pola state management:
+- **Runes (`$state`, `$derived`, `$effect`)** — digunakan di file `.svelte` (contoh: `lesson/[slug]/+page.svelte` menggunakan `$state` untuk semua UI state, `$derived` untuk computed values, `$effect` untuk side effects)
+- **Writable stores (`writable()`)** — digunakan di file `.ts` biasa karena runes tidak diproses oleh Svelte compiler di luar file `.svelte`. Contoh: `auth.ts`, `lessonContext.ts`, `theme.ts`
 
 ### Kenapa hooks.server.ts untuk API proxy?
-Vite `server.proxy` hanya bekerja di dev mode (`vite dev`). Di production (adapter-node), SvelteKit tidak punya proxy. `hooks.server.ts` mem-forward `/api/*` ke Flask backend saat runtime.
+Vite `server.proxy` hanya bekerja di dev mode (`vite dev`). Di production (adapter-node), SvelteKit tidak punya proxy. `hooks.server.ts` mem-forward `/api/*` dan `/assets/*` ke Flask backend saat runtime. Prefix `/api/` di-strip sebelum forward (Flask routes tidak pakai `/api/` prefix).
 
-### Kenapa transparent overlay untuk touch, bukan inject ke iframe?
-CircuitJS adalah GWT-compiled app — tidak bisa modify source code-nya. Alternatif lain:
-- **Inject script via `contentDocument`**: Fragile, GWT overwrite DOM handlers.
-- **PostMessage**: Tidak bisa dispatch native MouseEvent dari luar.
-- **Transparent overlay**: Intercept PointerEvent di parent, konversi ke MouseEvent, dispatch ke iframe via `contentDocument.elementFromPoint()`. Paling reliable karena tidak bergantung pada internal CircuitJS.
-
-Overlay dinonaktifkan (`pointer-events: none`) di desktop sehingga mouse events langsung tembus ke iframe tanpa overhead.
+### Kenapa transparent overlay untuk touch CircuitJS?
+CircuitJS adalah GWT-compiled app — tidak bisa modify source code-nya. Transparent overlay mengintercept PointerEvent di parent, konversi ke MouseEvent, dispatch ke iframe via `contentDocument.elementFromPoint()`. Overlay dinonaktifkan (`pointer-events: none`) di desktop sehingga mouse events langsung tembus ke iframe.
 
 ### Kenapa lazy-load CodeMirror?
-CodeMirror 6 bundle ~475KB. Dengan dynamic `import()`, lesson content (text) muncul langsung via SSR, editor menyusul setelah JS bundle selesai download. Perceived load time jauh lebih cepat.
+CodeMirror 6 bundle ~475KB. Dengan dynamic `import()`, lesson content (text) muncul langsung via SSR, editor menyusul setelah JS bundle selesai download.
+
+### Kenapa Velxio di-embed via iframe, bukan komponen?
+Velxio adalah aplikasi React lengkap (editor + simulator + serial monitor + wire system). Mengekstrak komponen-komponennya ke SvelteKit tidak praktis. Iframe + PostMessage bridge memungkinkan kedua sistem dikembangkan secara independen. Same-origin via Tailscale Serve proxy (`/velxio/`), jadi tidak perlu CORS/CSP khusus.
 
 ---
 
 ## Cara Menjalankan
 
 ```bash
+# Setup awal (sekali)
 cd elemes/
-podman-compose --env-file ../.env up --build -d
+./elemes.sh init
+
+# Edit ../.env sesuai kebutuhan (ELEMES_HOST, TS_AUTHKEY, branding)
+
+# Build & run semua container
+./elemes.sh runbuild
+
+# Atau: run tanpa rebuild
+./elemes.sh run
+
+# Stop
+./elemes.sh stop
+
+# Rebuild tanpa cache
+./elemes.sh runclearbuild
+
+# Generate token siswa dari content
+./elemes.sh generatetoken
 ```
 
-- **Frontend:** http://localhost:3000
+- **Frontend:** http://localhost:3000 (dev)
 - **Tailscale:** https://{ELEMES_HOST}.{tailnet}.ts.net
-
-### Rebuild setelah perubahan kode
-
-```bash
-podman-compose --env-file ../.env down
-podman-compose --env-file ../.env up --build -d
-```
 
 ### Logs
 
 ```bash
 podman logs elemes           # Flask API
 podman logs elemes-frontend  # SvelteKit
+podman logs velxio           # Velxio simulator
 podman logs elemes-ts        # Tailscale
 ```
 
@@ -187,35 +240,135 @@ podman logs elemes-ts        # Tailscale
 
 ## API Endpoints
 
-Semua endpoint Flask diakses via SvelteKit proxy (`/api/*` → Flask `:5000`):
+Semua endpoint Flask diakses via SvelteKit proxy (`/api/*` → Flask `:5000`, prefix `/api/` di-strip):
 
-| Method | Path | Fungsi |
-|--------|------|--------|
-| POST | `/api/login` | Login dengan token |
-| POST | `/api/logout` | Logout |
-| POST | `/api/validate-token` | Validasi token |
-| GET | `/api/lessons` | Daftar lesson + home content |
-| GET | `/api/lesson/<slug>.json` | Data lesson lengkap |
-| GET | `/api/get-key-text/<slug>` | Key text untuk lesson |
-| POST | `/api/compile` | Compile & run kode |
-| POST | `/api/track-progress` | Track progress siswa |
-| GET | `/api/progress-report.json` | Data progress semua siswa |
-| GET | `/api/progress-report/export-csv` | Export CSV |
+| Method | Frontend Path | Flask Path | Fungsi |
+|--------|--------------|------------|--------|
+| POST | `/api/login` | `/login` | Login dengan token |
+| POST | `/api/logout` | `/logout` | Logout |
+| POST | `/api/validate-token` | `/validate-token` | Validasi token |
+| GET | `/api/lessons` | `/lessons` | Daftar lesson + home content |
+| GET | `/api/lesson/<slug>.json` | `/lesson/<slug>.json` | Data lesson lengkap |
+| GET | `/api/get-key-text/<slug>` | `/get-key-text/<slug>` | Key text untuk lesson |
+| POST | `/api/compile` | `/compile` | Compile & run kode (C/Python) |
+| POST | `/api/track-progress` | `/track-progress` | Track progress siswa |
+| GET | `/api/progress-report.json` | `/progress-report.json` | Data progress semua siswa |
+| GET | `/api/progress-report/export-csv` | `/progress-report/export-csv` | Export CSV |
+| GET | `/assets/<path>` | `/assets/<path>` | Static assets (proxy langsung, tanpa strip) |
+
+---
+
+## Mode Lesson
+
+Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode ditentukan otomatis dari marker yang ada:
+
+| Mode | Marker | Tab yang muncul | Evaluasi |
+|------|--------|-----------------|----------|
+| **C** | `---INITIAL_CODE---` | Editor (C) + Output | stdout matching + key_text |
+| **Python** | `---INITIAL_PYTHON---` | Editor (Python) + Output | stdout matching + key_text |
+| **Circuit** | `---INITIAL_CIRCUIT---` | Circuit + Output | node voltage + key_text |
+| **Arduino/Velxio** | `---INITIAL_CODE_ARDUINO---` | Velxio (iframe) + Output | serial + wiring + key_text |
+| **Velxio circuit-only** | `---VELXIO_CIRCUIT---` (tanpa code) | Velxio (no editor) + Output | wiring + key_text |
+| **Hybrid** | C/Python + Circuit | Editor + Circuit + Output | AND-logic: kedua harus pass |
+
+### Markdown Sections yang Dikenali
+
+| Section | Fungsi |
+|---------|--------|
+| `---LESSON_INFO---` / `---END_LESSON_INFO---` | Info tab (learning objectives) |
+| `---EXERCISE---` | Instruksi latihan (separator) |
+| `---INITIAL_CODE---` / `---END_INITIAL_CODE---` | Kode awal C |
+| `---INITIAL_PYTHON---` / `---END_INITIAL_PYTHON---` | Kode awal Python |
+| `---INITIAL_CIRCUIT---` / `---END_INITIAL_CIRCUIT---` | Circuit text awal (CircuitJS format) |
+| `---INITIAL_QUIZ---` / `---END_INITIAL_QUIZ---` | Quiz data |
+| `---INITIAL_CODE_ARDUINO---` / `---END_INITIAL_CODE_ARDUINO---` | Kode awal Arduino |
+| `---VELXIO_CIRCUIT---` / `---END_VELXIO_CIRCUIT---` | Circuit JSON untuk Velxio (komponen + wires) |
+| `---EXPECTED_OUTPUT---` / `---END_EXPECTED_OUTPUT---` | Expected stdout (C/Python) atau node voltage JSON (Circuit) |
+| `---EXPECTED_CIRCUIT_OUTPUT---` / `---END_EXPECTED_CIRCUIT_OUTPUT---` | Expected circuit output (hybrid mode) |
+| `---EXPECTED_SERIAL_OUTPUT---` / `---END_EXPECTED_SERIAL_OUTPUT---` | Expected serial output (Arduino) |
+| `---EXPECTED_WIRING---` / `---END_EXPECTED_WIRING---` | Expected wiring JSON (Arduino) |
+| `---KEY_TEXT---` / `---END_KEY_TEXT---` | Keyword wajib di source code / circuit |
+| `---KEY_TEXT_CIRCUIT---` / `---END_KEY_TEXT_CIRCUIT---` | Keyword wajib di circuit (hybrid) |
+| `---SOLUTION_CODE---` / `---END_SOLUTION_CODE---` | Solusi kode (ditampilkan setelah selesai) |
+| `---SOLUTION_CIRCUIT---` / `---END_SOLUTION_CIRCUIT---` | Solusi circuit |
+
+---
+
+## Velxio Integration (Arduino Simulator)
+
+### PostMessage Bridge Protocol
+
+Komunikasi antara Elemes dan Velxio iframe via `window.postMessage`:
+
+**Elemes → Velxio (Commands):**
+| Message Type | Payload | Fungsi |
+|---|---|---|
+| `elemes:load_code` | `{ files: [{name, content}] }` | Load source code ke editor |
+| `elemes:load_circuit` | `{ board, components, wires }` | Load rangkaian ke simulator |
+| `elemes:set_embed_mode` | `{ hideAuth, hideComponentPicker }` | Configure embed UI |
+| `elemes:get_source_code` | — | Request source code |
+| `elemes:get_serial_log` | — | Request serial output |
+| `elemes:get_wires` | — | Request wire topology |
+| `elemes:stop` | — | Stop simulation |
+| `elemes:ping` | — | Re-trigger ready signal |
+
+**Velxio → Elemes (Events):**
+| Message Type | Payload | Fungsi |
+|---|---|---|
+| `velxio:ready` | `{ version }` | Iframe siap (broadcast tiap 300ms sampai parent acknowledge) |
+| `velxio:compile_result` | `{ success }` | Kompilasi selesai |
+| `velxio:source_code` | `{ files }` | Response ke get_source_code |
+| `velxio:serial_log` | `{ log }` | Response ke get_serial_log |
+| `velxio:wires` | `{ wires }` | Response ke get_wires |
+
+### Flow Lesson Arduino
+
+```
+1. User buka lesson → frontend fetch /api/lesson/<slug>.json
+2. Backend parse markdown → extract INITIAL_CODE_ARDUINO, VELXIO_CIRCUIT, dll
+3. Frontend detect active_tabs=['velxio'] → render iframe src="/velxio/editor?embed=true"
+4. Iframe load → Velxio EmbedBridge broadcast velxio:ready (tiap 300ms)
+5. Frontend initVelxioBridge() → create VelxioBridge → acknowledge → stop broadcast
+6. Bridge send: set_embed_mode, load_circuit, load_code
+7. Siswa edit kode + wiring di Velxio → klik Compile & Run
+8. Velxio notify: velxio:compile_result { success: true }
+9. Auto-evaluate setelah 3 detik (tunggu serial output)
+10. Evaluate: get_source_code → key_text, get_serial_log → serial match, get_wires → wiring match
+11. Jika semua pass → completeLesson() → celebration + track progress
+```
+
+### Evaluasi Arduino (3 jenis, semua harus pass)
+
+| Evaluasi | Mekanisme | Sumber Data |
+|----------|-----------|-------------|
+| **Key Text** | Keyword wajib ada di source code | `---KEY_TEXT---` di markdown |
+| **Serial Output** | Subsequence matching (expected lines muncul dalam urutan di actual) | `---EXPECTED_SERIAL_OUTPUT---` |
+| **Wiring** | Lenient graph comparison (expected edges harus ada, extra OK) | `---EXPECTED_WIRING---` (JSON array of pairs) |
+
+### File-file Kunci
+
+| Sisi | File | Fungsi |
+|------|------|--------|
+| Elemes | `frontend/src/lib/services/velxio-bridge.ts` | VelxioBridge class (send commands, evaluate) |
+| Elemes | `frontend/src/routes/lesson/[slug]/+page.svelte` | initVelxioBridge(), handleVelxioSubmit() |
+| Velxio | `frontend/src/services/EmbedBridge.ts` | PostMessage listener (handle commands) |
+| Velxio | `frontend/src/pages/EditorPage.tsx` | Embed mode UI control |
+| Velxio | `frontend/src/components/editor/EditorToolbar.tsx` | Embed-aware toolbar |
 
 ---
 
 ## CircuitJS Integration
 
-Integrasi Falstad CircuitJS1 sebagai simulator rangkaian interaktif di dalam tab "Circuit" pada halaman lesson. CircuitJS adalah aplikasi GWT (Java → JavaScript) yang di-embed via iframe same-origin.
+Integrasi Falstad CircuitJS1 sebagai simulator rangkaian interaktif di tab "Circuit". CircuitJS adalah aplikasi GWT (Java → JavaScript) yang di-embed via iframe same-origin.
 
 ### Arsitektur
 
 ```
-content/z_test_circuit.md
+content/rangkaian_dasar.md
   │  ---INITIAL_CIRCUIT--- ... ---END_INITIAL_CIRCUIT---
   │
   ▼  lesson_service.py: _extract_section()
-Flask API (/api/lesson/<slug>.json)
+Flask API (/lesson/<slug>.json)
   │  { initial_circuit, expected_output, key_text, active_tabs: ["circuit"] }
   │
   ▼  +page.ts SSR loader
@@ -234,22 +387,9 @@ circuitjs1/circuitjs.html (GWT app in iframe)
 Touch event forwarding → synthetic MouseEvent dispatch
 ```
 
-### File-file Utama
-
-| File | Fungsi |
-|------|--------|
-| `frontend/static/circuitjs1/circuitjs.html` | GWT entry point, di-load dalam iframe |
-| `frontend/static/circuitjs1/circuitjs1/circuitjs1.nocache.js` | GWT bootstrap — memilih permutation `.cache.js` berdasarkan browser |
-| `frontend/static/circuitjs1/lz-string.min.js` | Kompresi LZ untuk circuit text export |
-| `frontend/src/lib/components/CircuitEditor.svelte` | Wrapper iframe + API bridge |
-| `frontend/src/lib/components/CrosshairOverlay.svelte` | Touch precision overlay |
-| `services/lesson_service.py` | Parsing markdown, ekstraksi `---INITIAL_CIRCUIT---` |
-| `routes/lessons.py` | API endpoint, serve `initial_circuit` ke frontend |
-| `frontend/src/routes/lesson/[slug]/+page.svelte` | Evaluasi rangkaian (`evaluateCircuit()`) |
-
 ### CircuitJS API (via `iframe.contentWindow.CircuitJS1`)
 
-API object didapatkan melalui callback `window.oncircuitjsloaded` yang dipanggil oleh GWT setelah inisialisasi, dengan fallback 3 detik via `window.CircuitJS1`.
+API object didapatkan melalui callback `window.oncircuitjsloaded`, dengan fallback 3 detik via `window.CircuitJS1`.
 
 | Method | Fungsi |
 |--------|--------|
@@ -258,184 +398,169 @@ API object didapatkan melalui callback `window.oncircuitjsloaded` yang dipanggil
 | `getNodeVoltage(nodeName)` | Query tegangan di named node |
 | `setSimRunning(bool)` | Jalankan/hentikan simulasi |
 | `updateCircuit()` | Redraw setelah perubahan |
-| `elements()` | Jumlah elemen di circuit (belum dipakai) |
-| `getElm(index)` | Ambil elemen berdasarkan index (belum dipakai) |
-
-### Circuit Text Format
-
-CircuitJS menggunakan format XML-like custom. Contoh dari `content/z_test_circuit.md`:
-
-```xml
-<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">
-  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>    <!-- Voltage source 5V -->
-  <r x="80 112 176 112" f="0" r="1000"/>           <!-- Resistor 1kΩ -->
-  <r x="176 112 176 200" f="0" r="1000"/>          <!-- Resistor 1kΩ -->
-  <w x="176 200 80 200" f="0"/>                     <!-- Wire -->
-  <ln x="176 112 208 32" f="0" te="TestPoint_A"/>  <!-- Named node (label) -->
-</cir>
-```
 
 ### Evaluasi Rangkaian
 
-Saat siswa klik "Cek Rangkaian", fungsi `evaluateCircuit()` di `+page.svelte` menjalankan validasi:
+Saat siswa klik "Cek Rangkaian", fungsi `evaluateCircuit()` menjalankan:
 
-| Langkah | Mekanisme | Sumber Data |
-|---------|-----------|-------------|
-| 1. Parse kriteria | `JSON.parse(data.expected_output)` | Markdown `---EXPECTED_OUTPUT---` |
-| 2. Cek tegangan node | `simApi.getNodeVoltage(nodeName)` vs expected ± tolerance | `expected_output.nodes` |
-| 3. Cek komponen wajib | `circuitEditor.getCircuitText()` → `checkKeyText()` (string contains) | Markdown `---KEY_TEXT---` |
-| 4. Track progress | `POST /api/track-progress` (jika semua passed) | Auth token |
+1. Parse kriteria dari `expected_output` (JSON)
+2. Cek tegangan node via `simApi.getNodeVoltage()` ± tolerance
+3. Cek komponen wajib via `checkKeyText()` (string contains pada circuit text)
+4. Track progress jika semua passed
 
 **Expected Output JSON Format:**
-
 ```json
 {
   "nodes": {
     "TestPoint_A": { "voltage": 2.5, "tolerance": 0.2 }
-  },
-  "elements": {}
+  }
 }
 ```
-
-### Lesson Markdown Format (Circuit)
-
-Section-section yang dikenali oleh `lesson_service.py` untuk lesson circuit:
-
-| Section | Fungsi |
-|---------|--------|
-| `---INITIAL_CIRCUIT---` ... `---END_INITIAL_CIRCUIT---` | Circuit text awal yang dimuat ke simulator |
-| `---SOLUTION_CIRCUIT---` ... `---END_SOLUTION_CIRCUIT---` | Solusi (ditampilkan setelah lesson selesai) |
-| `---EXPECTED_OUTPUT---` ... `---END_EXPECTED_OUTPUT---` | JSON kriteria evaluasi (node voltages) |
-| `---KEY_TEXT---` ... `---END_KEY_TEXT---` | Teks/komponen wajib (string matching pada circuit text) |
-| `---EXERCISE---` | Instruksi untuk siswa (di bawah separator ini) |
-
-Keberadaan `---INITIAL_CIRCUIT---` secara otomatis menambahkan `'circuit'` ke `active_tabs[]`, yang menampilkan tab Circuit di halaman lesson.
 
 ### Auto-save
 
 `CircuitEditor` mendukung auto-save ke `sessionStorage` (polling setiap 5 detik):
-
 - **Key:** `elemes_circuit_{slug}` (hanya saat user login & bukan mode solusi)
-- **Restore:** Saat load, cek sessionStorage dulu, fallback ke `initialCircuit` prop
-- **Export:** `simApi.exportCircuit()` → bandingkan dengan saved → simpan jika berbeda
-
-### Catatan Teknis
-
-- **GWT tidak butuh build step**: File `.cache.js` sudah ter-compile. Copy as-is ke `frontend/static/`.
-- **Same-origin wajib**: `contentDocument` access membutuhkan iframe same-origin. CircuitJS di-serve dari `/circuitjs1/` path di SvelteKit static.
-- **Callback discovery**: GWT memanggil `window.oncircuitjsloaded(api)` setelah inisialisasi. Ini lebih reliable daripada polling `window.CircuitJS1` yang mungkin belum tersedia.
-- **TypeScript interface**: `CircuitJSApi` di `types/circuitjs.ts` mengetik semua method yang digunakan. `simApi` bertipe `CircuitJSApi | null`, bukan `any`.
-- **Auto-save cleanup**: `setInterval` untuk auto-save di-cleanup via `$effect` return saat komponen destroy, mencegah memory leak.
+- **Restore:** Cek sessionStorage dulu, fallback ke `initialCircuit` prop
 
 ---
 
 ## Anti Copy-Paste System
 
-Sistem berlapis untuk mencegah siswa meng-copy konten pelajaran dan mem-paste kode dari sumber eksternal ke editor.
+Sistem berlapis untuk mencegah siswa meng-copy konten pelajaran dan mem-paste kode dari sumber eksternal.
 
-### Selection & Copy Prevention (Halaman Lesson)
+### Selection & Copy Prevention (Konten Lesson)
 
-**File:** `frontend/src/routes/lesson/[slug]/+page.svelte`
-
-Mencegah siswa men-select dan meng-copy teks dari konten pelajaran (termasuk code blocks).
+**File:** `lesson/[slug]/+page.svelte`
 
 | Layer | Mekanisme | Target |
 |-------|-----------|--------|
-| CSS | `user-select: none`, `-webkit-touch-callout: none` | `.lesson-content`, `.lesson-info` |
-| Events | `onselectstart`, `oncopy`, `oncut`, `oncontextmenu` → `preventDefault()` | `.lesson-content`, `.lesson-info` |
-| JS | `selectionchange` + `mouseup` + `touchend` → `getSelection().removeAllRanges()` | Fallback aktif — clear selection jika terjadi di area konten (scoped, tidak mengganggu editor) |
+| CSS | `user-select: none`, `-webkit-touch-callout: none` | `.lesson-content`, info/exercise tabs |
+| Events | `onselectstart`, `oncopy`, `oncut`, `oncontextmenu` → `preventDefault()` | Konten lesson |
+| Directive | `use:noSelect` | Reusable action |
 
 ### Paste Prevention (CodeEditor)
 
-**File:** `frontend/src/lib/components/CodeEditor.svelte`
+**File:** `CodeEditor.svelte`
 
-Mencegah siswa mem-paste kode dari sumber eksternal ke code editor. Diaktifkan via prop `noPaste={true}`.
+Diaktifkan via prop `noPaste={true}`.
 
 | Layer | Mekanisme | Menangani |
 |-------|-----------|-----------|
-| 1 | `EditorView.domEventHandlers` — `paste`, `drop`, `beforeinput` → `preventDefault()` | Desktop paste, iOS paste |
-| A | `EditorState.transactionFilter` — block `input.paste` + heuristik ukuran (>2 baris atau >20 chars untuk 2 baris) | Standard paste + **GBoard clipboard panel** (paste via IME yang menyamar sebagai `input.type.compose`) |
-| C | `EditorView.clipboardInputFilter` — replace clipboard text → `''` (runtime check) | Standard paste (jika API tersedia) |
-| D | `EditorView.inputHandler` — block multi-line insertion >20 chars | GBoard clipboard via DOM mutations |
-| 2 | DOM capture-phase listeners — `paste`, `copy`, `cut`, `contextmenu`, `drop` → `preventDefault()` | Backup DOM-level |
-| B | `input` event listener — `CM.undo()` jika `insertFromPaste` | Fallback post-hoc revert |
+| DOM handlers | `paste`, `drop`, `beforeinput` → `preventDefault()` | Desktop paste, iOS paste |
+| Transaction filter | Block `input.paste` + heuristik ukuran (>2 baris atau >20 chars) | Standard paste + GBoard clipboard panel |
+| Clipboard filter | Replace clipboard text → `''` | Standard paste (jika API tersedia) |
+| Input handler | Block multi-line insertion >20 chars | GBoard clipboard via DOM mutations |
 
-**Limitasi:** GBoard clipboard panel menyuntikkan teks lewat IME composition system (bukan clipboard API), sehingga tidak bisa dibedakan 100% dari ketikan biasa. Heuristik ukuran teks digunakan untuk mendeteksi dan memblokir mayoritas kasus paste, namun paste 1 baris pendek (<20 chars) masih bisa lolos.
+**Limitasi:** GBoard clipboard panel menggunakan IME composition, tidak bisa dibedakan 100% dari ketikan biasa. Paste 1 baris pendek (<20 chars) masih bisa lolos.
 
 ---
 
-## Touch Crosshair System (Fat Finger Fix)
+## Touch Crosshair System (CircuitJS)
 
-Sistem overlay untuk memberikan presisi interaksi di iframe CircuitJS pada perangkat sentuh. Aktif hanya pada touch device (deteksi via CSS media query `hover: none` + `pointer: coarse`), tidak mengganggu interaksi mouse di desktop.
+Overlay untuk presisi interaksi di iframe CircuitJS pada perangkat sentuh. Aktif hanya pada touch device (CSS media query `hover: none` + `pointer: coarse`).
 
-**File:** `frontend/src/lib/components/CrosshairOverlay.svelte`
-**Dimount di:** `frontend/src/lib/components/CircuitEditor.svelte`
+**File:** `CrosshairOverlay.svelte` (dimount di `CircuitEditor.svelte`)
 
 ### Gesture Mapping
 
-| Gesture | Action | Keterangan |
-|---------|--------|------------|
-| Single tap | `click` | Delay 300ms (menunggu double/triple). Termasuk toolbar CircuitJS |
-| Double tap | `dblclick` | Edit komponen (buka dialog edit di CircuitJS) |
-| Triple tap | Right-click (`contextmenu`) | Fallback untuk right-click satu jari |
-| Two-finger tap | Right-click (`contextmenu`) | Gesture natural untuk right-click |
-| Long tap (400ms) | Crosshair aiming mode | 4-phase state machine untuk presisi drag |
+| Gesture | Action |
+|---------|--------|
+| Single tap | `click` (delay 300ms) |
+| Double tap | `dblclick` (edit komponen) |
+| Triple tap | Right-click (`contextmenu`) |
+| Two-finger tap | Right-click |
+| Long tap (400ms) | Crosshair aiming mode (4-phase state machine) |
 
-### State Machine (Crosshair Aiming)
+### Cara Kerja
 
-```
-idle → [long tap] → aiming_start (crosshair muncul, belum click)
-                         │
-                    [release] → holding (mousedown dispatch di posisi crosshair)
-                                    │                          │
-                              [long tap] → aiming_end    [5s timeout]
-                                    │          │               │
-                                    │     [release]            ▼
-                                    │          │          mouseup + idle
-                                    │          ▼
-                                    │        idle (mouseup dispatch)
-                                    │
-                              [short tap] → mouseup + idle
-```
-
-### Cara Kerja Event Forwarding
-
-| Layer | Mekanisme | Tujuan |
-|-------|-----------|--------|
-| Overlay | `<div>` transparan dengan `pointer-events: auto` (touch only) | Intercept semua touch event sebelum iframe |
-| Koordinat | `getBoundingClientRect()` → konversi viewport ke iframe-local | Akurasi posisi di dalam iframe |
-| Target | `iframe.contentDocument.elementFromPoint(x, y)` | Temukan elemen yang tepat (canvas, toolbar, dialog) |
-| Dispatch | `new MouseEvent()` dengan `view: iframe.contentWindow` | GWT CircuitJS menerima event seolah native |
-| Focus | `focusIfEditable()` → `.focus()` pada input/textarea | Virtual keyboard muncul saat tap text field |
+Overlay transparan mengintercept touch events → konversi koordinat ke iframe-local → `elementFromPoint()` untuk target → dispatch synthetic `MouseEvent` ke iframe.
 
 ### Konfigurasi
 
-| Variable | Default | Lokasi | Fungsi |
-|----------|---------|--------|--------|
-| `PUBLIC_CURSOR_OFFSET_Y` | `50` | `podman-compose.yml` | Offset Y crosshair dari posisi jari (pixel). Semakin besar, crosshair semakin jauh di atas jari |
+| Variable | Default | Fungsi |
+|----------|---------|--------|
+| `PUBLIC_CURSOR_OFFSET_Y` | `50` | Offset Y crosshair dari jari (pixel) |
 
-### Konstanta Internal
+---
 
-| Nama | Nilai | Fungsi |
-|------|-------|--------|
-| `LONG_PRESS_MS` | 400ms | Durasi tahan untuk aktifkan crosshair |
-| `DOUBLE_TAP_MS` | 300ms | Window waktu antara tap untuk deteksi double/triple |
-| `HOLDING_TIMEOUT_MS` | 5000ms | Safety net — auto-mouseup jika terjebak di holding state |
+## Velxio Mobile Wiring Crosshair
 
-### Limitasi
+Berbeda dari CircuitJS crosshair (yang menggunakan overlay), Velxio crosshair ada di dalam simulator canvas sendiri (SVG).
 
-- **Single tap delay 300ms**: Trade-off untuk membedakan single/double/triple tap. Tidak bisa dihindari tanpa mengorbankan multi-tap detection.
-- **Synthetic focus**: Virtual keyboard mungkin tidak muncul di semua browser karena `.focus()` pada elemen di dalam iframe tidak selalu dianggap "user gesture" oleh browser.
-- **Same-origin only**: `contentDocument` access membutuhkan iframe same-origin. CircuitJS di-serve dari path yang sama (`/circuitjs1/`), jadi ini bukan masalah.
+**File:** `velxio/frontend/src/components/simulator/WireInProgressRenderer.tsx`
+
+Saat user sedang menarik wire, garis bantu horizontal + vertikal muncul di posisi cursor:
+- Style: dashed `rgba(255,255,255,0.25)`, `strokeWidth=0.5`, `strokeDasharray="8,6"`
+- Panjang: 8000px ke setiap arah (cukup untuk semua zoom level)
+- Terinspirasi CircuitJS — membantu alignment karena jari menutupi pin target
+
+### Pinch-Zoom Preserve Wire
+
+**File:** `velxio/frontend/src/components/simulator/SimulatorCanvas.tsx`
+
+Sebelumnya, pinch-to-zoom (2 jari) otomatis cancel wire yang sedang ditarik. Sekarang wire-in-progress tetap aktif selama zoom. Preview freeze (hanya update saat 1 jari), lalu resume setelah zoom selesai.
+
+---
+
+## Wire Undo/Redo
+
+Snapshot-based undo/redo untuk operasi wire di Velxio simulator. Memungkinkan user membatalkan kesalahan wiring tanpa harus memilih dan menghapus wire secara manual.
+
+### Arsitektur
+
+```
+User action (add/remove/update/finish wire)
+    │
+    ├── Push current state.wires → wireUndoStack (max 50)
+    ├── Clear wireRedoStack
+    └── Mutate state.wires
+    
+Undo (Ctrl+Z / toolbar button)
+    │
+    ├── Pop wireUndoStack → restore as state.wires
+    ├── Push current state.wires → wireRedoStack
+    └── Reset selectedWireId = null
+
+Redo (Ctrl+Shift+Z / toolbar button)
+    │
+    ├── Pop wireRedoStack → restore as state.wires
+    ├── Push current state.wires → wireUndoStack
+    └── Reset selectedWireId = null
+```
+
+### File yang Terlibat
+
+| File | Perubahan |
+|------|-----------|
+| `velxio/frontend/src/store/useSimulatorStore.ts` | State: `wireUndoStack`, `wireRedoStack`. Actions: `undoWire()`, `redoWire()`. Snapshot push di `addWire`, `removeWire`, `updateWire`, `finishWireCreation`. |
+| `velxio/frontend/src/components/simulator/SimulatorCanvas.tsx` | Keyboard handler (`Ctrl+Z`/`Ctrl+Shift+Z`), toolbar buttons (undo/redo icons), store selectors (`canUndoWire`, `canRedoWire`). |
+| `velxio/frontend/src/components/simulator/SimulatorCanvas.css` | Class `.undo-controls` — styling identik dengan `.zoom-controls` tapi **tidak di-hide** di mobile media query. |
+
+### Keputusan Desain
+
+1. **Snapshot-based vs action-based** — Dipilih snapshot (simpan seluruh `wires[]` per step) karena lebih sederhana dan reliable. Trade-off: memory lebih besar, tapi dengan limit 50 entries dan array wire yang kecil, tidak masalah.
+2. **Separate CSS class** — `.undo-controls` terpisah dari `.zoom-controls` karena zoom di-hide di mobile (`display: none` — pakai pinch-to-zoom), tapi undo/redo harus tetap visible.
+3. **`setWires()` tidak push snapshot** — `setWires()` digunakan oleh `EmbedBridge` saat load circuit dari LMS. Ini bukan user action, jadi tidak masuk undo history.
+4. **`selectedWireId: null` saat undo/redo** — Mencegah bug dimana UI mencoba menampilkan info wire yang sudah tidak ada setelah undo.
 
 ---
 
 ## Status Implementasi
 
-- [x] **Phase 0:** Backend decomposition (monolith → Blueprints + services)
-- [x] **Phase 1:** SvelteKit scaffolding (adapter-node, TypeScript, path aliases)
-- [x] **Phase 2:** Core components (CodeEditor, Navbar, auth/theme stores, API client)
-- [x] **Phase 3:** Pages (Home, Lesson, Progress) + SSR data loading
-- [x] **Phase 5:** Containerization (3-container setup, static IPs, API proxy)
-- [ ] **Phase 4:** PWA (service worker, offline caching, icons)
-- [ ] **Phase 6:** Polish (Tailscale config update, testing)
+- [x] Backend decomposition (monolith → Blueprints + services)
+- [x] SvelteKit scaffolding (adapter-node, Svelte 5, path aliases)
+- [x] Core components (CodeEditor, Navbar, auth/theme stores, API client)
+- [x] Pages (Home, Lesson, Progress) + SSR data loading
+- [x] Containerization (4-container setup, API proxy)
+- [x] CircuitJS integration (iframe, evaluasi node voltage, touch overlay)
+- [x] Floating/mobile editor panel (draggable, resizable, bottom sheet)
+- [x] Anti copy-paste system (lesson content + code editor)
+- [x] Velxio fork + EmbedBridge (PostMessage protocol)
+- [x] Velxio integration di Elemes (bridge, parsing, UI, evaluasi)
+- [x] Mobile wiring UX (pinch-zoom preserve wire, crosshair alignment)
+- [x] Wire undo/redo (snapshot-based, Ctrl+Z/Ctrl+Shift+Z, toolbar button, mobile-friendly)
+- [x] Contoh lesson Arduino (LED Blink)
+- [ ] PWA (service worker, offline caching)
+- [ ] Contoh lesson Arduino tambahan (2-3 lagi)
+- [ ] Velxio enhancements (lock komponen, solution overlay, multi-board)

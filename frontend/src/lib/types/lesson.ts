@@ -17,6 +17,10 @@ export interface LessonContent {
 	initial_python: string;
 	initial_circuit: string;
 	initial_quiz: string;
+	initial_code_arduino: string;
+	velxio_circuit: string;
+	expected_serial_output: string;
+	expected_wiring: string;
 	solution_code: string;
 	key_text: string;
 	lesson_title: string;

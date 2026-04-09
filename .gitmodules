@@ -1,0 +1,3 @@
+[submodule "velxio"]
+	path = velxio
+	url = https://git.manakin-gentoo.ts.net/a2nr/velxio.git

@@ -259,14 +259,21 @@ def render_markdown_content(file_path):
     active_tabs = []
 
     # Check for collective tags before extracting them
-    if '---INITIAL_CODE---' in lesson_content:
-        active_tabs.append('c')
-    if '---INITIAL_PYTHON---' in lesson_content:
-        active_tabs.append('python')
+    # Priority: INITIAL_CODE_ARDUINO → velxio mode (exclusive, ignores C/Python tabs)
+    if '---INITIAL_CODE_ARDUINO---' in lesson_content:
+        active_tabs.append('velxio')
+    else:
+        if '---INITIAL_CODE---' in lesson_content:
+            active_tabs.append('c')
+        if '---INITIAL_PYTHON---' in lesson_content:
+            active_tabs.append('python')
     if '---INITIAL_CIRCUIT---' in lesson_content:
         active_tabs.append('circuit')
     if '---INITIAL_QUIZ---' in lesson_content:
         active_tabs.append('quiz')
+    # Velxio circuit-only: has VELXIO_CIRCUIT but no INITIAL_CODE_ARDUINO
+    if '---VELXIO_CIRCUIT---' in lesson_content and 'velxio' not in active_tabs:
+        active_tabs.append('velxio')
 
     # Default to 'c' if nothing specified (for backwards compatibility)
     if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_QUIZ---' not in lesson_content:
@@ -307,15 +314,28 @@ def render_markdown_content(file_path):
     # Initial codes (C, Python, Circuit, Quiz)
     initial_code_c, lesson_content = _extract_section(
         lesson_content, '---INITIAL_CODE---', '---END_INITIAL_CODE---')
-    
+
     initial_python, lesson_content = _extract_section(
         lesson_content, '---INITIAL_PYTHON---', '---END_INITIAL_PYTHON---')
-        
+
     initial_circuit, lesson_content = _extract_section(
         lesson_content, '---INITIAL_CIRCUIT---', '---END_INITIAL_CIRCUIT---')
-        
+
     initial_quiz, lesson_content = _extract_section(
         lesson_content, '---INITIAL_QUIZ---', '---END_INITIAL_QUIZ---')
+
+    # Arduino/Velxio sections
+    initial_code_arduino, lesson_content = _extract_section(
+        lesson_content, '---INITIAL_CODE_ARDUINO---', '---END_INITIAL_CODE_ARDUINO---')
+
+    velxio_circuit, lesson_content = _extract_section(
+        lesson_content, '---VELXIO_CIRCUIT---', '---END_VELXIO_CIRCUIT---')
+
+    expected_serial_output, lesson_content = _extract_section(
+        lesson_content, '---EXPECTED_SERIAL_OUTPUT---', '---END_EXPECTED_SERIAL_OUTPUT---')
+
+    expected_wiring, lesson_content = _extract_section(
+        lesson_content, '---EXPECTED_WIRING---', '---END_EXPECTED_WIRING---')
 
     # Just use whichever initial code matched as the generic 'initial_code' for simplicity 
     # if only one type exists, but return all as dictionary values.
@@ -353,6 +373,10 @@ def render_markdown_content(file_path):
         'initial_python': initial_python,
         'initial_circuit': initial_circuit,
         'initial_quiz': initial_quiz,
+        'initial_code_arduino': initial_code_arduino,
+        'velxio_circuit': velxio_circuit,
+        'expected_serial_output': expected_serial_output,
+        'expected_wiring': expected_wiring,
         'active_tabs': active_tabs
     }
 
