@@ -43,6 +43,8 @@ Penjelasan:
 - Tidak perlu `\n` — `print()` otomatis menambahkan baris baru
 - Tidak perlu `return 0` atau titik koma
 
+
+
 ---EXERCISE---
 ### Latihan
 Buat program yang mencetak teks berikut:
@@ -50,14 +52,16 @@ Buat program yang mencetak teks berikut:
 ```
 Halo Dunia
 ```
+
 ---
+
+
 
 ---INITIAL_CODE---
 #include <stdio.h>
 
 int main() {
-    // Tulis kode kamu di sini
-
+    printf("Halo Dunia\\n");
     return 0;
 }
 ---END_INITIAL_CODE---
@@ -66,11 +70,29 @@ int main() {
 Halo Dunia
 ---END_EXPECTED_OUTPUT---
 
+---EXPECTED_OUTPUT_PYTHON---
+Halo Dunia
+---END_EXPECTED_OUTPUT_PYTHON---
+
 ---INITIAL_PYTHON---
 # Tulis kode kamu di sini
-
+print("Halo Dunia")
 ---END_INITIAL_PYTHON---
+
+---SOLUTION_CODE---
+#include <stdio.h>
+
+int main() {
+    printf("Halo Dunia\\n");
+    return 0;
+}
+---END_SOLUTION_CODE---
+
+---SOLUTION_PYTHON---
+print("Halo Dunia")
+---END_SOLUTION_PYTHON---
 
 ---KEY_TEXT---
 printf
+print
 ---END_KEY_TEXT---

@@ -78,8 +78,8 @@ Panjang nama: 10
 #include <stdio.h>
 
 int main() {
-    // Deklarasikan variabel nama_panjang bertipe int
-    // Cetak hasilnya menggunakan printf
+    int nama_panjang = 10;
+    printf("Panjang nama: %d\n", nama_panjang);
 
     return 0;
 }
@@ -93,9 +93,30 @@ Panjang nama: 10
 # Deklarasikan variabel nama_panjang
 # Cetak hasilnya menggunakan print
 
+nama_panjang = 10
+print(f"Panjang nama: {nama_panjang}")
 ---END_INITIAL_PYTHON---
+
+---SOLUTION_CODE---
+#include <stdio.h>
+
+int main() {
+    int nama_panjang = 10;
+    printf("Panjang nama: %d\n", nama_panjang);
+
+    return 0;
+}
+---END_SOLUTION_CODE---
+
+---SOLUTION_PYTHON---
+nama_panjang = 10
+print(f"Panjang nama: {nama_panjang}")
+---END_SOLUTION_PYTHON---
 
 ---KEY_TEXT---
 int
 printf
+print(f"
+{
+}
 ---END_KEY_TEXT---

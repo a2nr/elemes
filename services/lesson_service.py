@@ -311,6 +311,9 @@ def render_markdown_content(file_path):
     solution_circuit, lesson_content = _extract_section(
         lesson_content, '---SOLUTION_CIRCUIT---', '---END_SOLUTION_CIRCUIT---')
 
+    solution_python, lesson_content = _extract_section(
+        lesson_content, '---SOLUTION_PYTHON---', '---END_SOLUTION_PYTHON---')
+
     # Initial codes (C, Python, Circuit, Quiz)
     initial_code_c, lesson_content = _extract_section(
         lesson_content, '---INITIAL_CODE---', '---END_INITIAL_CODE---')
@@ -367,6 +370,7 @@ def render_markdown_content(file_path):
         'initial_code': initial_code,
         'solution_code': solution_code,
         'solution_circuit': solution_circuit,
+        'solution_python': solution_python,
         'key_text': key_text,
         'key_text_circuit': key_text_circuit,
         'initial_code_c': initial_code_c,

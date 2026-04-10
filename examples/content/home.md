@@ -19,8 +19,12 @@ Semua materi bisa dikerjakan langsung di browser!
 ### Elektronika (Hybrid)
 3. [Rangkaian Dasar](lesson/rangkaian_dasar.md)
 
+### Arduino (Velxio)
+4. [LED Blink](lesson/led_blink_arduino.md)
+
 ----Available_Lessons----
 
 1. [Hello, World!](lesson/hello_world.md)
 2. [Variabel](lesson/variabel.md)
 3. [Rangkaian Dasar](lesson/rangkaian_dasar.md)
+4. [LED Blink](lesson/led_blink_arduino.md)

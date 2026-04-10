@@ -22,6 +22,8 @@ export interface LessonContent {
 	expected_serial_output: string;
 	expected_wiring: string;
 	solution_code: string;
+	solution_circuit: string;
+	solution_python: string;
 	key_text: string;
 	lesson_title: string;
 	lesson_completed: boolean;

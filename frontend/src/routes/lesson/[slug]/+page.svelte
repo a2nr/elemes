@@ -16,7 +16,7 @@
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
 	import { highlightAllCode } from '$actions/highlightCode';
 	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import type { LessonContent } from '$types/lesson';
 
 	// Data from +page.ts load function (SSR + client)
@@ -35,7 +35,7 @@
 	let pythonCode = $state('');
 
 	// Output state per language + circuit
-	const freshOutput = () => ({ output: '', error: '', loading: false, success: null as boolean | null });
+	const freshOutput = () => ({ output: '', error: '', loading: false, success: null as boolean | null, debug: undefined as string[] | undefined });
 	let cOut = $state(freshOutput());
 	let pyOut = $state(freshOutput());
 	let circuitOut = $state(freshOutput());
@@ -43,8 +43,8 @@
 	// Helper: get the active code output object for current language
 	function getCodeOut() { return currentLanguage === 'python' ? pyOut : cOut; }
 
-	// AND-logic: track whether each exercise type has passed (persists across runs)
-	let codePassed = $state(false);
+	let cPassed = $state(false);
+	let pythonPassed = $state(false);
 	let circuitPassed = $state(false);
 
 	// Velxio (Arduino simulator) state
@@ -79,7 +79,7 @@
 			secs.push({ key: 'circuit', label: 'Circuit', icon: '\u26A1', data: circuitOut, placeholder: 'Klik "Cek Rangkaian" untuk mengevaluasi', loadingText: 'Mengevaluasi rangkaian...' });
 		}
 		if (tabs.includes('velxio')) {
-			secs.push({ key: 'velxio', label: 'Arduino', icon: '\u{1F4DF}', data: velxioOut, placeholder: 'Klik "Submit" untuk mengevaluasi', loadingText: 'Mengevaluasi...' });
+			secs.push({ key: 'velxio', label: 'Arduino', icon: '\u{1F4DF}', data: velxioOut, placeholder: 'Klik "Compile & Run" untuk menjalankan kode', loadingText: 'Mengevaluasi...' });
 		}
 		return secs;
 	});
@@ -123,9 +123,11 @@
 
 	// Sync lesson data when navigating between lessons
 	$effect(() => {
-		if (lesson) {
-			data = lesson;
-			lessonCompleted = lesson.lesson_completed;
+		const currentLesson = lesson; // capture dependency
+		if (currentLesson) {
+			untrack(() => {
+				data = currentLesson;
+				lessonCompleted = currentLesson.lesson_completed;
 
 			// Initialize per-language code
 			cCode = lesson.initial_code_c || '';
@@ -143,7 +145,8 @@
 			pyOut = freshOutput();
 			circuitOut = freshOutput();
 			velxioOut = freshOutput();
-			codePassed = false;
+			cPassed = false;
+			pythonPassed = false;
 			circuitPassed = false;
 			showSolution = false;
 
@@ -164,7 +167,8 @@
 				title: lesson.lesson_title,
 				completed: lesson.lesson_completed,
 				prevLesson: lesson.prev_lesson,
-				nextLesson: lesson.next_lesson
+				nextLesson: currentLesson.next_lesson
+			});
 			});
 		}
 	});
@@ -217,10 +221,19 @@
 		}
 	}
 
-	/** For hybrid lessons, check if all exercise types have passed (AND logic). */
+	/** Check if all exercise types for this lesson have passed (AND logic). */
 	function checkAllPassed(): boolean {
-		if (!isHybrid) return true; // not hybrid, each evaluator handles itself
-		return codePassed && circuitPassed;
+		const needsC = data?.active_tabs?.includes('c');
+		const needsPython = data?.active_tabs?.includes('python');
+		const needsCircuit = data?.active_tabs?.includes('circuit');
+		
+		if (!data?.active_tabs?.length) return true;
+
+		if (needsC && !cPassed) return false;
+		if (needsPython && !pythonPassed) return false;
+		if (needsCircuit && !circuitPassed) return false;
+		
+		return true;
 	}
 
 	async function evaluateCircuit() {
@@ -271,7 +284,7 @@
 				circuitPassed = true;
 				if (isHybrid) {
 					circuitOut.output += '\n✅ Rangkaian benar!';
-					if (!codePassed) circuitOut.output += '\n⏳ Selesaikan juga tantangan kode untuk menyelesaikan pelajaran ini.';
+					if (!checkAllPassed()) circuitOut.output += '\n⏳ Selesaikan juga tantangan kode untuk menyelesaikan pelajaran ini.';
 				}
 				if (checkAllPassed()) {
 					await completeLesson();
@@ -306,15 +319,28 @@
 			out.success = true;
 
 			if (data.expected_output) {
-				const passed = res.output.trim() === data.expected_output.trim() && checkKeyText(code, data.key_text ?? '');
+				const currentCCode = currentLanguage === 'c' ? code : cCode;
+				const currentPythonCode = currentLanguage === 'python' ? code : pythonCode;
+				const mergedCode = currentCCode + '\n' + currentPythonCode;
+				const passed = res.output.trim() === data.expected_output.trim() && checkKeyText(mergedCode, data.key_text ?? '');
 				if (passed) {
-					codePassed = true;
-					if (isHybrid && !circuitPassed) {
-						out.output += '\n✅ Kode benar!\n⏳ Selesaikan juga tantangan rangkaian untuk menyelesaikan pelajaran ini.';
+					if (currentLanguage === 'c') cPassed = true;
+					else if (currentLanguage === 'python') pythonPassed = true;
+
+					if (!checkAllPassed()) {
+						out.output += '\n✅ Kode benar!\n⏳ Selesaikan juga tantangan di tab lainnya untuk menyelesaikan pelajaran ini.';
+					} else {
+						out.output += '\n🎉 Semuanya benar!';
 					}
+
 					if (checkAllPassed()) {
 						await completeLesson();
-						if (data.solution_code) { showSolution = true; editor?.setCode(data.solution_code); }
+						if (data.solution_code || data.solution_python || data.solution_circuit) { 
+							showSolution = true;
+							handleShowSolution();
+							// To avoid logic flipping
+							showSolution = true; 
+						}
 						setTimeout(() => { showCelebration = false; activeTab = 'editor'; }, 3000);
 					}
 				}
@@ -344,24 +370,59 @@
 	}
 
 	function handleShowSolution() {
-		if (!data?.solution_code) return;
+		if (!data) return;
+		if (!data.solution_code && !data.solution_circuit && !data.solution_python) return;
+		
 		showSolution = !showSolution;
 		if (showSolution) {
-			if (activeTab === 'circuit' || data.active_tabs?.includes('circuit')) {
-				circuitEditor?.setCircuitText(data.solution_code);
-			} else {
+			// Update Circuit if exists
+			if (data.active_tabs?.includes('circuit') && data.solution_circuit) {
+				circuitEditor?.setCircuitText(data.solution_circuit);
+			}
+			// Update Code Editor
+			if (currentLanguage === 'python' && data.solution_python) {
+				editor?.setCode(data.solution_python);
+			} else if (data.solution_code) {
 				editor?.setCode(data.solution_code);
 			}
 		} else {
-			if (activeTab === 'circuit' || data.active_tabs?.includes('circuit')) {
-				circuitEditor?.setCircuitText(data.initial_code);
-			} else {
+			// Restore Circuit if exists
+			if (data.active_tabs?.includes('circuit') && data.initial_circuit) {
+				circuitEditor?.setCircuitText(data.initial_circuit);
+			}
+			// Restore Code Editor to their working code
+			if (currentLanguage === 'python' || currentLanguage === 'c' || data.initial_code) {
 				editor?.setCode(currentCode);
 			}
 		}
 	}
 
 	// === Velxio (Arduino simulator) ===
+
+	/**
+	 * Match serial output using subsequence matching.
+	 * Expected lines must appear in order within actual output (not necessarily consecutive).
+	 * This is more robust than exact line matching.
+	 */
+	function matchSerialSubsequence(actual: string, expected: string): boolean {
+		if (!expected) return true;
+		if (!actual) return false;
+		
+		const actualLines = actual.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+		const expectedLines = expected.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+		
+		let expectedIdx = 0;
+		for (const actualLine of actualLines) {
+			if (expectedIdx < expectedLines.length) {
+				// Check if expected line is a substring of actual line (case-insensitive)
+				if (actualLine.toLowerCase().includes(expectedLines[expectedIdx].toLowerCase())) {
+					expectedIdx++;
+				}
+			}
+			if (expectedIdx === expectedLines.length) return true;
+		}
+		return expectedIdx === expectedLines.length;
+	}
 
 	/** Try to directly read Velxio Zustand stores from iframe (same-origin). */
 	function getVelxioStores(iframe: HTMLIFrameElement): { editor: any; simulator: any } | null {
@@ -479,26 +540,56 @@
 				dbg.push('[fallback: direct iframe access]');
 				try {
 					const win = velxioIframe.contentWindow as any;
-					// Access Zustand stores via window globals (we'll expose them)
-					// Or try to find the stores on the module scope
-					const editorStore = win.__VELXIO_EDITOR_STORE__?.getState?.();
-					const simStore = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
-
-					if (editorStore?.files) {
-						sourceCode = editorStore.files.map((f: any) => f.content).join('\n');
-						dbg.push(`[direct] source: ${sourceCode.length} chars`);
-					} else {
-						dbg.push('[direct] editor store not found');
+					
+					// Check if stores are exposed
+					if (!win.__VELXIO_EDITOR_STORE__ || !win.__VELXIO_SIMULATOR_STORE__) {
+						dbg.push('[direct] WARNING: Stores not exposed on window');
+						dbg.push('[direct] Trying alternative access methods...');
+						
+						// Alternative: try to find Zustand stores via other means
+						// Some bundlers expose stores differently
+						if (win.__ZUSTAND__) {
+							dbg.push('[direct] Found __ZUSTAND__, searching for stores...');
+							// Try to locate editor and simulator stores
+							for (const key of Object.keys(win.__ZUSTAND__)) {
+								const store = win.__ZUSTAND__[key];
+								if (store?.getState) {
+									const state = store.getState();
+									if (state?.files && !sourceCode) {
+										sourceCode = state.files.map((f: any) => f.content).join('\n');
+										dbg.push(`[direct] source from __ZUSTAND__: ${sourceCode.length} chars`);
+									}
+									if (state?.wires !== undefined && wireList.length === 0) {
+										wireList = state.wires;
+										dbg.push(`[direct] wires from __ZUSTAND__: ${wireList.length}`);
+									}
+								}
+							}
+						}
 					}
+					
+					// Primary method: use exposed stores
+					if (!sourceCode || wireList.length === 0) {
+						const editorStore = win.__VELXIO_EDITOR_STORE__?.getState?.();
+						const simStore = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
 
-					if (simStore) {
-						const board = simStore.boards?.find((b: any) => b.id === simStore.activeBoardId);
-						serialLog = board?.serialOutput ?? simStore.serialOutput ?? '';
-						dbg.push(`[direct] serial: ${serialLog.length} chars`);
-						wireList = simStore.wires ?? [];
-						dbg.push(`[direct] wires: ${wireList.length}`);
-					} else {
-						dbg.push('[direct] simulator store not found');
+						if (editorStore?.files) {
+							sourceCode = editorStore.files.map((f: any) => f.content).join('\n');
+							dbg.push(`[direct] source: ${sourceCode.length} chars`);
+						} else {
+							dbg.push('[direct] editor store has no files');
+						}
+
+						if (simStore) {
+							// Try to get serial output from active board
+							const board = simStore.boards?.find((b: any) => b.id === simStore.activeBoardId);
+							serialLog = board?.serialOutput ?? simStore.serialOutput ?? '';
+							dbg.push(`[direct] serial: ${serialLog.length} chars`);
+							wireList = simStore.wires ?? [];
+							dbg.push(`[direct] wires: ${wireList.length}`);
+						} else {
+							dbg.push('[direct] simulator store not found');
+						}
 					}
 				} catch (e: any) {
 					dbg.push(`[direct] error: ${e.message}`);
@@ -523,41 +614,105 @@
 
 			// 2. Serial output
 			if (data.expected_serial_output) {
-				const actualLines = serialLog.trim().split('\n').map(l => l.trim());
-				const expectedLines = data.expected_serial_output.trim().split('\n').map(l => l.trim());
-				let j = 0;
-				for (const line of actualLines) {
-					if (j < expectedLines.length && line === expectedLines[j]) j++;
-					if (j === expectedLines.length) break;
-				}
-				serialPass = j === expectedLines.length;
+				const actualLog = serialLog.trim();
+				const expectedLog = data.expected_serial_output.trim();
+				
+				// Use subsequence matching: expected lines must appear in order in actual output
+				serialPass = matchSerialSubsequence(actualLog, expectedLog);
+				
 				messages.push(serialPass
 					? '✅ Serial output sesuai'
 					: '❌ Serial output belum sesuai');
+				
 				const preview = serialLog.substring(0, 150).replace(/\n/g, '↵');
-				dbg.push(`[serial] actual(${serialLog.length}ch)="${preview}" → ${serialPass}`);
+				dbg.push(`[serial] actual(${serialLog.length}ch)="${preview}"`);
+				dbg.push(`[serial] expected="${expectedLog.substring(0, 150).replace(/\n/g, '↵')}" → ${serialPass}`);
 			}
 
 			// 3. Wiring
 			if (data.expected_wiring) {
-				let expectedPairs: [string, string][] = [];
-				try { expectedPairs = JSON.parse(data.expected_wiring); } catch {}
+				let expectedWires: any[] = [];
+				try {
+					const parsed = JSON.parse(data.expected_wiring);
+					// Support both old format (array of pairs) and new format (object with wires array)
+					if (Array.isArray(parsed)) {
+						expectedWires = parsed;
+					} else if (parsed.wires && Array.isArray(parsed.wires)) {
+						expectedWires = parsed.wires;
+					}
+				} catch {}
+
+				// Detect non-polarized component types (pins are interchangeable)
+				const nonPolarizedTypes = new Set(['resistor']);
 
 				// Normalize power pin names (e.g., GND.2 → GND, VCC.1 → VCC)
-				const normalizePin = (pin: string) => pin.replace(/^(GND|VCC|5V|3V3|3\.3V)\.\d+$/i, '$1');
-				
-				const norm = (a: string, b: string) => {
-					const normA = a.replace(/:(.+)$/, (_, pin) => ':' + normalizePin(pin));
-					const normB = b.replace(/:(.+)$/, (_, pin) => ':' + normalizePin(pin));
-					return [normA, normB].sort().join('↔');
+				// This handles multiple power pin variants
+				const normalizePin = (pin: string) => {
+					// Match power pins with numeric suffixes: GND.1, VCC.2, 5V.3, etc.
+					return pin.replace(/^(GND|VCC|5V|3V3|3\.3V|POWER)\.\d+$/i, '$1');
 				};
+
+				// Normalize component:pin for comparison
+				// For non-polarized components (like resistors), strip pin numbers
+				// so that resistor:1 and resistor:2 are treated as equivalent
+				const normalizeEdge = (compId: string, pinName: string): string => {
+					const normPin = normalizePin(pinName);
+					// Check if this component is non-polarized by looking at expected_wires
+					// We detect resistor components by their ID pattern or type
+					const isNonPolarized = nonPolarizedTypes.has(compId.split('-')[0]) ||
+						compId.startsWith('resistor');
+					if (isNonPolarized && /^\d+$/.test(normPin)) {
+						// For non-polarized components with numeric pins, use a generic pin name
+						return `${compId}:PIN`;
+					}
+					return `${compId}:${normPin}`;
+				};
+
+				const norm = (a: string, b: string) => {
+					// Parse component:pin format
+					const [compA, pinA] = a.split(':');
+					const [compB, pinB] = b.split(':');
+					const normA = `${compA}:${normalizePin(pinA || '')}`;
+					const normB = `${compB}:${normalizePin(pinB || '')}`;
+					// For non-polarized components, normalize numeric pins to generic
+					const finalA = nonPolarizedTypes.has(compA) || compA.startsWith('resistor')
+						? `${compA}:PIN` : normA;
+					const finalB = nonPolarizedTypes.has(compB) || compB.startsWith('resistor')
+						? `${compB}:PIN` : normB;
+					// Sort to make edge comparison order-independent
+					return [finalA, finalB].sort().join('↔');
+				};
+
 				const studentEdges = new Set(
 					wireList.map(w => norm(
 						`${w.start.componentId}:${w.start.pinName}`,
 						`${w.end.componentId}:${w.end.pinName}`
 					))
 				);
-				wiringPass = expectedPairs.every(([a, b]) => studentEdges.has(norm(a, b)));
+
+				// Check all expected connections exist
+				wiringPass = expectedWires.every((expected: any) => {
+					let edgeKey: string;
+					// Handle both formats
+					if (Array.isArray(expected) && expected.length === 2) {
+						// Old format: ["component:pin", "component:pin"]
+						edgeKey = norm(expected[0], expected[1]);
+					} else if (expected.start && expected.end) {
+						// New format: { start: { componentId, pinName }, end: { componentId, pinName } }
+						const startPin = `${expected.start.componentId}:${expected.start.pinName}`;
+						const endPin = `${expected.end.componentId}:${expected.end.pinName}`;
+						edgeKey = norm(startPin, endPin);
+					} else {
+						return false;
+					}
+
+					const exists = studentEdges.has(edgeKey);
+					if (!exists) {
+						dbg.push(`[wiring] MISSING: ${edgeKey}`);
+					}
+					return exists;
+				});
+
 				messages.push(wiringPass
 					? '✅ Rangkaian wiring benar'
 					: '❌ Wiring belum sesuai');
@@ -565,17 +720,20 @@
 				const edgesStr = wireList.map(w =>
 					`${w.start.componentId}:${w.start.pinName}↔${w.end.componentId}:${w.end.pinName}`
 				);
-				dbg.push(`[wiring] student: ${edgesStr.join(' | ') || '(kosong)'}`);
-				dbg.push(`[wiring] expected: ${expectedPairs.map(p => p.join('↔')).join(' | ')}`);
-				dbg.push(`[wiring] → ${wiringPass}`);
+				dbg.push(`[wiring] student (${wireList.length} wires): ${edgesStr.join(' | ') || '(kosong)'}`);
+				dbg.push(`[wiring] expected (${expectedWires.length} connections): ${expectedWires.map((w: any) => {
+					if (Array.isArray(w) && w.length === 2) return w.join('↔');
+					if (w.start && w.end) return `${w.start.componentId}:${w.start.pinName}↔${w.end.componentId}:${w.end.pinName}`;
+					return JSON.stringify(w);
+				}).join(' | ')}`);
+				dbg.push(`[wiring] result → ${wiringPass}`);
 			}
 
 			const checks = [keyTextPass, serialPass, wiringPass].filter(v => v !== undefined);
 			const pass = checks.length > 0 && checks.every(Boolean);
 
-			messages.push('', '── Debug ──', ...dbg);
-
 			velxioOut.output = messages.join('\n');
+			velxioOut.debug = dbg;
 			velxioOut.success = pass;
 
 			if (pass) {
@@ -710,13 +868,7 @@
 						</div>
 					{:else}
 						<div class="velxio-toolbar">
-							<button type="button" class="btn btn-success" onclick={handleVelxioSubmit}
-								disabled={velxioOut.loading}>
-								{velxioOut.loading ? 'Mengevaluasi...' : '✓ Submit'}
-							</button>
-							<span class="velxio-status">
-								{velxioReady ? '🟢 Bridge' : '🔵 Direct'}
-							</span>
+							<!-- Submit button removed for cleaner workspace -->
 						</div>
 						<!-- svelte-ignore a11y_missing_attribute -->
 						<iframe
@@ -1027,10 +1179,7 @@
 		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
 	}
-	.velxio-status {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-	}
+
 	.velxio-panel {
 		display: flex;
 		flex-direction: column;

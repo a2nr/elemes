@@ -54,6 +54,7 @@ def api_lesson(filename):
     initial_code = parsed_data['initial_code']
     solution_code = parsed_data['solution_code']
     solution_circuit = parsed_data.get('solution_circuit', '')
+    solution_python = parsed_data.get('solution_python', '')
     key_text = parsed_data['key_text']
     active_tabs = parsed_data['active_tabs']
 
@@ -120,6 +121,7 @@ def api_lesson(filename):
         'expected_wiring': expected_wiring,
         'solution_code': solution_code,
         'solution_circuit': solution_circuit,
+        'solution_python': solution_python,
         'key_text': key_text,
         'key_text_circuit': key_text_circuit,
         'active_tabs': active_tabs,

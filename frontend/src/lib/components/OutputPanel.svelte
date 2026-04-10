@@ -4,6 +4,7 @@
 		error?: string;
 		loading?: boolean;
 		success?: boolean | null;
+		debug?: string[];
 	}
 
 	export interface OutputEntry {
@@ -20,6 +21,8 @@
 	}
 
 	let { sections = [] }: Props = $props();
+
+	let showDebug = $state<Record<string, boolean>>({});
 
 	let anyLoading = $derived(sections.some(s => s.data.loading));
 
@@ -55,8 +58,16 @@
 				{:else if sec.data.success === false}
 					<span class="section-badge error">Error</span>
 				{/if}
+				{#if sec.data.debug && sec.data.debug.length > 0}
+					<label class="debug-toggle">
+						<input type="checkbox" bind:checked={showDebug[sec.key]} /> Debug
+					</label>
+				{/if}
 			</div>
-			<pre class="output-body">{#if sec.data.loading}{sec.loadingText}{:else if sec.data.error}{sec.data.error}{:else if sec.data.output}{sec.data.output}{:else}<span class="placeholder">{sec.placeholder}</span>{/if}</pre>
+			<pre class="output-body">{#if sec.data.loading}{sec.loadingText}{:else if sec.data.error}{sec.data.error}{:else if sec.data.output}{sec.data.output}{:else}<span class="placeholder">{sec.placeholder}</span>{/if}{#if sec.data.debug && showDebug[sec.key]}
+
+── Debug ──
+{sec.data.debug.join('\n')}{/if}</pre>
 		</div>
 		{/each}
 
@@ -152,5 +163,14 @@
 	.placeholder {
 		color: var(--color-text-muted);
 		font-style: italic;
+	}
+	.debug-toggle {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.3rem;
+		font-size: 0.7rem;
+		font-weight: normal;
+		cursor: pointer;
 	}
 </style>

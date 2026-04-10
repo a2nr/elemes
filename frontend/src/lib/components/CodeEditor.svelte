@@ -26,11 +26,13 @@
 	let saveTimeout: any;
 
 	function saveToStorage(value: string) {
-		if (!storageKey) return;
+		if (!lastStorageKey && !storageKey) return;
+		const activeKey = lastStorageKey || storageKey;
+		if (!activeKey) return;
 		saving = true;
 		clearTimeout(saveTimeout);
 		saveTimeout = setTimeout(() => {
-			sessionStorage.setItem(storageKey, value);
+			localStorage.setItem(activeKey, value);
 			saving = false;
 		}, 1000);
 	}
@@ -89,7 +91,11 @@
 					if (update.docChanged) {
 						const val = update.state.doc.toString();
 						onchange?.(val);
-						saveToStorage(val);
+						
+						// Use lastStorageKey ref or dynamic check since storageKey prop might be stale in closure
+						if (lastStorageKey) {
+							saveToStorage(val);
+						}
 					}
 				})
 			);
@@ -184,7 +190,7 @@
 
 		let initialCode = code;
 		if (storageKey) {
-			const saved = sessionStorage.getItem(storageKey);
+			const saved = localStorage.getItem(storageKey);
 			if (saved !== null) {
 				initialCode = saved;
 			}
@@ -267,7 +273,7 @@
 			lastStorageKey = storageKey;
 			if (!ready || !view || !storageKey) return;
 
-			const saved = sessionStorage.getItem(storageKey);
+			const saved = localStorage.getItem(storageKey);
 			if (saved !== null) {
 				setCode(saved);
 			} else {

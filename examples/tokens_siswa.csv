@@ -1,5 +1,3 @@
-token;nama_siswa;hello_world;variabel;rangkaian_dasar
-GURU001;Pak Budi;not_started;not_started;not_started
-SISWA001;Andi Pratama;not_started;not_started;not_started
-SISWA002;Siti Nurhaliza;not_started;not_started;not_started
-SISWA003;Rizky Firmansyah;not_started;not_started;not_started
+token;nama_siswa;hello_world;variabel;rangkaian_dasar;led_blink_arduino
+121312;Anggoro Dwi;completed;completed;completed;completed
+dummy_token_12345;Example Student;completed;not_started;not_started;not_started

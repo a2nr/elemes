@@ -25,7 +25,7 @@ interface VelxioWire {
 interface EvaluationExpected {
 	key_text?: string;
 	serial_output?: string;
-	wiring?: [string, string][];
+	wiring?: [string, string][] | { wires: Array<{ start: { componentId: string; pinName: string }; end: { componentId: string; pinName: string } }> };
 }
 
 export interface EvaluationResult {
@@ -34,6 +34,7 @@ export interface EvaluationResult {
 	serial?: boolean;
 	wiring?: boolean;
 	messages: string[];
+	debug?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -145,12 +146,25 @@ export class VelxioBridge {
 				const edges = studentWires.map(w =>
 					`${w.start.componentId}:${w.start.pinName}↔${w.end.componentId}:${w.end.pinName}`
 				);
-				result.wiring = this.matchWiring(studentWires, expected.wiring);
+				
+				// Extract expected wires array from both formats
+				let expectedWires: any[] = [];
+				if (Array.isArray(expected.wiring)) {
+					expectedWires = expected.wiring;
+				} else if (expected.wiring.wires && Array.isArray(expected.wiring.wires)) {
+					expectedWires = expected.wiring.wires;
+				}
+				
+				result.wiring = this.matchWiring(studentWires, expectedWires);
 				result.messages.push(result.wiring
 					? '✅ Rangkaian wiring benar'
 					: '❌ Wiring belum sesuai. Periksa kembali koneksi komponen');
 				dbg.push(`[DBG wiring] ${studentWires.length} wires: ${edges.join(' | ')}`);
-				dbg.push(`[DBG wiring] expected: ${expected.wiring.map(p => p.join('↔')).join(' | ')}`);
+				dbg.push(`[DBG wiring] expected: ${expectedWires.map((w: any) => {
+					if (Array.isArray(w) && w.length === 2) return w.join('↔');
+					if (w.start && w.end) return `${w.start.componentId}:${w.start.pinName}↔${w.end.componentId}:${w.end.pinName}`;
+					return JSON.stringify(w);
+				}).join(' | ')}`);
 				dbg.push(`[DBG wiring] → ${result.wiring}`);
 			} else {
 				result.wiring = false;
@@ -163,8 +177,8 @@ export class VelxioBridge {
 		const checks = [result.key_text, result.serial, result.wiring].filter(v => v !== undefined);
 		result.pass = checks.length > 0 && checks.every(Boolean);
 
-		// Append debug info to messages so it's visible in the output panel
-		result.messages.push('', '── Debug ──', ...dbg);
+		// Store debug info separately
+		result.debug = dbg;
 
 		return result;
 	}
@@ -204,34 +218,188 @@ export class VelxioBridge {
 
 	/** Subsequence match: expected lines must appear in order within actual. */
 	private matchSerial(actual: string, expected: string): boolean {
-		const actualLines = actual.trim().split('\n').map(l => l.trim());
-		const expectedLines = expected.trim().split('\n').map(l => l.trim());
-		let j = 0;
-		for (const line of actualLines) {
-			if (j < expectedLines.length && line === expectedLines[j]) j++;
-			if (j === expectedLines.length) return true;
+		if (!expected.trim()) return true;
+		if (!actual.trim()) return false;
+		
+		const actualLines = actual.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+		const expectedLines = expected.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+		
+		let expectedIdx = 0;
+		for (const actualLine of actualLines) {
+			if (expectedIdx < expectedLines.length) {
+				// Check if expected line is a substring of actual line (case-insensitive)
+				if (actualLine.toLowerCase().includes(expectedLines[expectedIdx].toLowerCase())) {
+					expectedIdx++;
+				}
+			}
+			if (expectedIdx === expectedLines.length) return true;
 		}
-		return j === expectedLines.length;
+		return expectedIdx === expectedLines.length;
 	}
 
-	/** Lenient wiring check: all expected edges must exist in student wires. */
-	private matchWiring(studentWires: VelxioWire[], expectedPairs: [string, string][]): boolean {
+	/**
+	 * Net-based wiring check: groups pins into electrical nets using
+	 * Union-Find (Disjoint Set Union), then compares net composition.
+	 *
+	 * This is robust against:
+	 * - Node order swaps (A↔B vs B↔A)
+	 * - Transitive connections (A-B-C vs A-C, B in middle)
+	 * - Extra student wires (lenient - only missing connections fail)
+	 */
+	private matchWiring(studentWires: VelxioWire[], expectedPairs: [string, string][] | any[]): boolean {
 		// Normalize power pin names (e.g., GND.2 → GND, VCC.1 → VCC)
-		const normalizePin = (pin: string) => pin.replace(/^(GND|VCC|5V|3V3|3\.3V)\.\d+$/i, '$1');
-		
-		const norm = (a: string, b: string) => {
-			const normA = a.replace(/:(.+)$/, (_, pin) => ':' + normalizePin(pin));
-			const normB = b.replace(/:(.+)$/, (_, pin) => ':' + normalizePin(pin));
-			return [normA, normB].sort().join('↔');
+		const normalizePin = (pin: string) => {
+			return pin.replace(/^(GND|VCC|5V|3V3|3\.3V|POWER)\.\d+$/i, '$1');
 		};
-		const studentEdges = new Set(
-			studentWires.map(w =>
-				norm(
-					`${w.start.componentId}:${w.start.pinName}`,
-					`${w.end.componentId}:${w.end.pinName}`
-				)
-			)
-		);
-		return expectedPairs.every(([a, b]) => studentEdges.has(norm(a, b)));
+
+		const normPin = (pin: string) => {
+			const [comp, name] = pin.includes(':') ? pin.split(':') : ['', pin];
+			return `${comp}:${normalizePin(name)}`;
+		};
+
+		// Union-Find (DSU) implementation
+		const parent = new Map<string, string>();
+		const rank = new Map<string, string>();
+
+		const find = (x: string): string => {
+			if (!parent.has(x)) {
+				parent.set(x, x);
+				rank.set(x, x);
+				return x;
+			}
+			// Path compression
+			if (parent.get(x) !== x) {
+				parent.set(x, find(parent.get(x)!));
+			}
+			return parent.get(x)!;
+		};
+
+		const union = (a: string, b: string) => {
+			const rootA = find(a);
+			const rootB = find(b);
+			if (rootA === rootB) return;
+			// Union by rank
+			const rankA = rank.get(rootA) || '';
+			const rankB = rank.get(rootB) || '';
+			if (rankA < rankB) {
+				parent.set(rootA, rootB);
+			} else if (rankA > rankB) {
+				parent.set(rootB, rootA);
+			} else {
+				parent.set(rootB, rootA);
+				rank.set(rootA, rankA + '1');
+			}
+		};
+
+		// Build student nets
+		for (const wire of studentWires) {
+			const start = normPin(`${wire.start.componentId}:${wire.start.pinName}`);
+			const end = normPin(`${wire.end.componentId}:${wire.end.pinName}`);
+			union(start, end);
+		}
+
+		// Collect all pins and group into nets for student
+		const allStudentPins = new Set<string>();
+		for (const wire of studentWires) {
+			allStudentPins.add(normPin(`${wire.start.componentId}:${wire.start.pinName}`));
+			allStudentPins.add(normPin(`${wire.end.componentId}:${wire.end.pinName}`));
+		}
+
+		const studentNets = new Map<string, Set<string>>();
+		for (const pin of allStudentPins) {
+			const root = find(pin);
+			if (!studentNets.has(root)) {
+				studentNets.set(root, new Set());
+			}
+			studentNets.get(root)!.add(pin);
+		}
+
+		// Build expected nets
+		const expectedWires: Array<{ start: string; end: string }> = [];
+		for (const expected of expectedPairs) {
+			if (Array.isArray(expected) && expected.length === 2) {
+				expectedWires.push({ start: normPin(expected[0]), end: normPin(expected[1]) });
+			} else if (expected.start && expected.end) {
+				expectedWires.push({
+					start: normPin(`${expected.start.componentId}:${expected.start.pinName}`),
+					end: normPin(`${expected.end.componentId}:${expected.end.pinName}`)
+				});
+			}
+		}
+
+		const expectedParent = new Map<string, string>();
+		const expectedRank = new Map<string, string>();
+
+		const expectedFind = (x: string): string => {
+			if (!expectedParent.has(x)) {
+				expectedParent.set(x, x);
+				expectedRank.set(x, x);
+				return x;
+			}
+			if (expectedParent.get(x) !== x) {
+				expectedParent.set(x, expectedFind(expectedParent.get(x)!));
+			}
+			return expectedParent.get(x)!;
+		};
+
+		const expectedUnion = (a: string, b: string) => {
+			const rootA = expectedFind(a);
+			const rootB = expectedFind(b);
+			if (rootA === rootB) return;
+			const rankA = expectedRank.get(rootA) || '';
+			const rankB = expectedRank.get(rootB) || '';
+			if (rankA < rankB) {
+				expectedParent.set(rootA, rootB);
+			} else if (rankA > rankB) {
+				expectedParent.set(rootB, rootA);
+			} else {
+				expectedParent.set(rootB, rootA);
+				expectedRank.set(rootA, rankA + '1');
+			}
+		};
+
+		for (const wire of expectedWires) {
+			expectedUnion(wire.start, wire.end);
+		}
+
+		const allExpectedPins = new Set<string>();
+		for (const wire of expectedWires) {
+			allExpectedPins.add(wire.start);
+			allExpectedPins.add(wire.end);
+		}
+
+		const expectedNets = new Map<string, Set<string>>();
+		for (const pin of allExpectedPins) {
+			const root = expectedFind(pin);
+			if (!expectedNets.has(root)) {
+				expectedNets.set(root, new Set());
+			}
+			expectedNets.get(root)!.add(pin);
+		}
+
+		// Compare: every expected net must have a matching student net
+		// that contains ALL pins from the expected net
+		for (const [, expectedNet] of expectedNets) {
+			let found = false;
+			for (const [, studentNet] of studentNets) {
+				// Check if student net contains all pins from expected net
+				let allPresent = true;
+				for (const pin of expectedNet) {
+					if (!studentNet.has(pin)) {
+						allPresent = false;
+						break;
+					}
+				}
+				if (allPresent) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 }

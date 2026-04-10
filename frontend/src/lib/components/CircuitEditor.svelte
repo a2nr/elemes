@@ -23,7 +23,7 @@
 		saving = true;
 		clearTimeout(saveTimeout);
 		saveTimeout = setTimeout(() => {
-			sessionStorage.setItem(storageKey, text);
+			localStorage.setItem(storageKey, text);
 			saving = false;
 		}, 1000);
 	}
@@ -54,7 +54,7 @@
 			// Load initial circuit or draft
 			let toLoad = initialCircuit;
 			if (storageKey) {
-				const saved = sessionStorage.getItem(storageKey);
+				const saved = localStorage.getItem(storageKey);
 				if (saved) {
 					toLoad = saved;
 				}
@@ -69,19 +69,6 @@
 			}
 
 			if (onready) onready(simApi);
-
-			// Setup auto-save polling
-			if (storageKey) {
-				autoSaveInterval = setInterval(() => {
-					if (simApi && ready) {
-						const currentText = simApi.exportCircuit();
-						const saved = sessionStorage.getItem(storageKey);
-						if (currentText && currentText !== saved && currentText.trim().length > 10) {
-							saveToStorage(currentText);
-						}
-					}
-				}, 5000);
-			}
 		} else {
 			console.error("CircuitEditor: Could not find CircuitJS1 API object");
 		}
@@ -109,7 +96,39 @@
 	$effect(() => {
 		if (simApi && ready && initialCircuit && initialCircuit !== lastLoadedCircuit) {
 			lastLoadedCircuit = initialCircuit;
-			loadCircuitToSim(initialCircuit);
+			const saved = storageKey ? localStorage.getItem(storageKey) : null;
+			if (!saved) {
+				loadCircuitToSim(initialCircuit);
+			}
+		}
+	});
+
+	// Load draft reactively when storageKey is set (fixes delayed auth problem)
+	$effect(() => {
+		if (storageKey && storageKey !== lastStorageKey) {
+			lastStorageKey = storageKey;
+			if (!ready || !simApi) return;
+
+			const saved = localStorage.getItem(storageKey);
+			if (saved) {
+				loadCircuitToSim(saved);
+			} else if (initialCircuit) {
+				loadCircuitToSim(initialCircuit);
+			}
+		}
+	});
+
+	// Reactively poll to sync auto-save, ensures it gets setup even if storageKey is delayed
+	$effect(() => {
+		if (simApi && ready && storageKey) {
+			const interval = setInterval(() => {
+				const currentText = simApi.exportCircuit();
+				const saved = localStorage.getItem(storageKey);
+				if (currentText && currentText !== saved && currentText.trim().length > 10) {
+					saveToStorage(currentText);
+				}
+			}, 5000);
+			return () => clearInterval(interval);
 		}
 	});
 
