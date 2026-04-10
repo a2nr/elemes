@@ -18,9 +18,10 @@
 
 	interface Props {
 		sections?: OutputEntry[];
+		actions?: import('svelte').Snippet;
 	}
 
-	let { sections = [] }: Props = $props();
+	let { sections = [], actions }: Props = $props();
 
 	let showDebug = $state<Record<string, boolean>>({});
 
@@ -36,13 +37,20 @@
 
 <div class="output-panel">
 	<div class="output-header">
-		<span class="output-title">Output</span>
-		{#if anyLoading}
-			<span class="status-badge running">Compiling...</span>
-		{:else if overallSuccess === true}
-			<span class="status-badge success">Berhasil</span>
-		{:else if overallSuccess === false}
-			<span class="status-badge error">Error</span>
+		<div class="header-info">
+			<span class="output-title">Output</span>
+			{#if anyLoading}
+				<span class="status-badge running">Compiling...</span>
+			{:else if overallSuccess === true}
+				<span class="status-badge success">Berhasil</span>
+			{:else if overallSuccess === false}
+				<span class="status-badge error">Error</span>
+			{/if}
+		</div>
+		{#if actions}
+		<div class="header-actions">
+			{@render actions()}
+		</div>
 		{/if}
 	</div>
 
@@ -93,6 +101,16 @@
 		border-bottom: 1px solid var(--color-border);
 		font-size: 0.8rem;
 		font-family: system-ui, sans-serif;
+	}
+	.header-info {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
 	}
 	.output-title {
 		font-weight: 600;

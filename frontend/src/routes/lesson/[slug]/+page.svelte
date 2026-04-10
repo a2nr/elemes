@@ -212,6 +212,7 @@
 
 	/** Mark lesson as complete: track progress + celebration. Called when ALL exercises pass. */
 	async function completeLesson() {
+		if (lessonCompleted) return;
 		showCelebration = true;
 		if (auth.isLoggedIn) {
 			const lessonName = slug.replace('.md', '');
@@ -298,17 +299,16 @@
 		}
 	}
 
-	async function handleRun() {
-		if (activeTab === 'circuit') { await evaluateCircuit(); return; }
+	async function evaluateLanguage(lang: 'c' | 'python') {
 		if (!data) return;
 
-		const out = getCodeOut();
+		const out = lang === 'c' ? cOut : pyOut;
 		Object.assign(out, { loading: true, output: '', error: '', success: null });
 		activeTab = 'output';
 
 		try {
-			const code = editor?.getCode() ?? currentCode;
-			const res = await compileCode({ code, language: currentLanguage });
+			const code = (currentLanguage === lang) ? (editor?.getCode() ?? currentCode) : (lang === 'c' ? cCode : pythonCode);
+			const res = await compileCode({ code, language: lang });
 
 			if (!res.success) {
 				Object.assign(out, { error: res.error || 'Compilation failed', success: false });
@@ -319,13 +319,13 @@
 			out.success = true;
 
 			if (data.expected_output) {
-				const currentCCode = currentLanguage === 'c' ? code : cCode;
-				const currentPythonCode = currentLanguage === 'python' ? code : pythonCode;
+				const currentCCode = (currentLanguage === 'c') ? code : cCode;
+				const currentPythonCode = (currentLanguage === 'python') ? code : pythonCode;
 				const mergedCode = currentCCode + '\n' + currentPythonCode;
 				const passed = res.output.trim() === data.expected_output.trim() && checkKeyText(mergedCode, data.key_text ?? '');
 				if (passed) {
-					if (currentLanguage === 'c') cPassed = true;
-					else if (currentLanguage === 'python') pythonPassed = true;
+					if (lang === 'c') cPassed = true;
+					else if (lang === 'python') pythonPassed = true;
 
 					if (!checkAllPassed()) {
 						out.output += '\n✅ Kode benar!\n⏳ Selesaikan juga tantangan di tab lainnya untuk menyelesaikan pelajaran ini.';
@@ -350,6 +350,28 @@
 		} finally {
 			out.loading = false;
 		}
+	}
+
+	async function handleRun() {
+		if (activeTab === 'circuit') { await evaluateCircuit(); return; }
+		if (!data) return;
+
+		activeTab = 'output';
+		await evaluateLanguage(currentLanguage as 'c' | 'python');
+	}
+
+	async function handleRunAll() {
+		if (!data) return;
+		activeTab = 'output';
+
+		const tabs = data.active_tabs ?? [];
+		const hasC = tabs.includes('c') || (!tabs.length && !tabs.includes('python'));
+		const hasPython = tabs.includes('python');
+
+		if (hasC) await evaluateLanguage('c');
+		if (hasPython) await evaluateLanguage('python');
+		if (tabs.includes('circuit')) await evaluateCircuit();
+		if (tabs.includes('velxio')) await handleVelxioSubmit();
 	}
 
 	function handleReset() {
@@ -922,7 +944,13 @@
 
 				<!-- Output tab panel -->
 				<div class="tab-panel" class:tab-hidden={activeTab !== 'output'}>
-					<OutputPanel sections={outputSections} />
+					<OutputPanel sections={outputSections}>
+						{#snippet actions()}
+							<button class="btn btn-success btn-sm btn-run-all" onclick={handleRunAll} disabled={compiling}>
+								{compiling ? 'Mengevaluasi...' : '▶ Run Keseluruhan'}
+							</button>
+						{/snippet}
+					</OutputPanel>
 				</div>
 			</div>
 
@@ -1038,6 +1066,10 @@
 	}
 	.btn-secondary:hover {
 		background: var(--color-border);
+	}
+	.btn-run-all {
+		padding: 0.3rem 0.6rem;
+		font-size: 0.8rem;
 	}
 	.lang-label {
 		margin-left: auto;
