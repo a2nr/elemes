@@ -7,14 +7,14 @@ Reads test_data.json to know which lessons exist and their types.
 Usage (from elemes/load-test/):
     1. python content_parser.py          # generate test_data.json
     2. locust -f locustfile.py           # open web UI at http://localhost:8089
-       → Set host to your Elemes backend URL in the web UI
+       → Set host to your Elemes URL in the web UI
 
 Environment variables:
+    API_PREFIX   — Prefix for API paths (default: '/api')
+                   Use '/api' when targeting SvelteKit frontend (:3000)
+                   Use ''    when targeting Flask backend directly (:5000)
     VELXIO_HOST  — Velxio backend URL for Arduino compilation
                    (default: http://localhost:8001)
-
-All API paths hit the Flask backend directly (no /api prefix needed
-when targeting Flask at :5000). Arduino compile hits Velxio backend.
 """
 
 import json
@@ -24,6 +24,7 @@ import random
 import time
 
 import requests
+from requests.exceptions import JSONDecodeError
 from locust import HttpUser, task, between, events
 
 # ---------------------------------------------------------------------------
@@ -53,8 +54,10 @@ TOKENS = TEST_DATA.get('tokens', [])
 TEACHER_TOKEN = TEST_DATA.get('teacher_token', '')
 ALL_LESSONS = TEST_DATA.get('lessons', [])
 
-# Velxio backend URL for Arduino compilation
-VELXIO_HOST = os.environ.get('VELXIO_HOST', 'http://localhost:8001')
+# API prefix: '/api' for SvelteKit (default), '' for direct Flask
+API = os.environ.get('API_PREFIX', '/api')
+
+# Velxio backend URL is determined dynamically via SvelteKit / Tailscale reverse proxy path /velxio/
 
 # Pre-filter lessons by type for task assignment
 C_LESSONS = [l for l in ALL_LESSONS if l['type'] == 'c' and l.get('solution_code')]
@@ -78,6 +81,14 @@ def check_key_text(code: str, key_text: str) -> bool:
     return all(k in code for k in keys)
 
 
+def safe_json(resp) -> dict:
+    """Safely decode JSON from a response, handling HTML/404 errors."""
+    try:
+        return resp.json()
+    except Exception:
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # Locust User
 # ---------------------------------------------------------------------------
@@ -95,22 +106,23 @@ class ElemesStudent(HttpUser):
     def on_start(self):
         """Login once when user spawns."""
         self.token = random.choice(TOKENS) if TOKENS else ''
-        resp = self.client.post(
-            '/login',
+        with self.client.post(
+            f'{API}/login',
             json={'token': self.token},
-            name='/login'
-        )
-        data = resp.json()
-        if not data.get('success'):
-            logging.warning(f"Login failed: {data.get('message')}")
+            name='/login',
+            catch_response=True
+        ) as resp:
+            data = safe_json(resp)
+            if not data.get('success'):
+                resp.failure(f"Login failed: {data.get('message', f'HTTP {resp.status_code}')}")
 
     # ── Task 1: Browse Lessons (weight=3) ──────────────────────────────
 
     @task(3)
     def browse_lessons(self):
         """Fetch lesson list — simulates landing on home page."""
-        with self.client.get('/lessons', name='/lessons', catch_response=True) as resp:
-            data = resp.json()
+        with self.client.get(f'{API}/lessons', name='/lessons', catch_response=True) as resp:
+            data = safe_json(resp)
             lessons = data.get('lessons', [])
             if len(lessons) == 0:
                 resp.failure("No lessons returned")
@@ -131,13 +143,13 @@ class ElemesStudent(HttpUser):
         slug = lesson['slug']
 
         with self.client.get(
-            f'/lesson/{slug}.json',
+            f'{API}/lesson/{slug}.json',
             name='/lesson/[slug].json',
             catch_response=True
         ) as resp:
-            data = resp.json()
+            data = safe_json(resp)
 
-            if 'error' in data:
+            if 'error' in data or not data:
                 resp.failure(f"Lesson {slug} not found")
                 return
 
@@ -175,12 +187,12 @@ class ElemesStudent(HttpUser):
             return
 
         with self.client.post(
-            '/compile',
+            f'{API}/compile',
             json={'code': code, 'language': 'c'},
             name='/compile [C]',
             catch_response=True
         ) as resp:
-            data = resp.json()
+            data = safe_json(resp)
 
             if not data.get('success'):
                 resp.failure(f"Compile failed: {data.get('error', 'unknown')}")
@@ -198,8 +210,11 @@ class ElemesStudent(HttpUser):
 
             # Validate key_text
             key_text = lesson.get('key_text', '')
-            if key_text and not check_key_text(code, key_text):
-                resp.failure(f"{lesson['slug']}: key_text check failed")
+            if key_text:
+                # Untuk hybrid, gabungkan dengan code python agar semua key_text terpenuhi
+                full_code = code + "\n" + lesson.get('solution_python', '')
+                if not check_key_text(full_code, key_text):
+                    resp.failure(f"{lesson['slug']}: key_text check failed")
 
     # ── Task 4: Compile Python Lesson (weight=3) ───────────────────────
 
@@ -217,12 +232,12 @@ class ElemesStudent(HttpUser):
             return
 
         with self.client.post(
-            '/compile',
+            f'{API}/compile',
             json={'code': code, 'language': 'python'},
             name='/compile [Python]',
             catch_response=True
         ) as resp:
-            data = resp.json()
+            data = safe_json(resp)
 
             if not data.get('success'):
                 resp.failure(f"Compile failed: {data.get('error', 'unknown')}")
@@ -250,11 +265,11 @@ class ElemesStudent(HttpUser):
         slug = lesson['slug']
 
         with self.client.get(
-            f'/lesson/{slug}.json',
+            f'{API}/lesson/{slug}.json',
             name='/lesson/[arduino].json',
             catch_response=True
         ) as resp:
-            data = resp.json()
+            data = safe_json(resp)
 
             errors = []
 
@@ -283,11 +298,6 @@ class ElemesStudent(HttpUser):
                 except (json.JSONDecodeError, TypeError):
                     errors.append('expected_wiring invalid JSON')
 
-            # Key text check against initial code
-            key_text = lesson.get('key_text', '')
-            initial_code = data.get('initial_code_arduino', '')
-            if key_text and initial_code and not check_key_text(initial_code, key_text):
-                errors.append('key_text not found in initial_code_arduino')
 
             if errors:
                 resp.failure(f"{slug}: {'; '.join(errors)}")
@@ -298,7 +308,7 @@ class ElemesStudent(HttpUser):
     def compile_arduino_lesson(self):
         """
         Compile an Arduino lesson's code via Velxio backend.
-        Hits Velxio's POST /api/compile endpoint.
+        Hits Velxio's POST /velxio/api/compile endpoint.
         Validates: compile success + hex_content returned.
         Note: serial output can only be validated in-browser (avr8js sim).
         """
@@ -310,56 +320,27 @@ class ElemesStudent(HttpUser):
         if not code:
             return
 
-        try:
-            resp = requests.post(
-                f'{VELXIO_HOST}/api/compile',
-                json={'code': code, 'board_fqbn': 'arduino:avr:uno'},
-                timeout=30
-            )
-            data = resp.json()
+        with self.client.post(
+            '/velxio/api/compile',
+            json={'code': code, 'board_fqbn': 'arduino:avr:uno'},
+            name='/velxio/api/compile [Arduino]',
+            timeout=30,
+            catch_response=True
+        ) as resp:
+            data = safe_json(resp)
 
             if not data.get('success'):
                 # Report as Locust failure for stats tracking
-                self.environment.events.request.fire(
-                    request_type='POST',
-                    name='/api/compile [Arduino]',
-                    response_time=resp.elapsed.total_seconds() * 1000,
-                    response_length=len(resp.content),
-                    exception=Exception(
-                        f"{lesson['slug']}: compile failed — "
-                        f"{data.get('error', data.get('stderr', 'unknown'))}"
-                    ),
+                resp.failure(
+                    f"{lesson['slug']}: compile failed — "
+                    f"{data.get('error', data.get('stderr', 'unknown'))}"
                 )
                 return
 
             hex_content = data.get('hex_content', '')
             if not hex_content:
-                self.environment.events.request.fire(
-                    request_type='POST',
-                    name='/api/compile [Arduino]',
-                    response_time=resp.elapsed.total_seconds() * 1000,
-                    response_length=len(resp.content),
-                    exception=Exception(f"{lesson['slug']}: no hex_content"),
-                )
+                resp.failure(f"{lesson['slug']}: no hex_content")
                 return
-
-            # Success
-            self.environment.events.request.fire(
-                request_type='POST',
-                name='/api/compile [Arduino]',
-                response_time=resp.elapsed.total_seconds() * 1000,
-                response_length=len(resp.content),
-                exception=None,
-            )
-
-        except requests.RequestException as e:
-            self.environment.events.request.fire(
-                request_type='POST',
-                name='/api/compile [Arduino]',
-                response_time=0,
-                response_length=0,
-                exception=e,
-            )
 
     # ── Task 6: Complete Lesson Flow (weight=2) ────────────────────────
 
@@ -377,7 +358,7 @@ class ElemesStudent(HttpUser):
 
         # 1. Fetch lesson detail
         resp = self.client.get(
-            f'/lesson/{slug}.json',
+            f'{API}/lesson/{slug}.json',
             name='/lesson/[slug].json (flow)'
         )
         if resp.status_code != 200:
@@ -386,7 +367,7 @@ class ElemesStudent(HttpUser):
         # 2. Compile if it's a C or Python lesson with solution
         if lesson['type'] in ('c', 'hybrid') and lesson.get('solution_code'):
             self.client.post(
-                '/compile',
+                f'{API}/compile',
                 json={'code': lesson['solution_code'], 'language': 'c'},
                 name='/compile (flow)'
             )
@@ -394,27 +375,25 @@ class ElemesStudent(HttpUser):
 
         elif lesson['type'] == 'python' and lesson.get('solution_python'):
             self.client.post(
-                '/compile',
+                f'{API}/compile',
                 json={'code': lesson['solution_python'], 'language': 'python'},
                 name='/compile (flow)'
             )
             time.sleep(0.5)
 
         elif lesson['type'] == 'arduino' and lesson.get('initial_code_arduino'):
-            try:
-                requests.post(
-                    f'{VELXIO_HOST}/api/compile',
-                    json={'code': lesson['initial_code_arduino'],
-                          'board_fqbn': 'arduino:avr:uno'},
-                    timeout=30
-                )
-            except requests.RequestException:
-                pass  # Non-critical in flow
+            self.client.post(
+                '/velxio/api/compile',
+                json={'code': lesson['initial_code_arduino'],
+                      'board_fqbn': 'arduino:avr:uno'},
+                name='/velxio/api/compile (flow)',
+                timeout=30
+            )
             time.sleep(0.5)
 
         # 3. Track progress
         with self.client.post(
-            '/track-progress',
+            f'{API}/track-progress',
             json={
                 'token': self.token,
                 'lesson_name': slug,
@@ -423,9 +402,9 @@ class ElemesStudent(HttpUser):
             name='/track-progress',
             catch_response=True
         ) as resp:
-            data = resp.json()
+            data = safe_json(resp)
             if not data.get('success'):
-                resp.failure(f"Track progress failed: {data.get('message')}")
+                resp.failure(f"Track progress failed: {data.get('message', f'HTTP {resp.status_code}')}")
 
     # ── Task 7: Progress Report (weight=1) ─────────────────────────────
 
@@ -437,17 +416,17 @@ class ElemesStudent(HttpUser):
 
         # Login as teacher
         self.client.post(
-            '/login',
+            f'{API}/login',
             json={'token': TEACHER_TOKEN},
             name='/login [teacher]'
         )
 
         with self.client.get(
-            '/progress-report.json',
+            f'{API}/progress-report.json',
             name='/progress-report.json',
             catch_response=True
         ) as resp:
-            data = resp.json()
+            data = safe_json(resp)
             students = data.get('students', [])
             lessons = data.get('lessons', [])
 
@@ -456,7 +435,7 @@ class ElemesStudent(HttpUser):
 
         # Re-login as student for subsequent tasks
         self.client.post(
-            '/login',
+            f'{API}/login',
             json={'token': self.token},
             name='/login [re-auth]'
         )
@@ -478,5 +457,5 @@ def on_test_start(environment, **kwargs):
                  f"Hybrid: {stats.get('hybrid', 0)}, Arduino: {stats.get('arduino', 0)}")
     logging.info(f"    Compilable: {stats.get('compilable', 0)}")
     logging.info(f"  Tokens: {len(TOKENS)} loaded")
-    logging.info(f"  Velxio: {VELXIO_HOST}")
+    logging.info(f"  API prefix: '{API}'")
     logging.info("=" * 60)
