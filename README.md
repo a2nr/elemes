@@ -174,6 +174,88 @@ Untuk materi yang melibatkan simulator rangkaian elektronika:
 | `---EXPECTED_CIRCUIT_OUTPUT---` | Validasi rangkaian (format JSON) |
 | `---KEY_TEXT_CIRCUIT---` | Kata kunci rangkaian |
 
+#### Blok Khusus Arduino/Velxio
+
+Untuk materi yang menggunakan simulator Arduino (Velxio):
+
+| Blok | Fungsi |
+|------|--------|
+| `---INITIAL_CODE_ARDUINO---` | Kode Arduino awal di editor Velxio |
+| `---VELXIO_CIRCUIT---` | Rangkaian komponen (JSON: board, components, wires) |
+| `---EXPECTED_SERIAL_OUTPUT---` | Output serial yang diharapkan (subsequence match) |
+| `---EXPECTED_WIRING---` | Wiring yang harus dibuat siswa (JSON, lenient) |
+| `---KEY_TEXT---` | Kata kunci yang harus ada di kode siswa |
+
+Contoh materi Arduino:
+
+```markdown
+---INITIAL_CODE_ARDUINO---
+void setup() {
+  pinMode(13, OUTPUT);
+  Serial.begin(9600);
+}
+
+void loop() {
+  digitalWrite(13, HIGH);
+  Serial.println("LED ON");
+  delay(1000);
+  digitalWrite(13, LOW);
+  Serial.println("LED OFF");
+  delay(1000);
+}
+---END_INITIAL_CODE_ARDUINO---
+
+---VELXIO_CIRCUIT---
+{
+  "board": "arduino:avr:uno",
+  "components": [
+    { "type": "wokwi-led", "id": "led-1", "x": 400, "y": -200, "props": { "color": "red", "pin": 13 } }
+  ],
+  "wires": []
+}
+---END_VELXIO_CIRCUIT---
+
+---EXPECTED_SERIAL_OUTPUT---
+LED ON
+LED OFF
+---END_EXPECTED_SERIAL_OUTPUT---
+
+---EXPECTED_WIRING---
+{
+  "wires": [
+    { "start": { "componentId": "arduino-uno", "pinName": "13" }, "end": { "componentId": "led-1", "pinName": "A" } },
+    { "start": { "componentId": "led-1", "pinName": "C" }, "end": { "componentId": "arduino-uno", "pinName": "GND" } }
+  ]
+}
+---END_EXPECTED_WIRING---
+
+---KEY_TEXT---
+pinMode
+digitalWrite
+---END_KEY_TEXT---
+```
+
+##### Referensi Nama Pin Komponen Velxio
+
+| Komponen | Tipe Wokwi | Pin Names |
+|----------|------------|----------|
+| Arduino Uno | `wokwi-arduino-uno` | `0`-`13`, `A0`-`A5`, `GND`, `5V`, `3.3V` |
+| LED | `wokwi-led` | `A` (Anode), `C` (Cathode) |
+| Push Button | `wokwi-pushbutton` | `1.l`, `2.l`, `1.r`, `2.r` |
+| Resistor | `wokwi-resistor` | `1`, `2` |
+| RGB LED | `wokwi-rgb-led` | `R`, `G`, `B`, `COM` |
+
+> **Penting:** Nama pin harus **persis** seperti tabel di atas.
+> `componentId` untuk Arduino Uno selalu `arduino-uno` (huruf kecil, dengan strip).
+
+##### Evaluasi Arduino
+
+Sistem mengevaluasi 3 aspek (semua harus lulus):
+
+1. **Key Text** — kata kunci wajib ada di source code siswa
+2. **Serial Output** — baris yang diharapkan harus muncul dalam urutan (subsequence match)
+3. **Wiring** — koneksi yang diharapkan harus ada (lenient: extra wires OK, GND.1/GND.2 dinormalisasi)
+
 ### 5. Generate Token Siswa
 
 Setelah materi siap, generate file `tokens_siswa.csv`:
@@ -244,15 +326,25 @@ Folder `examples/` berisi contoh lengkap yang digunakan oleh `./elemes.sh init`:
 ```
 examples/
 ├── content/
-│   ├── home.md              # Halaman utama (3 materi)
-│   ├── hello_world.md       # Materi dasar: Hello World
-│   ├── variabel.md          # Materi dasar: Variabel
-│   └── rangkaian_dasar.md   # Materi hybrid: C + Circuit
-└── tokens_siswa.csv         # Data siswa contoh (1 guru + 3 siswa)
+│   ├── home.md                    # Halaman utama (7 materi)
+│   ├── hello_world.md             # Materi dasar: Hello World
+│   ├── variabel.md                # Materi dasar: Variabel
+│   ├── rangkaian_dasar.md         # Materi hybrid: C + Circuit
+│   ├── led_blink_arduino.md       # Arduino: LED Blink + wiring
+│   ├── hello_serial_arduino.md    # Arduino: Serial Monitor (tanpa wiring)
+│   ├── button_input_arduino.md    # Arduino: Button + LED input/output
+│   └── traffic_light_arduino.md   # Arduino: Lampu lalu lintas 3 LED
+└── tokens_siswa.csv               # Data siswa contoh (1 guru + 3 siswa)
 ```
 
-File `rangkaian_dasar.md` adalah contoh **materi hybrid** yang menggabungkan
-latihan pemrograman C dan simulator rangkaian elektronika dalam satu lesson.
+### Jenis Materi
+
+| Tipe | Contoh | Evaluasi |
+|------|--------|----------|
+| **C/Python** | `hello_world.md`, `variabel.md` | Output stdout |
+| **Hybrid** | `rangkaian_dasar.md` | C output + node voltage |
+| **Arduino (Velxio)** | `led_blink_arduino.md` | Key text + serial + wiring |
+| **Arduino (tanpa wiring)** | `hello_serial_arduino.md` | Key text + serial |
 
 ## FAQ
 
@@ -275,6 +367,22 @@ akan otomatis muncul.
 **Q: Apakah harus pakai Tailscale?**
 Tidak. Tailscale opsional untuk akses remote. Tanpa Tailscale, LMS
 bisa diakses di jaringan lokal via `http://localhost:3000`.
+
+**Q: Bagaimana membuat materi Arduino baru?**
+Buat file `.md` baru di `content/` dengan blok `---INITIAL_CODE_ARDUINO---`
+dan `---VELXIO_CIRCUIT---`. Lihat contoh di `led_blink_arduino.md`
+atau `button_input_arduino.md`. Pastikan `componentId` dan `pinName`
+di `EXPECTED_WIRING` sesuai dengan tabel referensi pin di atas.
+
+**Q: Materi Arduino bisa tanpa wiring?**
+Ya. Jika hanya ingin evaluasi kode + serial output, cukup sertakan
+`VELXIO_CIRCUIT` dengan `components: []` kosong dan hilangkan blok
+`EXPECTED_WIRING`. Contoh: `hello_serial_arduino.md`.
+
+**Q: Apakah wiring harus persis sama?**
+Tidak harus. Evaluasi bersifat *lenient*: koneksi yang diharapkan harus ada,
+tapi siswa boleh menambahkan kabel ekstra. Pin GND juga dinormalisasi
+(GND.1 = GND.2 = GND).
 
 ## Persyaratan Sistem
 

@@ -21,6 +21,9 @@ Semua materi bisa dikerjakan langsung di browser!
 
 ### Arduino (Velxio)
 4. [LED Blink](lesson/led_blink_arduino.md)
+5. [Hello Serial](lesson/hello_serial_arduino.md)
+6. [Button Input](lesson/button_input_arduino.md)
+7. [Traffic Light](lesson/traffic_light_arduino.md)
 
 ----Available_Lessons----
 
@@ -28,3 +31,6 @@ Semua materi bisa dikerjakan langsung di browser!
 2. [Variabel](lesson/variabel.md)
 3. [Rangkaian Dasar](lesson/rangkaian_dasar.md)
 4. [LED Blink](lesson/led_blink_arduino.md)
+5. [Hello Serial](lesson/hello_serial_arduino.md)
+6. [Button Input](lesson/button_input_arduino.md)
+7. [Traffic Light](lesson/traffic_light_arduino.md)
