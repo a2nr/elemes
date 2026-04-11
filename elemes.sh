@@ -28,7 +28,20 @@ init)
   fi
 
   # assets/
-  mkdir -p "$PARENT_DIR/assets"
+  if [ -d "$PARENT_DIR/assets" ]; then
+    echo "✅ [Skip] Folder assets/ sudah ada"
+  else
+    mkdir -p "$PARENT_DIR/assets"
+    echo "📁 [Buat] Folder assets/  (untuk menyimpan file gambar/media)"
+  fi
+
+  # state/ (untuk Tailscale tun/state)
+  if [ -d "$PARENT_DIR/state" ]; then
+    echo "✅ [Skip] Folder state/ sudah ada"
+  else
+    mkdir -p "$PARENT_DIR/state"
+    echo "🔐 [Buat] Folder state/  (untuk Tailscale credentials & state)"
+  fi
 
   # tokens
   if [ -f "$PARENT_DIR/tokens_siswa.csv" ]; then
