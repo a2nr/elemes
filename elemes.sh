@@ -93,23 +93,38 @@ generatetoken)
 exportall)
   echo "📦 === Mengekspor Semua Image (Pre-Compiled Bundle) ==="
   TAR_FILE="lms-c-precompiled.tar"
-  
+
   echo "🏗️  1. Mem-build Backend Elemes..."
-  podman build -t lms-c-backend -f Dockerfile .
-  
+  podman build -t lms-c-backend:latest -f Dockerfile .
+
   echo "🏗️  2. Mem-build Frontend Elemes (SvelteKit)..."
-  podman build -t lms-c-frontend -f frontend/Dockerfile frontend
-  
+  podman build -t lms-c-frontend:latest -f frontend/Dockerfile frontend/
+
   echo "🏗️  3. Mem-build Velxio Simulator..."
-  podman build -t lms-c-velxio -f velxio/Dockerfile.standalone --build-arg ENABLE_ESP32=${ENABLE_ESP32:-0} velxio
-  
+  podman build -t lms-c-velxio:latest -f velxio/Dockerfile.standalone --build-arg ENABLE_ESP32=${ENABLE_ESP32:-0} velxio/
+
+  echo ""
+  echo "🔍 Memverifikasi image yang berhasil di-build..."
+  podman images | grep -E "lms-c-(backend|frontend|velxio)"
+  echo ""
+
   echo "💾 Menyatukan semua image menjadi 1 file tar: $TAR_FILE..."
-  podman save -o $TAR_FILE lms-c-backend lms-c-frontend lms-c-velxio
-  
+  podman save lms-c-backend:latest lms-c-frontend:latest lms-c-velxio:latest > "$TAR_FILE"
+
   if [ $? -eq 0 ]; then
+    FILESIZE=$(du -h "$TAR_FILE" | cut -f1)
     echo "✅ Selesai! File '$TAR_FILE' siap di-upload ke VPS."
-    echo "   Di VPS, jalankan: podman load -i $TAR_FILE"
-    echo "   (Jangan lupa set image di podman-compose.yml VPS sesuai nama image di atas)"
+    echo "   📦 Ukuran file: $FILESIZE"
+    echo ""
+    echo "   📋 Cara deploy di VPS:"
+    echo "   1. Upload file: scp $TAR_FILE user@vps:/path/lms-dev/elemes/"
+    echo "   2. Load image:  podman load -i $TAR_FILE"
+    echo "   3. Jalankan:    podman-compose up -d"
+    echo ""
+    echo "   ⚠️  Pastikan podman-compose.yml menggunakan image:"
+    echo "      - lms-c-backend:latest (untuk service elemes)"
+    echo "      - lms-c-frontend:latest (untuk service elemes-frontend)"
+    echo "      - lms-c-velxio:latest (untuk service velxio)"
   else
     echo "❌ Export gagal."
   fi
@@ -117,11 +132,52 @@ exportall)
 importall)
   echo "📦 === Mengimpor Semua Image (Pre-Compiled Bundle) ==="
   TAR_FILE="lms-c-precompiled.tar"
-  
+
+  if [ ! -f "$TAR_FILE" ]; then
+    echo "❌ File $TAR_FILE tidak ditemukan!"
+    echo "   Pastikan file sudah ada di direktori ini."
+    exit 1
+  fi
+
   echo "💾 Mengimpor image dari file $TAR_FILE..."
-  podman load -i $TAR_FILE
-  
+  podman load -i "$TAR_FILE"
+
+  echo ""
+  echo "🔍 Memverifikasi image yang berhasil di-load..."
+  podman images | grep -E "lms-c-(backend|frontend|velxio)"
+  echo ""
+
   echo "✅ Selesai! Image berhasil diimpor."
+  echo "   Sekarang jalankan: ./elemes.sh run"
+  ;;
+verify)
+  echo "🔍 === Memverifikasi Image Container ==="
+  echo ""
+
+  echo "📋 Image yang tersedia:"
+  podman images | grep -E "lms-c-(backend|frontend|velxio)" || echo "   ⚠️  Tidak ada image lms-c yang ditemukan"
+  echo ""
+
+  echo "📋 Container yang sedang berjalan:"
+  podman ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" | grep -E "lms-dev" || echo "   ⚠️  Tidak ada container yang berjalan"
+  echo ""
+
+  echo "🔍 Memeriksa CMD tiap container..."
+  for container in "lms-dev_elemes_1" "lms-dev_elemes-frontend_1" "lms-dev_velxio_1"; do
+    if podman ps --format "{{.Names}}" | grep -q "$container"; then
+      CMD=$(podman inspect "$container" --format '{{.Config.Cmd}}' 2>/dev/null)
+      ENTRYPOINT=$(podman inspect "$container" --format '{{.Config.Entrypoint}}' 2>/dev/null)
+      IMAGE=$(podman inspect "$container" --format '{{.Image}}' 2>/dev/null)
+      echo "  ✅ $container"
+      echo "     Image: $IMAGE"
+      echo "     Entrypoint: $ENTRYPOINT"
+      echo "     Cmd: $CMD"
+      echo ""
+    else
+      echo "  ⚠️  $container tidak ditemukan"
+      echo ""
+    fi
+  done
   ;;
 loadtest)
   echo "📊 === Elemes Load Testing ==="
@@ -157,6 +213,8 @@ loadtest)
   echo "  ./elemes.sh stop           # Menghentikan container yang sedang berjalan"
   echo "  ./elemes.sh generatetoken  # Sinkronisasi kolom tokens CSV sesuai file markdown"
   echo "  ./elemes.sh exportall      # Build & Export semua image LMS (Backend, Frontend, Velxio) jadi satu file tar"
+  echo "  ./elemes.sh importall      # Import image dari file tar (untuk deployment di VPS)"
+  echo "  ./elemes.sh verify         # Verifikasi image dan konfigurasi container"
   echo "  ./elemes.sh loadtest       # Menjalankan utilitas simulasi Load Test (Locust)"
   ;;
 esac
