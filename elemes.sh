@@ -90,6 +90,39 @@ generatetoken)
   echo "🔄 Melakukan sinkronisasi tokens_siswa.csv dari materi yang ada..."
   python3 "$SCRIPT_DIR/generate_tokens.py"
   ;;
+exportall)
+  echo "📦 === Mengekspor Semua Image (Pre-Compiled Bundle) ==="
+  TAR_FILE="lms-c-precompiled.tar"
+  
+  echo "🏗️  1. Mem-build Backend Elemes..."
+  podman build -t lms-c-backend -f Dockerfile .
+  
+  echo "🏗️  2. Mem-build Frontend Elemes (SvelteKit)..."
+  podman build -t lms-c-frontend -f frontend/Dockerfile frontend
+  
+  echo "🏗️  3. Mem-build Velxio Simulator..."
+  podman build -t lms-c-velxio -f velxio/Dockerfile.standalone --build-arg ENABLE_ESP32=${ENABLE_ESP32:-0} velxio
+  
+  echo "💾 Menyatukan semua image menjadi 1 file tar: $TAR_FILE..."
+  podman save -o $TAR_FILE lms-c-backend lms-c-frontend lms-c-velxio
+  
+  if [ $? -eq 0 ]; then
+    echo "✅ Selesai! File '$TAR_FILE' siap di-upload ke VPS."
+    echo "   Di VPS, jalankan: podman load -i $TAR_FILE"
+    echo "   (Jangan lupa set image di podman-compose.yml VPS sesuai nama image di atas)"
+  else
+    echo "❌ Export gagal."
+  fi
+  ;;
+importall)
+  echo "📦 === Mengimpor Semua Image (Pre-Compiled Bundle) ==="
+  TAR_FILE="lms-c-precompiled.tar"
+  
+  echo "💾 Mengimpor image dari file $TAR_FILE..."
+  podman load -i $TAR_FILE
+  
+  echo "✅ Selesai! Image berhasil diimpor."
+  ;;
 loadtest)
   echo "📊 === Elemes Load Testing ==="
   cd "$SCRIPT_DIR/load-test" || exit
@@ -123,6 +156,7 @@ loadtest)
   echo "  ./elemes.sh runclearbuild  # Bersihkan cache, Re-build total, lalu jalankan"
   echo "  ./elemes.sh stop           # Menghentikan container yang sedang berjalan"
   echo "  ./elemes.sh generatetoken  # Sinkronisasi kolom tokens CSV sesuai file markdown"
+  echo "  ./elemes.sh exportall      # Build & Export semua image LMS (Backend, Frontend, Velxio) jadi satu file tar"
   echo "  ./elemes.sh loadtest       # Menjalankan utilitas simulasi Load Test (Locust)"
   ;;
 esac

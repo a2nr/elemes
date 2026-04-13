@@ -2,7 +2,8 @@ version: '3.8'
 
 services:
   elemes:
-    build: .
+    # build: .
+    image: lms-c-backend:latest
     volumes:
       - ../content:/app/content
       - ../tokens_siswa.csv:/app/tokens.csv
@@ -17,7 +18,8 @@ services:
     # command: python app.py
 
   elemes-frontend:
-    build: ./frontend
+    # build: ./frontend
+    image: lms-c-frontend:latest
     # ports:
     #  - 3000:3000
     environment:
@@ -31,13 +33,14 @@ services:
       - elemes
 
   velxio:
-    # image: ghcr.io/a2nr/velxio-elemes:latest
-    build:
-      context: ./velxio
-      dockerfile: Dockerfile.standalone
-      args:
-        VITE_BASE_PATH: /velxio/
-        VITE_API_BASE: /velxio/api
+    image: lms-c-velxio:latest
+#   build:
+#     context: ./velxio
+#     dockerfile: Dockerfile.standalone
+#     args:
+#       VITE_BASE_PATH: /velxio/
+#       VITE_API_BASE: /velxio/api
+#       ENABLE_ESP32: ${ENABLE_ESP32:-0}
     environment:
       - SECRET_KEY=embed-only-no-auth-needed
       - DATABASE_URL=sqlite+aiosqlite:////app/data/velxio.db
