@@ -27,7 +27,8 @@
 	const LONG_PRESS_MS = 400;
 	const DOUBLE_TAP_MS = 300;
 	const HOLDING_TIMEOUT_MS = 5000;
-	const CURSOR_OFFSET_Y = -(parseInt(env.PUBLIC_CURSOR_OFFSET_Y || '50', 10));
+	const BASE_OFFSET_Y = -(parseInt(env.PUBLIC_CURSOR_OFFSET_Y || '50', 10));
+	let currentOffset = $derived(isTouchDevice ? BASE_OFFSET_Y : 0);
 
 	/**
 	 * State machine:
@@ -46,12 +47,18 @@
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		const mql = window.matchMedia('(hover: none) and (pointer: coarse)');
-		isTouchDevice = mql.matches;
-		const handler = (e: MediaQueryListEvent) => {
-			isTouchDevice = e.matches;
+		const checkTouch = () => {
+			isTouchDevice = mql.matches && window.innerWidth < 768;
 		};
-		mql.addEventListener('change', handler);
-		return () => mql.removeEventListener('change', handler);
+		
+		checkTouch();
+		mql.addEventListener('change', checkTouch);
+		window.addEventListener('resize', checkTouch);
+		
+		return () => {
+			mql.removeEventListener('change', checkTouch);
+			window.removeEventListener('resize', checkTouch);
+		};
 	});
 
 	function getIframeTarget(x: number, y: number): Element | null {
@@ -142,7 +149,7 @@
 		if (!overlayEl) return;
 		const rect = overlayEl.getBoundingClientRect();
 		crosshairX = viewportX - rect.left;
-		crosshairY = viewportY - rect.top + CURSOR_OFFSET_Y;
+		crosshairY = viewportY - rect.top + currentOffset;
 	}
 
 	function getCrosshairViewport(): { x: number; y: number } {

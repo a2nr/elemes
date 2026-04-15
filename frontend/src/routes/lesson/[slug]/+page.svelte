@@ -101,7 +101,7 @@
 
 	// Auto-save Velxio state periodically
 	$effect(() => {
-		if (velxioReady && auth.isLoggedIn && !showSolution) {
+		if (velxioReady && $authLoggedIn && !showSolution) {
 			const interval = setInterval(() => {
 				const state = getVelxioState();
 				if (!state) return;
@@ -921,17 +921,14 @@
 							Hubungi guru jika masalah berlanjut.
 						</div>
 					{:else}
-						<div class="velxio-toolbar">
-							<button type="button" class="btn btn-secondary btn-sm" onclick={handleReset}>Reset</button>
-							{#if auth.isLoggedIn}
-								<div class="storage-indicator-inline" title={velxioSaving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>
-									<span class="indicator-icon" class:saving={velxioSaving}>
-										{velxioSaving ? '●' : '☁'}
-									</span>
-									<span class="indicator-text">Auto-save</span>
-								</div>
-							{/if}
-						</div>
+						{#if $authLoggedIn}
+							<div class="storage-indicator-inline" title={velxioSaving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>
+								<span class="indicator-icon" class:saving={velxioSaving}>
+									{velxioSaving ? '●' : '☁'}
+								</span>
+								<span class="indicator-text">Auto-save</span>
+							</div>
+						{/if}
 						<!-- svelte-ignore a11y_missing_attribute -->
 						<iframe
 							class="velxio-iframe"
@@ -1243,22 +1240,23 @@
 	}
 
 	/* ── Velxio (Arduino simulator) ─────────────────────── */
-	.velxio-toolbar {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.4rem 0.5rem;
-		border-bottom: 1px solid var(--color-border);
-		flex-shrink: 0;
-	}
 	.storage-indicator-inline {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		font-size: 0.7rem;
+		font-size: 0.75rem;
 		color: var(--color-text-muted);
+		background: var(--color-bg-secondary);
+		padding: 3px 10px;
+		border-radius: 12px;
+		border: 1px solid var(--color-border);
+		position: absolute;
+		bottom: 1rem;
+		right: 1.5rem;
+		z-index: 10;
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
 		pointer-events: none;
-		margin-left: auto;
+		opacity: 0.8;
 	}
 	.storage-indicator-inline .indicator-icon {
 		line-height: 1;
@@ -1278,6 +1276,7 @@
 		flex-direction: column;
 		flex: 1;
 		min-height: 0;
+		position: relative;
 	}
 	.velxio-panel.tab-hidden {
 		display: none;
