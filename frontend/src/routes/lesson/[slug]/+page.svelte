@@ -541,7 +541,11 @@
 				velxioBridge = new VelxioBridge(iframe);
 				velxioReady = true;
 				if (!data) return;
-				velxioBridge.setEmbedMode({ hideAuth: true, hideComponentPicker: true });
+				velxioBridge.setEmbedMode({
+					hideAuth: true,
+					hideComponentPicker: true,
+					lockComponents: true
+				});
 				
 				// Priority: Restore from localStorage if available, otherwise use data from backend
 				const savedCircuit = localStorage.getItem(arduinoCircuitKey);
@@ -582,7 +586,12 @@
 				velxioReady = true;
 
 				if (data) {
-					win.postMessage({ type: 'elemes:set_embed_mode', hideAuth: true, hideComponentPicker: true }, '*');
+					win.postMessage({
+						type: 'elemes:set_embed_mode',
+						hideAuth: true,
+						hideComponentPicker: true,
+						lockComponents: true
+					}, '*');
 					
 					const savedCircuit = localStorage.getItem(arduinoCircuitKey);
 					const savedCode = localStorage.getItem(arduinoCodeKey);
@@ -932,7 +941,7 @@
 						<!-- svelte-ignore a11y_missing_attribute -->
 						<iframe
 							class="velxio-iframe"
-							src="/velxio/editor?embed=true{hasArduinoCode ? '' : '&hideEditor=true'}"
+							src="/velxio/editor?embed=true{hasArduinoCode ? '' : '&hideEditor=true'}&lockComponents=true"
 							onload={(e) => initVelxioBridge(e.currentTarget as HTMLIFrameElement)}
 							allow="cross-origin-isolated"
 						></iframe>

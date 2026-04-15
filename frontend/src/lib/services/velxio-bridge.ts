@@ -94,7 +94,7 @@ export class VelxioBridge {
 		}
 	}
 
-	setEmbedMode(options: { hideEditor?: boolean; hideAuth?: boolean; hideComponentPicker?: boolean }) {
+	setEmbedMode(options: { hideEditor?: boolean; hideAuth?: boolean; hideComponentPicker?: boolean; lockComponents?: boolean }) {
 		this.send('elemes:set_embed_mode', options);
 	}
 
