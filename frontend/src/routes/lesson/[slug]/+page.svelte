@@ -51,10 +51,88 @@
 	let isVelxio = $derived(data?.active_tabs?.includes('velxio') ?? false);
 	let velxioBridge = $state<VelxioBridge | null>(null);
 	let velxioReady = $state(false);
+	let velxioSaving = $state(false);
 	let velxioError = $state(false);
 	let velxioIframe = $state<HTMLIFrameElement | null>(null);
 	let velxioOut = $state(freshOutput());
 	let hasArduinoCode = $derived(!!data?.initial_code_arduino);
+
+	// Velxio storage keys
+	let arduinoCodeKey = $derived(`elemes_arduino_code_${slug}`);
+	let arduinoCircuitKey = $derived(`elemes_arduino_circuit_${slug}`);
+
+	/** Try to directly read Velxio Zustand stores from iframe (same-origin). */
+	function getVelxioState(): { code: string; circuit: string } | null {
+		if (!velxioIframe) return null;
+		try {
+			const win = velxioIframe.contentWindow as any;
+			if (!win) return null;
+			
+			const editorStore = win.__VELXIO_EDITOR_STORE__?.getState?.();
+			const simStore = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
+			
+			if (!editorStore || !simStore) return null;
+			
+			// Extract code
+			const code = (editorStore.files as any[] || []).map((f: any) => f.content).join('\n');
+			
+			// Extract circuit state (Diagram format compatible with elemes:load_circuit)
+			const circuit = {
+				board: simStore.activeBoardId,
+				components: (simStore.components as any[] || []).map(c => ({
+					type: c.metadataId,
+					id: c.id,
+					x: c.x,
+					y: c.y,
+					rotation: c.properties?.rotation || 0,
+					props: { ...c.properties }
+				})),
+				wires: simStore.wires || []
+			};
+			
+			return {
+				code,
+				circuit: JSON.stringify(circuit)
+			};
+		} catch {
+			return null;
+		}
+	}
+
+	// Auto-save Velxio state periodically
+	$effect(() => {
+		if (velxioReady && auth.isLoggedIn && !showSolution) {
+			const interval = setInterval(() => {
+				const state = getVelxioState();
+				if (!state) return;
+				
+				let changed = false;
+				
+				// 1. Source Code
+				const savedCode = localStorage.getItem(arduinoCodeKey);
+				if (state.code && state.code !== savedCode) {
+					console.log('[Velxio Auto-save] Saving code changes (Zustand)');
+					localStorage.setItem(arduinoCodeKey, state.code);
+					changed = true;
+				}
+
+				// 2. Circuit (Diagram + Wires)
+				const savedCircuit = localStorage.getItem(arduinoCircuitKey);
+				if (state.circuit && state.circuit !== savedCircuit) {
+					console.log('[Velxio Auto-save] Saving circuit changes (Zustand)');
+					localStorage.setItem(arduinoCircuitKey, state.circuit);
+					changed = true;
+				}
+				
+				if (changed) {
+					velxioSaving = true;
+					setTimeout(() => { velxioSaving = false; }, 1500);
+				}
+			}, 7000); // Poll every 7 seconds
+			
+			return () => clearInterval(interval);
+		}
+	});
 
 	// Derived: is this a hybrid lesson (has both code and circuit)?
 	let isHybrid = $derived(
@@ -379,6 +457,17 @@
 		if (activeTab === 'circuit') {
 			circuitEditor?.setCircuitText(data.initial_circuit || data.initial_code);
 			Object.assign(circuitOut, freshOutput());
+		} else if (activeTab === 'velxio') {
+			console.log('[Velxio Reset] Clearing drafts and reloading initial state');
+			localStorage.removeItem(arduinoCodeKey);
+			localStorage.removeItem(arduinoCircuitKey);
+			if (data.initial_code_arduino) {
+				velxioBridge?.loadCode([{ name: 'sketch.ino', content: data.initial_code_arduino }]);
+			}
+			if (data.velxio_circuit) {
+				velxioBridge?.loadCircuit(data.velxio_circuit);
+			}
+			Object.assign(velxioOut, freshOutput());
 		} else {
 			const resetCode = currentLanguage === 'python'
 				? (data.initial_python || '')
@@ -419,13 +508,7 @@
 		}
 	}
 
-	// === Velxio (Arduino simulator) ===
-
-	/**
-	 * Match serial output using subsequence matching.
-	 * Expected lines must appear in order within actual output (not necessarily consecutive).
-	 * This is more robust than exact line matching.
-	 */
+	/** Match serial output using subsequence matching. */
 	function matchSerialSubsequence(actual: string, expected: string): boolean {
 		if (!expected) return true;
 		if (!actual) return false;
@@ -436,7 +519,6 @@
 		let expectedIdx = 0;
 		for (const actualLine of actualLines) {
 			if (expectedIdx < expectedLines.length) {
-				// Check if expected line is a substring of actual line (case-insensitive)
 				if (actualLine.toLowerCase().includes(expectedLines[expectedIdx].toLowerCase())) {
 					expectedIdx++;
 				}
@@ -444,20 +526,6 @@
 			if (expectedIdx === expectedLines.length) return true;
 		}
 		return expectedIdx === expectedLines.length;
-	}
-
-	/** Try to directly read Velxio Zustand stores from iframe (same-origin). */
-	function getVelxioStores(iframe: HTMLIFrameElement): { editor: any; simulator: any } | null {
-		try {
-			const win = iframe.contentWindow as any;
-			if (!win) return null;
-			// Zustand stores expose getState() on the hook; we look for the global store refs
-			// that Velxio's EmbedBridge.ts imports. As a fallback, walk __ZUSTAND__ if available.
-			const editorState = win.__VELXIO_EDITOR_STORE__?.getState?.();
-			const simState = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
-			if (editorState && simState) return { editor: editorState, simulator: simState };
-			return null;
-		} catch { return null; }
 	}
 
 	function initVelxioBridge(iframe: HTMLIFrameElement) {
@@ -474,8 +542,22 @@
 				velxioReady = true;
 				if (!data) return;
 				velxioBridge.setEmbedMode({ hideAuth: true, hideComponentPicker: true });
-				if (data.velxio_circuit) velxioBridge.loadCircuit(data.velxio_circuit);
-				if (data.initial_code_arduino) {
+				
+				// Priority: Restore from localStorage if available, otherwise use data from backend
+				const savedCircuit = localStorage.getItem(arduinoCircuitKey);
+				const savedCode = localStorage.getItem(arduinoCodeKey);
+
+				if (savedCircuit) {
+					console.log('[Velxio Bridge] Restoring circuit from draft');
+					velxioBridge.loadCircuit(savedCircuit);
+				} else if (data.velxio_circuit) {
+					velxioBridge.loadCircuit(data.velxio_circuit);
+				}
+
+				if (savedCode) {
+					console.log('[Velxio Bridge] Restoring code from draft');
+					velxioBridge.loadCode([{ name: 'sketch.ino', content: savedCode }]);
+				} else if (data.initial_code_arduino) {
 					velxioBridge.loadCode([{ name: 'sketch.ino', content: data.initial_code_arduino }]);
 				}
 			}
@@ -487,31 +569,41 @@
 		window.addEventListener('message', onMessage);
 
 		// Fallback: if PostMessage bridge never connects, try direct iframe access (same-origin)
-		// and also use it to send initial data via postMessage directly
 		const pollReady = setInterval(() => {
 			if (settled) { clearInterval(pollReady); return; }
 			try {
 				const win = iframe.contentWindow as any;
 				if (!win || !win.document) return;
-				// Check if React app loaded by looking for the root element with content
 				const root = win.document.getElementById('root');
 				if (!root || !root.children.length) return;
 
-				// Iframe loaded — mark as ready even without velxio:ready message
 				settled = true;
 				clearInterval(pollReady);
 				velxioReady = true;
 
-				// Try sending commands directly via postMessage (same-origin, should work)
 				if (data) {
 					win.postMessage({ type: 'elemes:set_embed_mode', hideAuth: true, hideComponentPicker: true }, '*');
-					if (data.velxio_circuit) {
+					
+					const savedCircuit = localStorage.getItem(arduinoCircuitKey);
+					const savedCode = localStorage.getItem(arduinoCodeKey);
+
+					if (savedCircuit) {
+						try {
+							console.log('[Velxio Fallback] Restoring circuit from draft');
+							const circuitData = JSON.parse(savedCircuit);
+							win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
+						} catch {}
+					} else if (data.velxio_circuit) {
 						try {
 							const circuitData = JSON.parse(data.velxio_circuit);
 							win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
 						} catch {}
 					}
-					if (data.initial_code_arduino) {
+
+					if (savedCode) {
+						console.log('[Velxio Fallback] Restoring code from draft');
+						win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: savedCode }] }, '*');
+					} else if (data.initial_code_arduino) {
 						win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: data.initial_code_arduino }] }, '*');
 					}
 				}
@@ -523,8 +615,6 @@
 			if (settled) return;
 			settled = true;
 			window.removeEventListener('message', onMessage);
-			// Don't show error — the Submit button + direct access still works
-			// velxioError = true;
 		}, 30_000);
 	}
 
@@ -535,87 +625,29 @@
 		activeTab = 'output';
 
 		try {
-			// === Gather data: try PostMessage bridge first, fall back to direct iframe access ===
+			// === Gather data ===
 			let sourceCode = '';
 			let serialLog = '';
-			let wireList: { start: { componentId: string; pinName: string }; end: { componentId: string; pinName: string } }[] = [];
+			let wireList: any[] = [];
 			const dbg: string[] = [];
 
+			// Try PostMessage bridge first for serial log (since it's harder to get from store)
 			if (velxioBridge) {
-				// Try bridge (PostMessage)
-				dbg.push('[metode: PostMessage bridge]');
-				const srcResp = await velxioBridge['request']('elemes:get_source_code', 'velxio:source_code');
-				if (srcResp) sourceCode = (srcResp.files as any[]).map((f: any) => f.content).join('\n');
-				else dbg.push('[!] get_source_code timeout');
-
 				const serResp = await velxioBridge['request']('elemes:get_serial_log', 'velxio:serial_log');
 				if (serResp) serialLog = serResp.log as string;
-				else dbg.push('[!] get_serial_log timeout');
-
-				const wireResp = await velxioBridge['request']('elemes:get_wires', 'velxio:wires');
-				if (wireResp) wireList = wireResp.wires as any[];
-				else dbg.push('[!] get_wires timeout');
 			}
 
-			// Fallback: direct iframe store access (same-origin)
-			if (!sourceCode && velxioIframe) {
-				dbg.push('[fallback: direct iframe access]');
+			// Use getVelxioState for code and wires (more reliable/complete)
+			const state = getVelxioState();
+			if (state) {
+				sourceCode = state.code;
 				try {
-					const win = velxioIframe.contentWindow as any;
-					
-					// Check if stores are exposed
-					if (!win.__VELXIO_EDITOR_STORE__ || !win.__VELXIO_SIMULATOR_STORE__) {
-						dbg.push('[direct] WARNING: Stores not exposed on window');
-						dbg.push('[direct] Trying alternative access methods...');
-						
-						// Alternative: try to find Zustand stores via other means
-						// Some bundlers expose stores differently
-						if (win.__ZUSTAND__) {
-							dbg.push('[direct] Found __ZUSTAND__, searching for stores...');
-							// Try to locate editor and simulator stores
-							for (const key of Object.keys(win.__ZUSTAND__)) {
-								const store = win.__ZUSTAND__[key];
-								if (store?.getState) {
-									const state = store.getState();
-									if (state?.files && !sourceCode) {
-										sourceCode = state.files.map((f: any) => f.content).join('\n');
-										dbg.push(`[direct] source from __ZUSTAND__: ${sourceCode.length} chars`);
-									}
-									if (state?.wires !== undefined && wireList.length === 0) {
-										wireList = state.wires;
-										dbg.push(`[direct] wires from __ZUSTAND__: ${wireList.length}`);
-									}
-								}
-							}
-						}
-					}
-					
-					// Primary method: use exposed stores
-					if (!sourceCode || wireList.length === 0) {
-						const editorStore = win.__VELXIO_EDITOR_STORE__?.getState?.();
-						const simStore = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
-
-						if (editorStore?.files) {
-							sourceCode = editorStore.files.map((f: any) => f.content).join('\n');
-							dbg.push(`[direct] source: ${sourceCode.length} chars`);
-						} else {
-							dbg.push('[direct] editor store has no files');
-						}
-
-						if (simStore) {
-							// Try to get serial output from active board
-							const board = simStore.boards?.find((b: any) => b.id === simStore.activeBoardId);
-							serialLog = board?.serialOutput ?? simStore.serialOutput ?? '';
-							dbg.push(`[direct] serial: ${serialLog.length} chars`);
-							wireList = simStore.wires ?? [];
-							dbg.push(`[direct] wires: ${wireList.length}`);
-						} else {
-							dbg.push('[direct] simulator store not found');
-						}
-					}
-				} catch (e: any) {
-					dbg.push(`[direct] error: ${e.message}`);
-				}
+					const circuit = JSON.parse(state.circuit);
+					wireList = circuit.wires || [];
+				} catch {}
+				dbg.push('[metode: Zustand store]');
+			} else {
+				dbg.push('[!] Gagal mengakses simulator state');
 			}
 
 			// === Evaluate ===
@@ -890,7 +922,15 @@
 						</div>
 					{:else}
 						<div class="velxio-toolbar">
-							<!-- Submit button removed for cleaner workspace -->
+							<button type="button" class="btn btn-secondary btn-sm" onclick={handleReset}>Reset</button>
+							{#if auth.isLoggedIn}
+								<div class="storage-indicator-inline" title={velxioSaving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>
+									<span class="indicator-icon" class:saving={velxioSaving}>
+										{velxioSaving ? '●' : '☁'}
+									</span>
+									<span class="indicator-text">Auto-save</span>
+								</div>
+							{/if}
 						</div>
 						<!-- svelte-ignore a11y_missing_attribute -->
 						<iframe
@@ -1210,6 +1250,27 @@
 		padding: 0.4rem 0.5rem;
 		border-bottom: 1px solid var(--color-border);
 		flex-shrink: 0;
+	}
+	.storage-indicator-inline {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+		pointer-events: none;
+		margin-left: auto;
+	}
+	.storage-indicator-inline .indicator-icon {
+		line-height: 1;
+		font-size: 0.8rem;
+		color: var(--color-success);
+	}
+	.storage-indicator-inline .indicator-icon.saving {
+		color: var(--color-primary);
+		animation: pulse 1s infinite;
+	}
+	.storage-indicator-inline .indicator-text {
+		font-weight: 500;
 	}
 
 	.velxio-panel {
