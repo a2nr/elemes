@@ -148,22 +148,40 @@ void loop() {
   "board": "arduino:avr:uno",
   "components": [
     {
-      "type": "wokwi-pushbutton",
-      "id": "button-1",
-      "x": 400,
-      "y": -100,
-      "rotation": 0,
-      "props": {}
-    },
-    {
-      "type": "wokwi-led",
-      "id": "led-1",
-      "x": 400,
-      "y": -250,
+      "type": "led",
+      "id": "led-builtin",
+      "x": 956.2066448009604,
+      "y": -15.285273464964305,
       "rotation": 0,
       "props": {
-        "color": "green",
-        "pin": 13
+        "color": "red",
+        "pin": 13,
+        "state": false,
+        "value": false
+      }
+    },
+    {
+      "type": "resistor",
+      "id": "resistor-1776299815587-z0q0jzny8",
+      "x": 808.6031046903261,
+      "y": 44.96592399354325,
+      "rotation": 0,
+      "props": {
+        "value": false,
+        "state": false
+      }
+    },
+    {
+      "type": "pushbutton",
+      "id": "pushbutton-1776299852057-07xh6qh7g",
+      "x": 829.2414304859469,
+      "y": 230.19576790585754,
+      "rotation": 0,
+      "props": {
+        "color": "red",
+        "pressed": false,
+        "label": "",
+        "xray": false
       }
     }
   ],
@@ -179,20 +197,54 @@ PRESSED
 {
   "wires": [
     {
-      "start": { "componentId": "arduino-uno", "pinName": "2" },
-      "end": { "componentId": "button-1", "pinName": "1.l" }
+      "start": {
+        "componentId": "resistor-1776299815587-z0q0jzny8",
+        "pinName": "2"
+      },
+      "end": {
+        "componentId": "led-builtin",
+        "pinName": "A"
+      }
     },
     {
-      "start": { "componentId": "button-1", "pinName": "2.l" },
-      "end": { "componentId": "arduino-uno", "pinName": "GND" }
+      "start": {
+        "componentId": "arduino-uno",
+        "pinName": "GND.1"
+      },
+      "end": {
+        "componentId": "led-builtin",
+        "pinName": "C"
+      }
     },
     {
-      "start": { "componentId": "arduino-uno", "pinName": "13" },
-      "end": { "componentId": "led-1", "pinName": "A" }
+      "start": {
+        "componentId": "resistor-1776299815587-z0q0jzny8",
+        "pinName": "1"
+      },
+      "end": {
+        "componentId": "arduino-uno",
+        "pinName": "13"
+      }
     },
     {
-      "start": { "componentId": "led-1", "pinName": "C" },
-      "end": { "componentId": "arduino-uno", "pinName": "GND" }
+      "start": {
+        "componentId": "pushbutton-1776299852057-07xh6qh7g",
+        "pinName": "1.l"
+      },
+      "end": {
+        "componentId": "arduino-uno",
+        "pinName": "2"
+      }
+    },
+    {
+      "start": {
+        "componentId": "arduino-uno",
+        "pinName": "GND.3"
+      },
+      "end": {
+        "componentId": "pushbutton-1776299852057-07xh6qh7g",
+        "pinName": "2.l"
+      }
     }
   ]
 }

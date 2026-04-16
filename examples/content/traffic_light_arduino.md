@@ -147,40 +147,81 @@ void loop() {
   "board": "arduino:avr:uno",
   "components": [
     {
-      "type": "wokwi-led",
+      "type": "led",
       "id": "led-red",
-      "x": 370,
-      "y": -300,
+      "x": 409.6091884525257,
+      "y": 65.40692157090741,
       "rotation": 0,
       "props": {
         "color": "red",
-        "pin": 13
+        "pin": 13,
+        "state": true,
+        "value": true
       }
     },
     {
-      "type": "wokwi-led",
+      "type": "led",
       "id": "led-yellow",
-      "x": 370,
-      "y": -200,
+      "x": 466.09101803924966,
+      "y": 66.43228050989252,
       "rotation": 0,
       "props": {
         "color": "yellow",
-        "pin": 12
+        "pin": 12,
+        "state": false,
+        "value": false
       }
     },
     {
-      "type": "wokwi-led",
+      "type": "led",
       "id": "led-green",
-      "x": 370,
-      "y": -100,
+      "x": 522.0366933470766,
+      "y": 63.613964067867315,
       "rotation": 0,
       "props": {
         "color": "green",
-        "pin": 11
+        "pin": 11,
+        "state": false,
+        "value": false
+      }
+    },
+    {
+      "type": "resistor",
+      "id": "resistor-1776300566703-7pi4wei9j",
+      "x": 275.08055011716567,
+      "y": 133.79325981817132,
+      "rotation": 0,
+      "props": {
+        "value": true,
+        "state": true
+      }
+    },
+    {
+      "type": "resistor",
+      "id": "resistor-1776300590088-k4l87u1rf",
+      "x": 273.3198126609919,
+      "y": 178.95644554504224,
+      "rotation": 0,
+      "props": {
+        "value": false,
+        "state": false
+      }
+    },
+    {
+      "type": "resistor",
+      "id": "resistor-1776300593575-rklkixiwy",
+      "x": 270.5981563595655,
+      "y": 220.2759558909028,
+      "rotation": 0,
+      "props": {
+        "value": false,
+        "state": false
       }
     }
   ],
-  "wires": []
+  "wires": [
+   
+  ]
 }
 ---END_VELXIO_CIRCUIT---
 
@@ -194,29 +235,95 @@ YELLOW
 ---EXPECTED_WIRING---
 {
   "wires": [
-    {
-      "start": { "componentId": "arduino-uno", "pinName": "13" },
-      "end": { "componentId": "led-red", "pinName": "A" }
+     {
+      "start": {
+        "componentId": "resistor-1776300566703-7pi4wei9j",
+        "pinName": "2"
+      },
+      "end": {
+        "componentId": "led-red",
+        "pinName": "A"
+      }
     },
     {
-      "start": { "componentId": "led-red", "pinName": "C" },
-      "end": { "componentId": "arduino-uno", "pinName": "GND" }
+      "start": {
+        "componentId": "resistor-1776300590088-k4l87u1rf",
+        "pinName": "2"
+      },
+      "end": {
+        "componentId": "led-yellow",
+        "pinName": "A"
+      }
     },
     {
-      "start": { "componentId": "arduino-uno", "pinName": "12" },
-      "end": { "componentId": "led-yellow", "pinName": "A" }
+      "start": {
+        "componentId": "resistor-1776300593575-rklkixiwy",
+        "pinName": "2"
+      },
+      "end": {
+        "componentId": "led-green",
+        "pinName": "A"
+      }
     },
     {
-      "start": { "componentId": "led-yellow", "pinName": "C" },
-      "end": { "componentId": "arduino-uno", "pinName": "GND" }
+      "start": {
+        "componentId": "arduino-uno",
+        "pinName": "GND.3"
+      },
+      "end": {
+        "componentId": "led-red",
+        "pinName": "C"
+      }
     },
     {
-      "start": { "componentId": "arduino-uno", "pinName": "11" },
-      "end": { "componentId": "led-green", "pinName": "A" }
+      "start": {
+        "componentId": "arduino-uno",
+        "pinName": "GND.3"
+      },
+      "end": {
+        "componentId": "led-yellow",
+        "pinName": "C"
+      }
     },
     {
-      "start": { "componentId": "led-green", "pinName": "C" },
-      "end": { "componentId": "arduino-uno", "pinName": "GND" }
+      "start": {
+        "componentId": "arduino-uno",
+        "pinName": "GND.3"
+      },
+      "end": {
+        "componentId": "led-green",
+        "pinName": "C"
+      }
+    },
+    {
+      "start": {
+        "componentId": "resistor-1776300566703-7pi4wei9j",
+        "pinName": "1"
+      },
+      "end": {
+        "componentId": "arduino-uno",
+        "pinName": "13"
+      }
+    },
+    {
+      "start": {
+        "componentId": "resistor-1776300590088-k4l87u1rf",
+        "pinName": "1"
+      },
+      "end": {
+        "componentId": "arduino-uno",
+        "pinName": "12"
+      }
+    },
+    {
+      "start": {
+        "componentId": "resistor-1776300593575-rklkixiwy",
+        "pinName": "1"
+      },
+      "end": {
+        "componentId": "arduino-uno",
+        "pinName": "11"
+      }
     }
   ]
 }
