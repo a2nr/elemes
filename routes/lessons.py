@@ -69,6 +69,15 @@ def api_lesson(filename):
     velxio_circuit = parsed_data.get('velxio_circuit', '')
     expected_serial_output = parsed_data.get('expected_serial_output', '')
     expected_wiring = parsed_data.get('expected_wiring', '')
+    
+    evaluation_config_raw = parsed_data.get('evaluation_config', '')
+    evaluation_config = {}
+    if evaluation_config_raw:
+        import json
+        try:
+            evaluation_config = json.loads(evaluation_config_raw)
+        except Exception:
+            pass
 
     if not initial_code:
         initial_code = (
@@ -119,6 +128,7 @@ def api_lesson(filename):
         'velxio_circuit': velxio_circuit,
         'expected_serial_output': expected_serial_output,
         'expected_wiring': expected_wiring,
+        'evaluation_config': evaluation_config,
         'solution_code': solution_code,
         'solution_circuit': solution_circuit,
         'solution_python': solution_python,

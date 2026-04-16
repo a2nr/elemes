@@ -340,6 +340,9 @@ def render_markdown_content(file_path):
     expected_wiring, lesson_content = _extract_section(
         lesson_content, '---EXPECTED_WIRING---', '---END_EXPECTED_WIRING---')
 
+    evaluation_config, lesson_content = _extract_section(
+        lesson_content, '---EVALUATION_CONFIG---', '---END_EVALUATION_CONFIG---')
+
     # Just use whichever initial code matched as the generic 'initial_code' for simplicity 
     # if only one type exists, but return all as dictionary values.
     # Typically frontend uses 'initial_code' for legacy. 
@@ -381,6 +384,7 @@ def render_markdown_content(file_path):
         'velxio_circuit': velxio_circuit,
         'expected_serial_output': expected_serial_output,
         'expected_wiring': expected_wiring,
+        'evaluation_config': evaluation_config,
         'active_tabs': active_tabs
     }
 

@@ -33,4 +33,5 @@ export interface LessonContent {
 	language: string;
 	language_display_name: string;
 	active_tabs: string[];
+	evaluation_config: Record<string, any>;
 }

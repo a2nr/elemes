@@ -567,7 +567,8 @@
 			}
 
 			if (type === 'velxio:compile_result' && e.data.success) {
-				setTimeout(() => handleVelxioSubmit(), 5000);
+				const timeout = data?.evaluation_config?.timeout_ms ?? 5000;
+				setTimeout(() => handleVelxioSubmit(), timeout);
 			}
 		};
 		window.addEventListener('message', onMessage);

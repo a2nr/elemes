@@ -336,3 +336,9 @@ const int
 Serial
 delay
 ---END_KEY_TEXT---
+
+---EVALUATION_CONFIG---
+{
+  "timeout_ms": 10000
+}
+---END_EVALUATION_CONFIG---
