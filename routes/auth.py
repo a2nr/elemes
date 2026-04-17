@@ -13,8 +13,8 @@ auth_bp = Blueprint('auth', __name__)
 def login():
     """Handle student login with token."""
     try:
-        data = request.get_json()
-        token = data.get('token', '').strip()
+        data = request.get_json(silent=True, force=True) or {}
+        token = (data.get('token') or '').strip()
 
         if not token:
             return jsonify({'success': False, 'message': 'Token is required'})
@@ -36,7 +36,7 @@ def login():
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error processing login: {e}'})
+        return jsonify({'success': False, 'message': f'Error processing login: {str(e)}'})
 
 
 @auth_bp.route('/logout', methods=['POST'])
@@ -47,18 +47,18 @@ def logout():
         response.set_cookie('student_token', '', expires=0)
         return response
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error processing logout: {e}'})
+        return jsonify({'success': False, 'message': f'Error processing logout: {str(e)}'})
 
 
 @auth_bp.route('/validate-token', methods=['POST'])
 def validate_token_route():
     """Validate a token without logging in."""
     try:
-        data = request.get_json()
-        token = data.get('token', '').strip()
+        data = request.get_json(silent=True, force=True) or {}
+        token = (data.get('token') or '').strip()
 
         if not token:
-            token = request.cookies.get('student_token', '').strip()
+            token = (request.cookies.get('student_token') or '').strip()
 
         if not token:
             return jsonify({'success': False, 'message': 'Token is required'})
@@ -74,4 +74,4 @@ def validate_token_route():
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error validating token: {e}'})
+        return jsonify({'success': False, 'message': f'Error validating token: {str(e)}'})

@@ -308,7 +308,7 @@ class ElemesStudent(HttpUser):
     def compile_arduino_lesson(self):
         """
         Compile an Arduino lesson's code via Velxio backend.
-        Hits Velxio's POST /velxio/api/compile endpoint.
+        Hits Velxio's POST /velxio/api/compile/ endpoint.
         Validates: compile success + hex_content returned.
         Note: serial output can only be validated in-browser (avr8js sim).
         """
@@ -321,8 +321,11 @@ class ElemesStudent(HttpUser):
             return
 
         with self.client.post(
-            '/velxio/api/compile',
-            json={'code': code, 'board_fqbn': 'arduino:avr:uno'},
+            '/velxio/api/compile/',
+            json={
+                'files': [{'name': 'sketch.ino', 'content': code}],
+                'board_fqbn': 'arduino:avr:uno'
+            },
             name='/velxio/api/compile [Arduino]',
             timeout=30,
             catch_response=True
@@ -331,10 +334,14 @@ class ElemesStudent(HttpUser):
 
             if not data.get('success'):
                 # Report as Locust failure for stats tracking
-                resp.failure(
-                    f"{lesson['slug']}: compile failed — "
-                    f"{data.get('error', data.get('stderr', 'unknown'))}"
-                )
+                # Fallback to checking 'detail' for HTTP 422 validations
+                err_msg = data.get('error', data.get('stderr'))
+                if not err_msg and data.get('detail'):
+                    err_msg = str(data.get('detail'))
+                elif not err_msg:
+                    err_msg = f"HTTP {resp.status_code} - unknown"
+
+                resp.failure(f"{lesson['slug']}: compile failed — {err_msg}")
                 return
 
             hex_content = data.get('hex_content', '')
@@ -383,12 +390,14 @@ class ElemesStudent(HttpUser):
 
         elif lesson['type'] == 'arduino' and lesson.get('initial_code_arduino'):
             self.client.post(
-                '/velxio/api/compile',
-                json={'code': lesson['initial_code_arduino'],
-                      'board_fqbn': 'arduino:avr:uno'},
+                '/velxio/api/compile/',
+                json={
+                    'files': [{'name': 'sketch.ino', 'content': lesson['initial_code_arduino']}],
+                    'board_fqbn': 'arduino:avr:uno'
+                },
                 name='/velxio/api/compile (flow)',
                 timeout=30
-            )
+            )  
             time.sleep(0.5)
 
         # 3. Track progress
