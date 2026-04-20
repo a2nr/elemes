@@ -20,8 +20,8 @@ services:
   elemes-frontend:
     build: ./frontend
     image: lms-c-frontend:latest
-    ports:
-      - 3000:3000
+    # ports:
+    #   - 3000:3000
     environment:
       - ORIGIN=http://localhost:3000
       - API_BACKEND=http://elemes:5000
@@ -77,3 +77,4 @@ volumes:
 networks:
   main_network:
     driver: bridge
+    network_mode: service:elemes-ts

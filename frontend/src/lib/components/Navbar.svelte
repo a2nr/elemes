@@ -60,6 +60,10 @@
 				{$themeDark ? '\u2600\uFE0F' : '\uD83C\uDF19'}
 			</button>
 
+			<a href="/help" target="_blank" class="nav-help-link" title="Panduan Penggunaan">
+				Bantuan
+			</a>
+
 			{#if $authLoggedIn}
 				<span class="user-label">{$authStudentName}</span>
 				<button class="btn btn-danger btn-xs" onclick={() => auth.logout()}>Keluar</button>
@@ -201,6 +205,21 @@
 	.btn-xs {
 		padding: 0.25rem 0.6rem;
 		font-size: 0.75rem;
+	}
+	.nav-help-link {
+		color: #fff;
+		text-decoration: none;
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: 0.25rem 0.6rem;
+		border: 1px solid rgba(255, 255, 255, 0.3);
+		border-radius: 6px;
+		transition: background 0.15s;
+	}
+	.nav-help-link:hover {
+		background: rgba(255, 255, 255, 0.15);
+		color: #fff;
+		text-decoration: none;
 	}
 
 	/* ── Modal ──────────────────────────────────────── */
