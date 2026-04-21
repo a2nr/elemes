@@ -52,6 +52,10 @@ def track_progress():
 @progress_bp.route('/progress-report.json')
 def api_progress_report():
     """Return progress report data as JSON."""
+    token = request.args.get('token', '').strip()
+    if not token or not validate_token(token):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
     all_students_progress, ordered_lessons = get_all_students_progress(
         get_lessons_with_learning_objectives,
     )
@@ -65,6 +69,10 @@ def api_progress_report():
 @progress_bp.route('/progress-report/export-csv')
 def export_progress_csv():
     """Export the progress report as CSV."""
+    token = request.args.get('token', '').strip()
+    if not token or not validate_token(token):
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
     all_students_progress, _ordered_lessons = get_all_students_progress(
         get_lessons_with_learning_objectives,
     )

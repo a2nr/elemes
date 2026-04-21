@@ -5,6 +5,7 @@ Lesson JSON API routes consumed by the SvelteKit frontend.
 import os
 
 from flask import Blueprint, request, jsonify, send_from_directory
+from werkzeug.utils import secure_filename
 
 from compiler import compiler_factory
 from config import CONTENT_DIR
@@ -39,7 +40,8 @@ def api_lessons():
 @lessons_bp.route('/lesson/<filename>.json')
 def api_lesson(filename):
     """Return single lesson data as JSON."""
-    full_filename = filename if filename.endswith('.md') else f'{filename}.md'
+    safe_filename = secure_filename(filename)
+    full_filename = safe_filename if safe_filename.endswith('.md') else f'{safe_filename}.md'
     file_path = os.path.join(CONTENT_DIR, full_filename)
     if not os.path.exists(file_path):
         return jsonify({'error': 'Lesson not found'}), 404
@@ -148,7 +150,8 @@ def api_lesson(filename):
 @lessons_bp.route('/get-key-text/<filename>')
 def get_key_text(filename):
     """Get the key text for a specific lesson."""
-    file_path = os.path.join(CONTENT_DIR, filename)
+    safe_filename = secure_filename(filename)
+    file_path = os.path.join(CONTENT_DIR, safe_filename)
     if not os.path.exists(file_path):
         return jsonify({'success': False, 'error': 'Lesson not found'}), 404
 

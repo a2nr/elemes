@@ -5,17 +5,26 @@ services:
     build: .
     image: lms-c-backend:latest
     volumes:
-      - ../content:/app/content
-      - ../tokens_siswa.csv:/app/tokens.csv
-      - ../assets:/app/assets
+      - ../content:/app/content:ro
+      - ../tokens_siswa.csv:/app/tokens.csv:rw
+      - ../assets:/app/assets:ro
     env_file:
       - ../.env
-
+    environment:
+      - COMPILER_WORKER_URL=http://compiler-worker:8080/execute
+    networks:
+      - main_network
     # production
     command: gunicorn --config gunicorn.conf.py "app:create_app()"
-
     # debug
     # command: python app.py
+
+  compiler-worker:
+    build: ./compiler_worker
+    image: lms-c-compiler-worker:latest
+    runtime: runsc # Enable gVisor
+    networks:
+      - main_network
 
   elemes-frontend:
     build: ./frontend

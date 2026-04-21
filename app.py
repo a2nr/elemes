@@ -25,7 +25,9 @@ def create_app():
     app = Flask(__name__)
 
     # Allow cross-origin requests from the SvelteKit frontend
-    CORS(app)
+    import os
+    allowed_origin = os.environ.get('ORIGIN', '*')
+    CORS(app, resources={r"/*": {"origins": allowed_origin}})
 
     # ── Blueprints ────────────────────────────────────────────────────
     from routes.auth import auth_bp
