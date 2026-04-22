@@ -8,15 +8,6 @@ import os
 
 from config import TOKENS_FILE
 
-# In-memory blacklist for tokens that have logged out
-LOGOUT_BLACKLIST = set()
-
-
-def blacklist_token(token):
-    """Add a token to the logout blacklist."""
-    if token:
-        LOGOUT_BLACKLIST.add(token)
-
 
 def get_teacher_token():
     """Return the teacher token (first data row in CSV)."""
@@ -38,9 +29,6 @@ def is_teacher_token(token):
 
 def validate_token(token):
     """Validate if a token exists in the CSV file and return student info."""
-    if not token or token in LOGOUT_BLACKLIST:
-        return None
-
     if not os.path.exists(TOKENS_FILE):
         return None
 

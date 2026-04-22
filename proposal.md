@@ -127,9 +127,10 @@ response.set_cookie('student_token', token, httponly=True, secure=False, samesit
 - **Insider Threat**: Guru yang sudah tidak aktif masih bisa akses jika tokennya tidak dihapus dari CSV.
 
 **Task Perbaikan**:
-- [x] **Token Blacklist**: Implementasikan in-memory blacklist untuk token yang sudah logout.
+- [ ] **Token Blacklist**: (Sempat diimplementasi, namun dihapus agar user/guru tidak terkunci saat pengujian token).
 - [ ] **Token Versioning**: Tambahkan timestamp/version di token, invalidate jika mismatch dengan database.
 - [ ] **Force Logout API**: Endpoint untuk guru force logout semua session siswa (useful saat ujian).
+
 
 ---
 

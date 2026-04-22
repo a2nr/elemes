@@ -7,7 +7,7 @@ import time
 from flask import Blueprint, request, jsonify
 
 from extensions import limiter
-from services.token_service import validate_token, blacklist_token
+from services.token_service import validate_token
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -53,10 +53,6 @@ def login():
 def logout():
     """Handle student logout."""
     try:
-        token = request.cookies.get('student_token')
-        if token:
-            blacklist_token(token)
-
         response = jsonify({'success': True, 'message': 'Logout successful'})
         response.set_cookie('student_token', '', expires=0)
         return response

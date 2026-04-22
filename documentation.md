@@ -491,11 +491,6 @@ Untuk mencegah penebakan token secara massal, terutama pada jaringan WiFi sekola
 - **Rate Limiting**: Endpoint `/api/login` dibatasi maksimal **50 request per menit per IP**. Angka ini diatur untuk mengakomodasi satu kelas (50 siswa) yang login bersamaan tanpa saling memblokir.
 - **Tarpitting (Login Delay)**: Setiap percobaan login yang **gagal** akan ditahan selama **1.5 detik** sebelum server memberikan respons. Ini melumpuhkan efektivitas alat brute-force otomatis tanpa mengganggu pengalaman siswa asli yang hanya sesekali salah ketik.
 
-### 3. Session Invalidation (Token Blacklist)
-Mekanisme logout server-side untuk memastikan token tidak bisa digunakan kembali setelah sesi berakhir.
-- **Mekanisme**: Menggunakan `LOGOUT_BLACKLIST` (in-memory set) di Flask backend.
-- **Flow**: Saat user klik logout, token ditambahkan ke blacklist. Semua request berikutnya dengan token tersebut akan ditolak oleh `validate_token()`.
-
 ---
 
 ## Touch Crosshair System (CircuitJS)
@@ -602,7 +597,7 @@ Redo (Ctrl+Shift+Z / toolbar button)
 - [x] Velxio integration di Elemes (bridge, parsing, UI, evaluasi)
 - [x] Mobile wiring UX (pinch-zoom preserve wire, crosshair alignment)
 - [x] Wire undo/redo (snapshot-based, Ctrl+Z/Ctrl+Shift+Z, toolbar button, mobile-friendly)
-- [x] Security Review & Hardening (Cookie security, Rate limiting, Tarpitting, Blacklisting)
+- [x] Security Review & Hardening (Cookie security, Rate limiting, Tarpitting)
 - [x] Contoh lesson Arduino (LED Blink)
 - [ ] PWA (service worker, offline caching)
 - [ ] Contoh lesson Arduino tambahan (2-3 lagi)
