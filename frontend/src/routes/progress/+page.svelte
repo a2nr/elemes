@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { auth, authIsTeacher } from '$stores/auth';
 
 	interface LessonHeader {
 		filename: string;
@@ -17,8 +18,13 @@
 	let loading = $state(true);
 
 	onMount(async () => {
+		if (!$authIsTeacher) {
+			loading = false;
+			return;
+		}
+
 		try {
-			const res = await fetch('/api/progress-report.json');
+			const res = await fetch(`/api/progress-report.json?token=${encodeURIComponent(auth.token)}`);
 			const data = await res.json();
 			students = data.students ?? [];
 			lessons = data.lessons ?? [];
@@ -38,7 +44,9 @@
 
 <h1>Laporan Progress Siswa</h1>
 
-{#if loading}
+{#if !$authIsTeacher}
+	<p class="empty">Anda tidak memiliki akses ke halaman ini.</p>
+{:else if loading}
 	<p class="loading">Memuat data...</p>
 {:else if students.length === 0}
 	<p class="empty">Belum ada data siswa.</p>
@@ -46,7 +54,7 @@
 	<div class="summary-bar">
 		<span><strong>{students.length}</strong> siswa</span>
 		<span><strong>{totalLessons}</strong> pelajaran</span>
-		<a href="/api/progress-report/export-csv" class="btn btn-secondary btn-sm">
+		<a href="/api/progress-report/export-csv?token={encodeURIComponent(auth.token)}" class="btn btn-secondary btn-sm">
 			Export CSV
 		</a>
 	</div>

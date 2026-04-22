@@ -13,7 +13,7 @@ services:
     environment:
       - COMPILER_WORKER_URL=http://compiler-worker:8080/execute
     networks:
-      - main_network
+      - elemes_network
     # production
     command: gunicorn --config gunicorn.conf.py "app:create_app()"
     # debug
@@ -24,7 +24,7 @@ services:
     image: lms-c-compiler-worker:latest
     runtime: runsc # Enable gVisor
     networks:
-      - main_network
+      - elemes_network
 
   elemes-frontend:
     build: ./frontend
@@ -38,6 +38,8 @@ services:
       - PUBLIC_COPYRIGHT_TEXT=${COPYRIGHT_TEXT}
       - PUBLIC_PAGE_TITLE_SUFFIX=${PAGE_TITLE_SUFFIX}
       - PUBLIC_CURSOR_OFFSET_Y=${CURSOR_OFFSET_Y:-50}
+    networks:
+      - elemes_network
     depends_on:
       - elemes
 
@@ -54,6 +56,8 @@ services:
       - SECRET_KEY=embed-only-no-auth-needed
       - DATABASE_URL=sqlite+aiosqlite:////app/data/velxio.db
       - DATA_DIR=/app/data
+    networks:
+      - elemes_network
     volumes:
       - velxio-data:/app/data
       - velxio-arduino-libs:/root/.arduino15
@@ -84,6 +88,6 @@ volumes:
   velxio-arduino-libs:
 
 networks:
-  main_network:
+  elemes_network:
     driver: bridge
     network_mode: service:elemes-ts

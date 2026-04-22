@@ -10,6 +10,11 @@ export default defineConfig({
 				changeOrigin: true,
 				rewrite: (path) => path.replace(/^\/api/, '')
 			},
+			'/velxio/api/compile': {
+				target: 'http://elemes:5000',
+				changeOrigin: true,
+				rewrite: (path) => '/velxio-compile'
+			},
 			'/assets': {
 				target: 'http://elemes:5000',
 				changeOrigin: true

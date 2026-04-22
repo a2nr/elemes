@@ -1,7 +1,7 @@
 # Elemes LMS — Dokumentasi Teknis
 
 **Project:** LMS-C (Learning Management System untuk Pemrograman C & Arduino)
-**Terakhir diupdate:** 8 April 2026
+**Terakhir diupdate:** 22 April 2026
 
 ---
 
@@ -13,9 +13,10 @@ Internet (HTTPS :443)
     ▼
 Tailscale Funnel (elemes-ts)
     │
-    ├── /              → SvelteKit Frontend (elemes-frontend :3000)
-    ├── /assets/       → Flask Backend (elemes :5000)
-    ├── /velxio/       → Velxio Arduino Simulator (velxio :80)
+    ├── /                   → SvelteKit Frontend (elemes-frontend :3000)
+    ├── /assets/            → Flask Backend (elemes :5000)
+    ├── /velxio/api/compile → Flask Backend (Rate-limited Proxy :5000)
+    ├── /velxio/            → Velxio Arduino Simulator (velxio :80)
     │
     ▼
 SvelteKit Frontend (elemes-frontend :3000)
@@ -28,10 +29,17 @@ SvelteKit Frontend (elemes-frontend :3000)
     │
     ▼  /api/*
 Flask API Backend (elemes :5000)
-  ├── Code compilation (gcc / python)
+  ├── Code compilation (Proxied to Compiler Worker)
+  ├── Arduino Proxy (/velxio-compile → Velxio :80)
   ├── Token authentication (CSV)
   ├── Progress tracking
   └── Lesson content parsing (markdown)
+    │
+    ▼  HTTP
+Compiler Worker (compiler-worker :8080)
+  ├── gVisor Sandbox (runsc runtime)
+  ├── Gunicorn (4 workers)
+  └── Isolation: gcc / python3 execution
     │
 Velxio Arduino Simulator (velxio :80)
   ├── React + Vite frontend (editor + simulator canvas)
@@ -44,7 +52,8 @@ Velxio Arduino Simulator (velxio :80)
 
 | Container | Image | Port | Fungsi |
 |-----------|-------|------|--------|
-| `elemes` | Python 3.11 + gcc | 5000 | Flask API (compile, auth, lessons, progress) |
+| `elemes` | Python 3.11 | 5000 | Flask API (auth, lessons, progress, compile-proxy) |
+| `compiler-worker` | Python 3.11 + gcc | 8080 | **Sandboxed** execution engine (gVisor) |
 | `elemes-frontend` | Node 20 | 3000 | SvelteKit SSR |
 | `velxio` | Node + Python + arduino-cli | 80 | Simulator Arduino (React + FastAPI) |
 | `elemes-ts` | Tailscale | 443 | HTTPS Funnel + reverse proxy |
@@ -250,7 +259,8 @@ Semua endpoint Flask diakses via SvelteKit proxy (`/api/*` → Flask `:5000`, pr
 | GET | `/api/lessons` | `/lessons` | Daftar lesson + home content |
 | GET | `/api/lesson/<slug>.json` | `/lesson/<slug>.json` | Data lesson lengkap |
 | GET | `/api/get-key-text/<slug>` | `/get-key-text/<slug>` | Key text untuk lesson |
-| POST | `/api/compile` | `/compile` | Compile & run kode (C/Python) |
+| POST | `/api/compile` | `/compile` | Compile & run kode (C/Python) via worker |
+| POST | `/velxio/api/compile` | `/velxio-compile` | **Rate-limited** Arduino compile proxy |
 | POST | `/api/track-progress` | `/track-progress` | Track progress siswa |
 | GET | `/api/progress-report.json` | `/progress-report.json` | Data progress semua siswa |
 | GET | `/api/progress-report/export-csv` | `/progress-report/export-csv` | Export CSV |
@@ -456,6 +466,38 @@ Diaktifkan via prop `noPaste={true}`.
 
 ---
 
+## Keamanan & Autentikasi (Security)
+
+Sistem pengamanan untuk melindungi data siswa dan mencegah penyalahgunaan API.
+
+### 1. Eksekusi Terisolasi (gVisor Sandbox)
+Seluruh kode yang dikirim oleh siswa (C dan Python) tidak dieksekusi di dalam container utama, melainkan diteruskan ke **Compiler Worker** yang berjalan menggunakan **runtime gVisor (`runsc`)**. Ini mencegah serangan *Remote Code Execution* (RCE) yang menargetkan kernel sistem operasi host.
+
+### 2. Anonymous Access & Rate Limiting
+Sistem mengizinkan pengguna tanpa token (anonim) untuk mencoba pembelajaran dengan batasan ketat:
+- **Rate Limit**: Pengguna anonim dibatasi **1 kali kompilasi setiap 2 menit** per IP.
+- **Global Queue**: Maksimal **20 slot** antrean kompilasi anonim secara global untuk menjaga stabilitas server.
+- **Bypass**: Pengguna yang telah login (memiliki token/cookie valid) **bebas** dari batasan rate limit ini.
+- **Velxio Protection**: Kompilasi Arduino diproteksi melalui proxy backend Flask untuk mencegah *hijacking* API dari sisi klien.
+
+### 3. Cookie Security (Dynamic Secure Flag)
+LMS menggunakan cookie `student_token` untuk mengelola sesi. Keamanannya diatur secara dinamis melalui environment variable.
+- **`httponly: true`**: Mencegah akses cookie via JavaScript (proteksi XSS).
+- **`secure: COOKIE_SECURE`**: Jika `true`, cookie hanya dikirim via HTTPS. Sangat penting saat dideploy via Tailscale Funnel.
+- **`samesite: 'Lax'`**: Proteksi dasar terhadap CSRF.
+
+### 2. Proteksi Brute-Force & Anti-Spam
+Untuk mencegah penebakan token secara massal, terutama pada jaringan WiFi sekolah yang menggunakan satu IP publik (NAT):
+- **Rate Limiting**: Endpoint `/api/login` dibatasi maksimal **50 request per menit per IP**. Angka ini diatur untuk mengakomodasi satu kelas (50 siswa) yang login bersamaan tanpa saling memblokir.
+- **Tarpitting (Login Delay)**: Setiap percobaan login yang **gagal** akan ditahan selama **1.5 detik** sebelum server memberikan respons. Ini melumpuhkan efektivitas alat brute-force otomatis tanpa mengganggu pengalaman siswa asli yang hanya sesekali salah ketik.
+
+### 3. Session Invalidation (Token Blacklist)
+Mekanisme logout server-side untuk memastikan token tidak bisa digunakan kembali setelah sesi berakhir.
+- **Mekanisme**: Menggunakan `LOGOUT_BLACKLIST` (in-memory set) di Flask backend.
+- **Flow**: Saat user klik logout, token ditambahkan ke blacklist. Semua request berikutnya dengan token tersebut akan ditolak oleh `validate_token()`.
+
+---
+
 ## Touch Crosshair System (CircuitJS)
 
 Overlay untuk presisi interaksi di iframe CircuitJS pada perangkat sentuh. Aktif hanya pada touch device (CSS media query `hover: none` + `pointer: coarse`).
@@ -560,6 +602,7 @@ Redo (Ctrl+Shift+Z / toolbar button)
 - [x] Velxio integration di Elemes (bridge, parsing, UI, evaluasi)
 - [x] Mobile wiring UX (pinch-zoom preserve wire, crosshair alignment)
 - [x] Wire undo/redo (snapshot-based, Ctrl+Z/Ctrl+Shift+Z, toolbar button, mobile-friendly)
+- [x] Security Review & Hardening (Cookie security, Rate limiting, Tarpitting, Blacklisting)
 - [x] Contoh lesson Arduino (LED Blink)
 - [ ] PWA (service worker, offline caching)
 - [ ] Contoh lesson Arduino tambahan (2-3 lagi)

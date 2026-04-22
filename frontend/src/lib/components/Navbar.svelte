@@ -31,7 +31,7 @@
 	}
 </script>
 
-<nav class="navbar" onclick={() => auth.recordActivity()}>
+<nav class="navbar" onclickcapture={() => auth.recordActivity()}>
 	<div class="container navbar-inner">
 		{#if $lessonContext}
 			<!-- Lesson mode -->

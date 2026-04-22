@@ -10,6 +10,7 @@ import logging
 from flask import Flask
 from flask_cors import CORS
 
+from extensions import limiter
 from services.lesson_service import get_lesson_names
 from services.token_service import initialize_tokens_file
 
@@ -28,6 +29,9 @@ def create_app():
     import os
     allowed_origin = os.environ.get('ORIGIN', '*')
     CORS(app, resources={r"/*": {"origins": allowed_origin}})
+
+    # Initialize extensions
+    limiter.init_app(app)
 
     # ── Blueprints ────────────────────────────────────────────────────
     from routes.auth import auth_bp

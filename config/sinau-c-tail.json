@@ -13,6 +13,12 @@
         "/assets/": {
           "Proxy": "http://elemes:5000/assets/"
         },
+        "/velxio/api/compile/": {
+          "Proxy": "http://elemes:5000/velxio-compile/"
+        },
+        "/velxio/api/compile": {
+          "Proxy": "http://elemes:5000/velxio-compile"
+        },
         "/velxio/": {
           "Proxy": "http://velxio:80/"
         }

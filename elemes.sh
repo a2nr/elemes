@@ -63,7 +63,7 @@ stop | run | runbuild | runclearbuild)
   echo "🛑 Menghentikan container yang sedang berjalan..."
   podman-compose -p "$PROJECT_NAME" --env-file ../.env down
   ;;&
-stop) 
+stop)
   echo "✅ Container berhasil dihentikan."
   ;;
 runclearbuild)
@@ -83,7 +83,7 @@ runbuild | runclearbuild)
   ;;
 run)
   echo "🚀 Menjalankan container..."
-  podman-compose -p "$PROJECT_NAME" --env-file ../.env up -d
+  podman-compose -p "$PROJECT_NAME" --env-file ../.env up
   echo "✅ Elemes berhasil dijalankan!"
   ;;
 generatetoken)
@@ -109,7 +109,7 @@ exportall)
   echo ""
 
   echo "💾 Menyatukan semua image menjadi 1 file tar: $TAR_FILE..."
-  podman save lms-c-backend:latest lms-c-frontend:latest lms-c-velxio:latest > "$TAR_FILE"
+  podman save lms-c-backend:latest lms-c-frontend:latest lms-c-velxio:latest >"$TAR_FILE"
 
   if [ $? -eq 0 ]; then
     FILESIZE=$(du -h "$TAR_FILE" | cut -f1)
@@ -190,7 +190,7 @@ loadtest)
 
   echo "⚙️  Mengaktifkan environment & menginstall requirements..."
   source env/bin/activate
-  pip install -r requirements.txt > /dev/null 2>&1
+  pip install -r requirements.txt >/dev/null 2>&1
 
   echo "⚙️  Mempersiapkan Test Data & menginjeksi akun Bot..."
   python3 content_parser.py --num-tokens 50
@@ -201,7 +201,7 @@ loadtest)
   echo "👉 Masukkan URL backend Elemes sebagai Host (contoh: http://localhost:5000)"
   echo "👉 Tekan CTRL+C di terminal ini untuk menghentikan test."
   echo ""
-  
+
   locust -f locustfile.py
   ;;
 *)

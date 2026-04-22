@@ -2,14 +2,22 @@
 Authentication routes: login, logout, validate-token.
 """
 
+import os
+import time
 from flask import Blueprint, request, jsonify
 
-from services.token_service import validate_token
+from extensions import limiter
+from services.token_service import validate_token, blacklist_token
 
 auth_bp = Blueprint('auth', __name__)
 
+# Security Configuration
+COOKIE_SECURE = os.environ.get('COOKIE_SECURE', 'false').lower() == 'true'
+
+
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("50 per minute")
 def login():
     """Handle student login with token."""
     try:
@@ -17,6 +25,7 @@ def login():
         token = (data.get('token') or '').strip()
 
         if not token:
+            time.sleep(1.5)  # Tarpitting for empty tokens
             return jsonify({'success': False, 'message': 'Token is required'})
 
         student_info = validate_token(token)
@@ -29,25 +38,30 @@ def login():
             })
             response.set_cookie(
                 'student_token', token,
-                httponly=True, secure=False, samesite='Lax', max_age=86400,
+                httponly=True, secure=COOKIE_SECURE, samesite='Lax', max_age=86400,
             )
             return response
         else:
+            time.sleep(1.5)  # Tarpitting for invalid tokens
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error processing login: {str(e)}'})
+        return jsonify({'success': False, 'message': 'Error processing login'})
 
 
 @auth_bp.route('/logout', methods=['POST'])
 def logout():
     """Handle student logout."""
     try:
+        token = request.cookies.get('student_token')
+        if token:
+            blacklist_token(token)
+
         response = jsonify({'success': True, 'message': 'Logout successful'})
         response.set_cookie('student_token', '', expires=0)
         return response
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error processing logout: {str(e)}'})
+        return jsonify({'success': False, 'message': 'Error processing logout'})
 
 
 @auth_bp.route('/validate-token', methods=['POST'])
@@ -74,4 +88,4 @@ def validate_token_route():
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error validating token: {str(e)}'})
+        return jsonify({'success': False, 'message': 'Error validating token'})

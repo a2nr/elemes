@@ -19,11 +19,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 	// Proxy /api/* and /assets/* to Flask backend
 	const isApi = event.url.pathname.startsWith('/api/');
 	const isAsset = event.url.pathname.startsWith('/assets/');
+	const isVelxioCompile = event.url.pathname === '/velxio/api/compile' || event.url.pathname === '/velxio/api/compile/';
 
-	if (isApi || isAsset) {
-		const backendPath = isApi
-			? event.url.pathname.replace(/^\/api/, '')
-			: event.url.pathname; // /assets/* kept as-is
+	if (isApi || isAsset || isVelxioCompile) {
+		let backendPath = '';
+		if (isVelxioCompile) {
+			backendPath = '/velxio-compile/';
+		} else if (isApi) {
+			backendPath = event.url.pathname.replace(/^\/api/, '');
+		} else {
+			backendPath = event.url.pathname;
+		}
+
 		const backendUrl = `${API_BACKEND}${backendPath}${event.url.search}`;
 
 		try {

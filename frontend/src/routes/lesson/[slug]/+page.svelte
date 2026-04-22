@@ -386,7 +386,7 @@
 
 		try {
 			const code = (currentLanguage === lang) ? (editor?.getCode() ?? currentCode) : (lang === 'c' ? cCode : pythonCode);
-			const res = await compileCode({ code, language: lang });
+			const res = await compileCode({ code, language: lang, token: auth.token });
 
 			if (!res.success) {
 				Object.assign(out, { error: res.error || 'Compilation failed', success: false });
