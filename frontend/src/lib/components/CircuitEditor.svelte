@@ -1,6 +1,7 @@
 <script lang="ts">
 	import CrosshairOverlay from './CrosshairOverlay.svelte';
 	import type { CircuitJSApi } from '$lib/types/circuitjs';
+	import { themeDark } from '$stores/theme';
 
 	interface Props {
 		initialCircuit?: string;
@@ -17,6 +18,7 @@
 	let saveTimeout: ReturnType<typeof setTimeout>;
 	let autoSaveInterval: ReturnType<typeof setInterval>;
 	let lastLoadedCircuit = $state('');
+	let lastStorageKey = $state<string | undefined>(undefined);
 
 	function saveToStorage(text: string) {
 		if (!storageKey) return;
@@ -152,6 +154,8 @@
 	export function getApi(): CircuitJSApi | null {
 		return simApi;
 	}
+
+	let iframeSrc = $derived(`/circuitjs1/circuitjs.html?whiteBackground=${!$themeDark}`);
 </script>
 
 <div class="circuit-container">
@@ -162,7 +166,7 @@
 		
 		<iframe
 			bind:this={iframe}
-			src="/circuitjs1/circuitjs.html"
+			src={iframeSrc}
 			title="Circuit Simulator"
 			onload={handleIframeLoad}
 			class:visible={ready}

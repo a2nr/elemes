@@ -29,6 +29,14 @@
 	.home-intro {
 		margin-bottom: 2rem;
 	}
+	.home-intro :global(ul),
+	.home-intro :global(ol) {
+		padding-left: 1.5rem;
+		margin-bottom: 0.75rem;
+	}
+	.home-intro :global(li) {
+		margin-bottom: 0.25rem;
+	}
 	.lesson-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));

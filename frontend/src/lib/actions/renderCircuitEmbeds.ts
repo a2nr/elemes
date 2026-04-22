@@ -15,8 +15,10 @@ function loadCircuitEmbed(div: HTMLElement) {
 	wrapper.style.width = width;
 	wrapper.style.height = height;
 
+	const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
 	const iframe = document.createElement('iframe');
-	iframe.src = '/circuitjs1/circuitjs.html';
+	iframe.src = `/circuitjs1/circuitjs.html?whiteBackground=${!isDark}`;
 	iframe.style.width = '100%';
 	iframe.style.height = '100%';
 	iframe.style.border = 'none';

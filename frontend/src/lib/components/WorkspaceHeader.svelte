@@ -44,12 +44,6 @@
 	const hasMultiLang = $derived(hasC && hasPython);
 	const hasCircuit = $derived(activeTabs?.includes('circuit') ?? false);
 
-	function cycleMobileSheet() {
-		if (mobileMode === 'hidden') mobileMode = 'half';
-		else if (mobileMode === 'half') mobileMode = 'full';
-		else mobileMode = 'hidden';
-	}
-
 	function onSheetTouchStart(e: TouchEvent) {
 		touchStartY = e.touches[0].clientY;
 	}
@@ -94,14 +88,15 @@
 
 {#if isMobile}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="panel-header sheet-handle"
+	<div class="panel-header"
 		ontouchstart={onSheetTouchStart}
 		ontouchend={onSheetTouchEnd}>
-		<button type="button" class="sheet-handle-bar-btn" onclick={cycleMobileSheet} aria-label="Resize panel">
-			<div class="sheet-handle-bar"></div>
-		</button>
 		<div class="chrome-tabs">
 			{@render chromeTabs()}
+		</div>
+		<div class="panel-actions">
+			<button type="button" class="panel-btn" onclick={(e) => { e.stopPropagation(); if (mobileMode === 'full') mobileMode = 'half'; else if (mobileMode === 'half') mobileMode = 'hidden'; }} title="Minimize" disabled={mobileMode === 'hidden'}>▽</button>
+			<button type="button" class="panel-btn" onclick={(e) => { e.stopPropagation(); if (mobileMode === 'hidden') mobileMode = 'half'; else if (mobileMode === 'half') mobileMode = 'full'; }} title="Maximize" disabled={mobileMode === 'full'}>△</button>
 		</div>
 	</div>
 {:else if floating && !minimized}
@@ -231,32 +226,5 @@
 		font-weight: 600;
 		border-color: var(--color-border);
 		z-index: 1;
-	}
-
-	/* ── Mobile sheet handle ────────────────────────────── */
-	.sheet-handle {
-		flex-direction: column;
-		align-items: stretch;
-		border: none;
-		border-bottom: none;
-		width: 100%;
-		color: inherit;
-		font: inherit;
-		padding: 4px 8px 0;
-	}
-	.sheet-handle-bar-btn {
-		display: block;
-		width: 100%;
-		background: none;
-		border: none;
-		padding: 4px 0;
-		cursor: pointer;
-	}
-	.sheet-handle-bar {
-		width: 36px;
-		height: 4px;
-		background: var(--color-border);
-		border-radius: 2px;
-		margin: 0 auto;
 	}
 </style>

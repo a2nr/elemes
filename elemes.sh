@@ -5,6 +5,26 @@ PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 EXAMPLES_DIR="$SCRIPT_DIR/examples"
 PROJECT_NAME="$(basename "$PARENT_DIR")"
 
+# Check for --verbose flag
+VERBOSE=0
+for arg in "$@"; do
+  if [ "$arg" == "--verbose" ]; then
+    VERBOSE=1
+    break
+  fi
+done
+
+# Function to run podman-compose quietly unless verbose
+run_compose() {
+  # Ensure we are in the script directory so podman-compose finds the yaml file
+  cd "$SCRIPT_DIR" || exit
+  if [ "$VERBOSE" -eq 1 ]; then
+    podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@"
+  else
+    podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@" >/dev/null 2>&1
+  fi
+}
+
 case "$1" in
 init)
   echo "✨ === Elemes Quick Start === ✨"
@@ -61,7 +81,7 @@ init)
   ;;
 stop | run | runbuild | runclearbuild)
   echo "🛑 Menghentikan container yang sedang berjalan..."
-  podman-compose -p "$PROJECT_NAME" --env-file ../.env down
+  run_compose down
   ;;&
 stop)
   echo "✅ Container berhasil dihentikan."
@@ -70,20 +90,20 @@ runclearbuild)
   echo "🧹 Membersihkan container dan image (prune)..."
   podman image prune -f
   echo "🏗️  Membangun ulang container dari awal (no-cache)..."
-  podman-compose -p "$PROJECT_NAME" --env-file ../.env build --no-cache
+  run_compose build --no-cache
   ;;&
 runbuild)
   echo "🏗️  Membangun container..."
-  podman-compose -p "$PROJECT_NAME" --env-file ../.env build
+  run_compose build
   ;;&
 runbuild | runclearbuild)
   echo "🚀 Menjalankan container di background..."
-  podman-compose -p "$PROJECT_NAME" --env-file ../.env up --force-recreate -d
+  run_compose up --force-recreate -d
   echo "✅ Elemes berhasil dijalankan!"
   ;;
 run)
   echo "🚀 Menjalankan container..."
-  podman-compose -p "$PROJECT_NAME" --env-file ../.env up
+  run_compose up -d
   echo "✅ Elemes berhasil dijalankan!"
   ;;
 generatetoken)
@@ -93,6 +113,7 @@ generatetoken)
 exportall)
   echo "📦 === Mengekspor Semua Image (Pre-Compiled Bundle) ==="
   TAR_FILE="lms-c-precompiled.tar"
+  cd "$SCRIPT_DIR" || exit
 
   echo "🏗️  1. Mem-build Backend Elemes..."
   podman build -t lms-c-backend:latest -f Dockerfile .
@@ -178,31 +199,6 @@ verify)
       echo ""
     fi
   done
-  ;;
-loadtest)
-  echo "📊 === Elemes Load Testing ==="
-  cd "$SCRIPT_DIR/load-test" || exit
-
-  if [ ! -d "env" ]; then
-    echo "⚙️  Membuat Python Virtual Environment (env/)..."
-    python3 -m venv env
-  fi
-
-  echo "⚙️  Mengaktifkan environment & menginstall requirements..."
-  source env/bin/activate
-  pip install -r requirements.txt >/dev/null 2>&1
-
-  echo "⚙️  Mempersiapkan Test Data & menginjeksi akun Bot..."
-  python3 content_parser.py --num-tokens 50
-
-  echo ""
-  echo "🚀 Memulai Locust Test Suite..."
-  echo "👉 Buka http://localhost:8089 di browser web milikmu."
-  echo "👉 Masukkan URL backend Elemes sebagai Host (contoh: http://localhost:5000)"
-  echo "👉 Tekan CTRL+C di terminal ini untuk menghentikan test."
-  echo ""
-
-  locust -f locustfile.py
   ;;
 *)
   echo "💡 Cara Penggunaan elemes.sh:"

@@ -5,6 +5,7 @@
 	import ProgressBadge from '$components/ProgressBadge.svelte';
 	import { env } from '$env/dynamic/public';
 
+	let showDropdown = $state(false);
 	let showLoginModal = $state(false);
 	let tokenInput = $state('');
 	let loginError = $state('');
@@ -31,46 +32,71 @@
 	}
 </script>
 
+<svelte:window onclick={() => (showDropdown = false)} />
+
 <nav class="navbar" onclickcapture={() => auth.recordActivity()}>
 	<div class="container navbar-inner">
-		{#if $lessonContext}
-			<!-- Lesson mode -->
-			<div class="navbar-left">
+		<div class="navbar-left">
+			<div class="nav-dropdown">
+				<button type="button" class="btn-icon-sm dropdown-toggle" onclick={(e) => { e.stopPropagation(); showDropdown = !showDropdown; }} title="Menu">
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
+				</button>
+				{#if showDropdown}
+					<div class="dropdown-menu" onclick={(e) => e.stopPropagation()}>
+						<button type="button" class="dropdown-item" onclick={() => { theme.toggle(); showDropdown = false; }}>
+							{#if $themeDark}
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+								Tema Terang
+							{:else}
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+								Tema Gelap
+							{/if}
+						</button>
+						<a href="/help" target="_blank" class="dropdown-item" onclick={() => (showDropdown = false)}>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+							Bantuan
+						</a>
+						<div class="dropdown-divider"></div>
+						{#if $authLoggedIn}
+							<button type="button" class="dropdown-item" onclick={() => { auth.logout(); showDropdown = false; }}>
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+								Keluar
+							</button>
+						{:else}
+							<button type="button" class="dropdown-item" onclick={() => { (showLoginModal = true); (showDropdown = false); }}>
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+								Masuk
+							</button>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			{#if $lessonContext}
 				<a href="/" class="nav-home-btn" title="Semua Pelajaran">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
 				</a>
+			{:else}
+				<a href="/" class="navbar-brand">{env.PUBLIC_APP_BAR_TITLE || 'Elemes LMS'}</a>
+			{/if}
+
+			{#if $lessonContext}
 				<h1 class="navbar-lesson-title">{$lessonContext.title}</h1>
 				{#if $lessonContext.completed && $authLoggedIn}
 					<ProgressBadge completed={true} />
 				{/if}
-			</div>
-		{:else}
-			<!-- Home mode -->
-			<a href="/" class="navbar-brand">{env.PUBLIC_APP_BAR_TITLE || 'Elemes LMS'}</a>
-		{/if}
+			{/if}
+		</div>
 
 		<div class="navbar-actions">
+			{#if $authLoggedIn}
+				<span class="user-label">{$authStudentName}</span>
+			{/if}
+
 			{#if $lessonContext?.nextLesson}
 				<a href="/lesson/{$lessonContext.nextLesson.filename}" class="btn btn-nav-next" title="{$lessonContext.nextLesson.title}">
 					{$lessonContext.nextLesson.title} &rsaquo;
 				</a>
-			{/if}
-
-			<button class="btn-icon-sm" onclick={() => theme.toggle()} title="Toggle tema">
-				{$themeDark ? '\u2600\uFE0F' : '\uD83C\uDF19'}
-			</button>
-
-			<a href="/help" target="_blank" class="nav-help-link" title="Panduan Penggunaan">
-				Bantuan
-			</a>
-
-			{#if $authLoggedIn}
-				<span class="user-label">{$authStudentName}</span>
-				<button class="btn btn-danger btn-xs" onclick={() => auth.logout()}>Keluar</button>
-			{:else}
-				<button class="btn btn-primary btn-xs" onclick={() => (showLoginModal = true)}>
-					Masuk
-				</button>
 			{/if}
 		</div>
 	</div>
@@ -163,6 +189,63 @@
 		line-height: 1.3;
 	}
 
+	/* ── Dropdown ──────────────────────────────────── */
+	.nav-dropdown {
+		position: relative;
+		display: flex;
+		align-items: center;
+		margin-right: 0.25rem;
+	}
+	.dropdown-toggle {
+		color: rgba(255, 255, 255, 0.85);
+		transition: color 0.15s;
+		display: flex;
+		align-items: center;
+	}
+	.dropdown-toggle:hover {
+		color: #fff;
+	}
+	.dropdown-menu {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 0.5rem;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		min-width: 160px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		z-index: 200;
+	}
+	.dropdown-item {
+		padding: 0.6rem 1rem;
+		background: none;
+		border: none;
+		color: var(--color-text);
+		text-align: left;
+		font-size: 0.85rem;
+		font-weight: 500;
+		cursor: pointer;
+		text-decoration: none;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		transition: background 0.15s;
+	}
+	.dropdown-item:hover {
+		background: var(--color-bg-secondary);
+		color: var(--color-primary);
+		text-decoration: none;
+	}
+	.dropdown-divider {
+		height: 1px;
+		background: var(--color-border);
+		margin: 0.25rem 0;
+	}
+
 	/* ── Right section ─────────────────────────────── */
 	.navbar-actions {
 		display: flex;
@@ -193,6 +276,10 @@
 	.user-label {
 		font-size: 0.8rem;
 		opacity: 0.9;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 120px;
 	}
 	.btn-icon-sm {
 		background: none;
@@ -266,16 +353,21 @@
 
 	/* ── Mobile ─────────────────────────────────────── */
 	@media (max-width: 768px) {
+		.navbar-inner {
+			gap: 0.35rem;
+		}
 		.navbar-lesson-title {
 			font-size: 0.9rem;
 		}
 		.user-label {
-			display: none;
+			display: inline-block;
+			font-size: 0.65rem;
+			max-width: 80px;
 		}
 		.btn-nav-next {
 			font-size: 0.7rem;
 			padding: 0.2rem 0.4rem;
-			max-width: 100px;
+			max-width: 90px;
 		}
 	}
 </style>
