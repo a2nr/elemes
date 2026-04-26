@@ -16,6 +16,7 @@
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
 	import { highlightAllCode } from '$actions/highlightCode';
 	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
+	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
 	import { tick, untrack } from 'svelte';
 	import type { LessonContent } from '$types/lesson';
 
@@ -279,10 +280,12 @@
 				if (contentEl) {
 					highlightAllCode(contentEl);
 					renderCircuitEmbeds(contentEl);
+					autoRenderMath(contentEl);
 				}
 				if (tabsEl) {
 					highlightAllCode(tabsEl);
 					renderCircuitEmbeds(tabsEl);
+					autoRenderMath(tabsEl);
 				}
 			});
 		}
@@ -821,7 +824,7 @@
 	<div class="lesson-layout" class:single-col={float.floating || isMobile}>
 		<!-- Left: Lesson content (selection & copy prevention) -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="lesson-content" bind:this={contentEl} use:noSelect
+		<div class="lesson-content" bind:this={contentEl} use:noSelect use:renderMath
 			role="region" aria-label="Konten pelajaran"
 			class:full-width={float.floating || isMobile}
 			onselectstart={(e) => e.preventDefault()}
@@ -869,7 +872,7 @@
 			/>
 
 			<!-- Editor body -->
-			<div class="editor-body" bind:this={tabsEl}>
+			<div class="editor-body" bind:this={tabsEl} use:renderMath>
 
 				<!-- Info tab panel -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->

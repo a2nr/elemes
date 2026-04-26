@@ -195,7 +195,7 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
 # Markdown rendering
 # ---------------------------------------------------------------------------
 
-MD_EXTENSIONS = ['fenced_code', 'tables', 'nl2br', 'toc']
+MD_EXTENSIONS = ['fenced_code', 'tables', 'nl2br', 'toc', 'mdx_math']
 
 
 def _process_circuit_embeds(text):
@@ -398,4 +398,4 @@ def render_home_content():
 
     parts = home_content.split('---Available_Lessons---')
     main_content = parts[0] if parts else home_content
-    return md.markdown(main_content, extensions=['fenced_code', 'tables'])
+    return md.markdown(main_content, extensions=['fenced_code', 'tables', 'mdx_math'])

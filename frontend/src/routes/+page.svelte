@@ -1,6 +1,7 @@
 <script lang="ts">
 	import LessonCard from '$components/LessonCard.svelte';
 	import { env } from '$env/dynamic/public';
+	import { renderMath } from '$lib/actions/renderMath';
 
 	let { data } = $props();
 </script>
@@ -10,7 +11,7 @@
 </svelte:head>
 
 {#if data.homeContent}
-	<section class="home-intro">
+	<section class="home-intro" use:renderMath>
 		{@html data.homeContent}
 	</section>
 {/if}
