@@ -24,11 +24,18 @@ def _read_home_md():
 
 def _parse_lesson_links(home_content):
     """Extract (link_text, filename) pairs from the Available_Lessons section."""
-    parts = home_content.split('---Available_Lessons---')
+    parts = re.split(r'-{3,}Available_Lessons-{3,}', home_content)
     if len(parts) <= 1:
         return []
-    lesson_list_content = parts[1]
-    return re.findall(r'\[([^\]]+)\]\((?:lesson/)?([^\)]+)\)', lesson_list_content)
+    lesson_list_content = parts[-1]
+    
+    links = re.findall(r'\[([^\]]+)\]\((?:/lesson/)?([^\)]+)\)', lesson_list_content)
+    
+    processed_links = []
+    for title, slug in links:
+        filename = slug if slug.endswith('.md') else slug + '.md'
+        processed_links.append((title, filename))
+    return processed_links
 
 
 # ---------------------------------------------------------------------------

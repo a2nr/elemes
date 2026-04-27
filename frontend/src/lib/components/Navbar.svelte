@@ -42,6 +42,8 @@
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="18" x2="20" y2="18"></line></svg>
 				</button>
 				{#if showDropdown}
+					<!-- svelte-ignore a11y_click_events_have_key_events -->
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<div class="dropdown-menu" onclick={(e) => e.stopPropagation()}>
 						<button type="button" class="dropdown-item" onclick={() => { theme.toggle(); showDropdown = false; }}>
 							{#if $themeDark}
@@ -288,25 +290,6 @@
 		font-size: 1rem;
 		line-height: 1;
 		padding: 0.2rem;
-	}
-	.btn-xs {
-		padding: 0.25rem 0.6rem;
-		font-size: 0.75rem;
-	}
-	.nav-help-link {
-		color: #fff;
-		text-decoration: none;
-		font-size: 0.75rem;
-		font-weight: 600;
-		padding: 0.25rem 0.6rem;
-		border: 1px solid rgba(255, 255, 255, 0.3);
-		border-radius: 6px;
-		transition: background 0.15s;
-	}
-	.nav-help-link:hover {
-		background: rgba(255, 255, 255, 0.15);
-		color: #fff;
-		text-decoration: none;
 	}
 
 	/* ── Modal ──────────────────────────────────────── */

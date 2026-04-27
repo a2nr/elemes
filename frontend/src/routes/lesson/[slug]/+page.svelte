@@ -1,14 +1,21 @@
 <script lang="ts">
+	import './lesson.css';
 	import { page } from '$app/stores';
 	import { beforeNavigate } from '$app/navigation';
 	import CodeEditor from '$components/CodeEditor.svelte';
 	import CircuitEditor from '$components/CircuitEditor.svelte';
+	import CodeTab from './CodeTab.svelte';
+	import CircuitTab from './CircuitTab.svelte';
+	import VelxioTab from './VelxioTab.svelte';
 	import OutputPanel, { type OutputEntry } from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
 	import WorkspaceHeader from '$components/WorkspaceHeader.svelte';
 	import LessonList from '$components/LessonList.svelte';
 	import { compileCode, trackProgress } from '$services/api';
 	import { checkKeyText, validateNodes } from '$services/exercise';
+	import { evaluateVelxioSubmission } from '$services/velxio-evaluator';
+	import { evaluateCircuitSubmission, processLanguageEvaluation } from '$services/evaluators';
+	import { getVelxioState, initVelxioBridge } from '$services/velxio-manager';
 	import { VelxioBridge, type EvaluationResult } from '$services/velxio-bridge';
 	import { auth, authLoggedIn } from '$stores/auth';
 	import { lessonContext } from '$stores/lessonContext';
@@ -62,49 +69,11 @@
 	let arduinoCodeKey = $derived(`elemes_arduino_code_${slug}`);
 	let arduinoCircuitKey = $derived(`elemes_arduino_circuit_${slug}`);
 
-	/** Try to directly read Velxio Zustand stores from iframe (same-origin). */
-	function getVelxioState(): { code: string; circuit: string } | null {
-		if (!velxioIframe) return null;
-		try {
-			const win = velxioIframe.contentWindow as any;
-			if (!win) return null;
-			
-			const editorStore = win.__VELXIO_EDITOR_STORE__?.getState?.();
-			const simStore = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
-			
-			if (!editorStore || !simStore) return null;
-			
-			// Extract code
-			const code = (editorStore.files as any[] || []).map((f: any) => f.content).join('\n');
-			
-			// Extract circuit state (Diagram format compatible with elemes:load_circuit)
-			const circuit = {
-				board: simStore.activeBoardId,
-				components: (simStore.components as any[] || []).map(c => ({
-					type: c.metadataId,
-					id: c.id,
-					x: c.x,
-					y: c.y,
-					rotation: c.properties?.rotation || 0,
-					props: { ...c.properties }
-				})),
-				wires: simStore.wires || []
-			};
-			
-			return {
-				code,
-				circuit: JSON.stringify(circuit)
-			};
-		} catch {
-			return null;
-		}
-	}
-
 	// Auto-save Velxio state periodically
 	$effect(() => {
 		if (velxioReady && $authLoggedIn && !showSolution) {
 			const interval = setInterval(() => {
-				const state = getVelxioState();
+				const state = getVelxioState(velxioIframe);
 				if (!state) return;
 				
 				let changed = false;
@@ -331,43 +300,19 @@
 		activeTab = 'output';
 
 		try {
-			const circuitExpected = (isHybrid && data.expected_circuit_output)
-				? data.expected_circuit_output
-				: data.expected_output;
-
-			let expectedState: any = null;
-			try {
-				if (circuitExpected) expectedState = JSON.parse(circuitExpected);
-			} catch {
-				Object.assign(circuitOut, { error: "Format EXPECTED_OUTPUT tidak valid (Harus JSON).", success: false, loading: false });
-				return;
-			}
-
-			if (!expectedState) {
-				Object.assign(circuitOut, { output: "Tidak ada kriteria evaluasi yang ditetapkan.", success: true, loading: false });
-				return;
-			}
-
-			let { allPassed, messages } = expectedState.nodes
-				? validateNodes(simApi, expectedState.nodes)
-				: { allPassed: true, messages: [] as string[] };
-
 			const circuitText = circuitEditor.getCircuitText();
-			const circuitKeyText = (isHybrid && data.key_text_circuit) ? data.key_text_circuit : data.key_text;
-			if (!checkKeyText(circuitText, circuitKeyText ?? '')) {
-				allPassed = false;
-				messages.push(`❌ Komponen wajib belum lengkap (lihat instruksi).`);
+			const res = evaluateCircuitSubmission(simApi, circuitText, isHybrid, data, checkAllPassed);
+
+			if (res.error) {
+				Object.assign(circuitOut, { error: res.error, success: false, loading: false });
+				return;
 			}
 
-			circuitOut.output = messages.join('\n');
-			circuitOut.success = allPassed;
+			circuitOut.output = res.output;
+			circuitOut.success = res.pass;
 
-			if (allPassed) {
+			if (res.pass) {
 				circuitPassed = true;
-				if (isHybrid) {
-					circuitOut.output += '\n✅ Rangkaian benar!';
-					if (!checkAllPassed()) circuitOut.output += '\n⏳ Selesaikan juga tantangan kode untuk menyelesaikan pelajaran ini.';
-				}
 				if (checkAllPassed()) {
 					await completeLesson();
 					setTimeout(() => { showCelebration = false; activeTab = 'circuit'; }, 3000);
@@ -400,11 +345,8 @@
 			out.success = true;
 
 			if (data.expected_output) {
-				const currentCCode = (currentLanguage === 'c') ? code : cCode;
-				const currentPythonCode = (currentLanguage === 'python') ? code : pythonCode;
-				const mergedCode = currentCCode + '\n' + currentPythonCode;
-				const passed = res.output.trim() === data.expected_output.trim() && checkKeyText(mergedCode, data.key_text ?? '');
-				if (passed) {
+				const { isCorrect } = processLanguageEvaluation(res.output, code, lang, currentLanguage, cCode, pythonCode, data);
+				if (isCorrect) {
 					if (lang === 'c') cPassed = true;
 					else if (lang === 'python') pythonPassed = true;
 
@@ -419,7 +361,6 @@
 						if (data.solution_code || data.solution_python || data.solution_circuit) { 
 							showSolution = true;
 							handleShowSolution();
-							// To avoid logic flipping
 							showSolution = true; 
 						}
 						setTimeout(() => { showCelebration = false; activeTab = 'editor'; }, 3000);
@@ -511,124 +452,19 @@
 		}
 	}
 
-	/** Match serial output using subsequence matching. */
-	function matchSerialSubsequence(actual: string, expected: string): boolean {
-		if (!expected) return true;
-		if (!actual) return false;
-		
-		const actualLines = actual.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-		const expectedLines = expected.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-		
-		let expectedIdx = 0;
-		for (const actualLine of actualLines) {
-			if (expectedIdx < expectedLines.length) {
-				if (actualLine.toLowerCase().includes(expectedLines[expectedIdx].toLowerCase())) {
-					expectedIdx++;
-				}
-			}
-			if (expectedIdx === expectedLines.length) return true;
-		}
-		return expectedIdx === expectedLines.length;
-	}
-
-	function initVelxioBridge(iframe: HTMLIFrameElement) {
+	function setupVelxioBridge(iframe: HTMLIFrameElement) {
 		velxioIframe = iframe;
-
-		let settled = false;
-		const onMessage = (e: MessageEvent) => {
-			const type = e.data?.type;
-			if (!type) return;
-
-			if (!settled && type === 'velxio:ready') {
-				settled = true;
-				velxioBridge = new VelxioBridge(iframe);
+		initVelxioBridge(
+			iframe,
+			data,
+			arduinoCircuitKey,
+			arduinoCodeKey,
+			(bridge) => {
+				velxioBridge = bridge;
 				velxioReady = true;
-				if (!data) return;
-				velxioBridge.setEmbedMode({
-					hideAuth: true,
-					hideComponentPicker: true,
-					lockComponents: true
-				});
-				
-				// Priority: Restore from localStorage if available, otherwise use data from backend
-				const savedCircuit = localStorage.getItem(arduinoCircuitKey);
-				const savedCode = localStorage.getItem(arduinoCodeKey);
-
-				if (savedCircuit) {
-					console.log('[Velxio Bridge] Restoring circuit from draft');
-					velxioBridge.loadCircuit(savedCircuit);
-				} else if (data.velxio_circuit) {
-					velxioBridge.loadCircuit(data.velxio_circuit);
-				}
-
-				if (savedCode) {
-					console.log('[Velxio Bridge] Restoring code from draft');
-					velxioBridge.loadCode([{ name: 'sketch.ino', content: savedCode }]);
-				} else if (data.initial_code_arduino) {
-					velxioBridge.loadCode([{ name: 'sketch.ino', content: data.initial_code_arduino }]);
-				}
-			}
-
-			if (type === 'velxio:compile_result' && e.data.success) {
-				const timeout = data?.evaluation_config?.timeout_ms ?? 5000;
-				setTimeout(() => handleVelxioSubmit(), timeout);
-			}
-		};
-		window.addEventListener('message', onMessage);
-
-		// Fallback: if PostMessage bridge never connects, try direct iframe access (same-origin)
-		const pollReady = setInterval(() => {
-			if (settled) { clearInterval(pollReady); return; }
-			try {
-				const win = iframe.contentWindow as any;
-				if (!win || !win.document) return;
-				const root = win.document.getElementById('root');
-				if (!root || !root.children.length) return;
-
-				settled = true;
-				clearInterval(pollReady);
-				velxioReady = true;
-
-				if (data) {
-					win.postMessage({
-						type: 'elemes:set_embed_mode',
-						hideAuth: true,
-						hideComponentPicker: true,
-						lockComponents: true
-					}, '*');
-					
-					const savedCircuit = localStorage.getItem(arduinoCircuitKey);
-					const savedCode = localStorage.getItem(arduinoCodeKey);
-
-					if (savedCircuit) {
-						try {
-							console.log('[Velxio Fallback] Restoring circuit from draft');
-							const circuitData = JSON.parse(savedCircuit);
-							win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
-						} catch {}
-					} else if (data.velxio_circuit) {
-						try {
-							const circuitData = JSON.parse(data.velxio_circuit);
-							win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
-						} catch {}
-					}
-
-					if (savedCode) {
-						console.log('[Velxio Fallback] Restoring code from draft');
-						win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: savedCode }] }, '*');
-					} else if (data.initial_code_arduino) {
-						win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: data.initial_code_arduino }] }, '*');
-					}
-				}
-			} catch { /* cross-origin or not ready yet */ }
-		}, 1000);
-
-		setTimeout(() => {
-			clearInterval(pollReady);
-			if (settled) return;
-			settled = true;
-			window.removeEventListener('message', onMessage);
-		}, 30_000);
+			},
+			() => handleVelxioSubmit()
+		);
 	}
 
 	async function handleVelxioSubmit() {
@@ -651,7 +487,7 @@
 			}
 
 			// Use getVelxioState for code and wires (more reliable/complete)
-			const state = getVelxioState();
+			const state = getVelxioState(velxioIframe);
 			if (state) {
 				sourceCode = state.code;
 				try {
@@ -664,146 +500,13 @@
 			}
 
 			// === Evaluate ===
-			const messages: string[] = [];
-			let keyTextPass: boolean | undefined;
-			let serialPass: boolean | undefined;
-			let wiringPass: boolean | undefined;
+			const evalRes = evaluateVelxioSubmission(sourceCode, serialLog, wireList, data);
 
-			// 1. Key text
-			if (data.key_text) {
-				const keys = data.key_text.split('\n').map(k => k.trim()).filter(k => k.length > 0);
-				keyTextPass = keys.every(key => sourceCode.includes(key));
-				messages.push(keyTextPass
-					? '✅ Kata kunci ditemukan dalam kode'
-					: '❌ Kata kunci belum ada dalam kode');
-				dbg.push(`[key_text] keys="${keys.join(', ')}" → ${keyTextPass}`);
-			}
+			velxioOut.output = evalRes.messages.join('\n');
+			velxioOut.debug = dbg.concat(evalRes.dbg);
+			velxioOut.success = evalRes.pass;
 
-			// 2. Serial output
-			if (data.expected_serial_output) {
-				const actualLog = serialLog.trim();
-				const expectedLog = data.expected_serial_output.trim();
-				
-				// Use subsequence matching: expected lines must appear in order in actual output
-				serialPass = matchSerialSubsequence(actualLog, expectedLog);
-				
-				messages.push(serialPass
-					? '✅ Serial output sesuai'
-					: '❌ Serial output belum sesuai');
-				
-				const preview = serialLog.substring(0, 150).replace(/\n/g, '↵');
-				dbg.push(`[serial] actual(${serialLog.length}ch)="${preview}"`);
-				dbg.push(`[serial] expected="${expectedLog.substring(0, 150).replace(/\n/g, '↵')}" → ${serialPass}`);
-			}
-
-			// 3. Wiring
-			if (data.expected_wiring) {
-				let expectedWires: any[] = [];
-				try {
-					const parsed = JSON.parse(data.expected_wiring);
-					// Support both old format (array of pairs) and new format (object with wires array)
-					if (Array.isArray(parsed)) {
-						expectedWires = parsed;
-					} else if (parsed.wires && Array.isArray(parsed.wires)) {
-						expectedWires = parsed.wires;
-					}
-				} catch {}
-
-				// Detect non-polarized component types (pins are interchangeable)
-				const nonPolarizedTypes = new Set(['resistor']);
-
-				// Normalize power pin names (e.g., GND.2 → GND, VCC.1 → VCC)
-				// This handles multiple power pin variants
-				const normalizePin = (pin: string) => {
-					// Match power pins with numeric suffixes: GND.1, VCC.2, 5V.3, etc.
-					return pin.replace(/^(GND|VCC|5V|3V3|3\.3V|POWER)\.\d+$/i, '$1');
-				};
-
-				// Normalize component:pin for comparison
-				// For non-polarized components (like resistors), strip pin numbers
-				// so that resistor:1 and resistor:2 are treated as equivalent
-				const normalizeEdge = (compId: string, pinName: string): string => {
-					const normPin = normalizePin(pinName);
-					// Check if this component is non-polarized by looking at expected_wires
-					// We detect resistor components by their ID pattern or type
-					const isNonPolarized = nonPolarizedTypes.has(compId.split('-')[0]) ||
-						compId.startsWith('resistor');
-					if (isNonPolarized && /^\d+$/.test(normPin)) {
-						// For non-polarized components with numeric pins, use a generic pin name
-						return `${compId}:PIN`;
-					}
-					return `${compId}:${normPin}`;
-				};
-
-				const norm = (a: string, b: string) => {
-					// Parse component:pin format
-					const [compA, pinA] = a.split(':');
-					const [compB, pinB] = b.split(':');
-					const normA = `${compA}:${normalizePin(pinA || '')}`;
-					const normB = `${compB}:${normalizePin(pinB || '')}`;
-					// For non-polarized components, normalize numeric pins to generic
-					const finalA = nonPolarizedTypes.has(compA) || compA.startsWith('resistor')
-						? `${compA}:PIN` : normA;
-					const finalB = nonPolarizedTypes.has(compB) || compB.startsWith('resistor')
-						? `${compB}:PIN` : normB;
-					// Sort to make edge comparison order-independent
-					return [finalA, finalB].sort().join('↔');
-				};
-
-				const studentEdges = new Set(
-					wireList.map(w => norm(
-						`${w.start.componentId}:${w.start.pinName}`,
-						`${w.end.componentId}:${w.end.pinName}`
-					))
-				);
-
-				// Check all expected connections exist
-				wiringPass = expectedWires.every((expected: any) => {
-					let edgeKey: string;
-					// Handle both formats
-					if (Array.isArray(expected) && expected.length === 2) {
-						// Old format: ["component:pin", "component:pin"]
-						edgeKey = norm(expected[0], expected[1]);
-					} else if (expected.start && expected.end) {
-						// New format: { start: { componentId, pinName }, end: { componentId, pinName } }
-						const startPin = `${expected.start.componentId}:${expected.start.pinName}`;
-						const endPin = `${expected.end.componentId}:${expected.end.pinName}`;
-						edgeKey = norm(startPin, endPin);
-					} else {
-						return false;
-					}
-
-					const exists = studentEdges.has(edgeKey);
-					if (!exists) {
-						dbg.push(`[wiring] MISSING: ${edgeKey}`);
-					}
-					return exists;
-				});
-
-				messages.push(wiringPass
-					? '✅ Rangkaian wiring benar'
-					: '❌ Wiring belum sesuai');
-
-				const edgesStr = wireList.map(w =>
-					`${w.start.componentId}:${w.start.pinName}↔${w.end.componentId}:${w.end.pinName}`
-				);
-				dbg.push(`[wiring] student (${wireList.length} wires): ${edgesStr.join(' | ') || '(kosong)'}`);
-				dbg.push(`[wiring] expected (${expectedWires.length} connections): ${expectedWires.map((w: any) => {
-					if (Array.isArray(w) && w.length === 2) return w.join('↔');
-					if (w.start && w.end) return `${w.start.componentId}:${w.start.pinName}↔${w.end.componentId}:${w.end.pinName}`;
-					return JSON.stringify(w);
-				}).join(' | ')}`);
-				dbg.push(`[wiring] result → ${wiringPass}`);
-			}
-
-			const checks = [keyTextPass, serialPass, wiringPass].filter(v => v !== undefined);
-			const pass = checks.length > 0 && checks.every(Boolean);
-
-			velxioOut.output = messages.join('\n');
-			velxioOut.debug = dbg;
-			velxioOut.success = pass;
-
-			if (pass) {
+			if (evalRes.pass) {
 				await completeLesson();
 				setTimeout(() => { showCelebration = false; activeTab = 'velxio'; }, 3000);
 			}
@@ -904,92 +607,52 @@
 				<!-- Circuit tab panel -->
 				{#if data.active_tabs?.includes('circuit')}
 				<div class="tab-panel" class:tab-hidden={activeTab !== 'circuit'}>
-					<div class="toolbar">
-						<button type="button" class="btn btn-success" onclick={handleRun} disabled={compiling}>
-							{compiling ? 'Mengevaluasi...' : '▶ Cek Rangkaian'}
-						</button>
-						<button type="button" class="btn btn-secondary" onclick={handleReset}>Reset</button>
-						{#if data.solution_code && $authLoggedIn && lessonCompleted}
-							<button type="button" class="btn btn-secondary" onclick={handleShowSolution}>
-								{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
-							</button>
-						{/if}
-					</div>
-					<div class="panel">
-						<CircuitEditor
-							bind:this={circuitEditor}
-							initialCircuit={data.initial_circuit || data.initial_code}
-							storageKey={($authLoggedIn && !showSolution) ? `elemes_circuit_${slug}` : undefined}
-						/>
-					</div>
+					<CircuitTab
+						{data}
+						bind:circuitEditor
+						compiling={compiling}
+						authLoggedIn={$authLoggedIn}
+						lessonCompleted={lessonCompleted}
+						showSolution={showSolution}
+						slug={slug}
+						onRun={handleRun}
+						onReset={handleReset}
+						onShowSolution={handleShowSolution}
+					/>
 				</div>
 				{/if}
 
 				<!-- Velxio (Arduino) tab panel -->
 				{#if isVelxio}
 				<div class="tab-panel velxio-panel" class:tab-hidden={activeTab !== 'velxio'}>
-					{#if velxioError}
-						<div class="velxio-fallback">
-							Simulator Arduino sedang tidak tersedia.
-							Hubungi guru jika masalah berlanjut.
-						</div>
-					{:else}
-						{#if $authLoggedIn}
-							<div class="storage-indicator-inline" title={velxioSaving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>
-								<span class="indicator-icon" class:saving={velxioSaving}>
-									{velxioSaving ? '●' : '☁'}
-								</span>
-								<span class="indicator-text">Auto-save</span>
-							</div>
-						{/if}
-						<!-- svelte-ignore a11y_missing_attribute -->
-						<iframe
-							class="velxio-iframe"
-							src="/velxio/editor?embed=true{hasArduinoCode ? '' : '&hideEditor=true'}&lockComponents=true"
-							onload={(e) => initVelxioBridge(e.currentTarget as HTMLIFrameElement)}
-							allow="cross-origin-isolated"
-						></iframe>
-					{/if}
+					<VelxioTab
+						{hasArduinoCode}
+						velxioError={velxioError}
+						authLoggedIn={$authLoggedIn}
+						velxioSaving={velxioSaving}
+						onSetupBridge={setupVelxioBridge}
+					/>
 				</div>
 				{/if}
 
 				<!-- Editor tab panel -->
 				{#if !data.active_tabs || data.active_tabs.length === 0 || data.active_tabs.includes('c') || data.active_tabs.includes('python')}
 				<div class="tab-panel" class:tab-hidden={activeTab !== 'editor'}>
-					<div class="toolbar">
-						<button type="button" class="btn btn-success" onclick={handleRun} disabled={compiling}>
-							{compiling ? 'Compiling...' : '\u25B6 Run'}
-						</button>
-						<button type="button" class="btn btn-secondary" onclick={handleReset}>Reset</button>
-						{#if data.solution_code && $authLoggedIn && lessonCompleted}
-							<button type="button" class="btn btn-secondary" onclick={handleShowSolution}>
-								{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
-							</button>
-						{/if}
-						<span class="lang-label">{currentLanguage === 'python' ? 'Python' : 'C'}</span>
-					</div>
-
-					<div class="panel">
-						{#key currentLanguage}
-						<CodeEditor
-							bind:this={editor}
-							code={currentCode}
-							language={currentLanguage}
-							noPaste={true}
-							storageKey={($authLoggedIn && !showSolution) ? `elemes_draft_${slug}_${currentLanguage}` : undefined}
-							onchange={(val) => { if (!showSolution) currentCode = val; }}
-						/>
-						{/key}
-					</div>
-
-					{#if data.expected_output}
-						<details class="expected-output">
-							<summary>Expected Output</summary>
-							<pre>{data.expected_output}</pre>
-						</details>
-					{/if}
+					<CodeTab
+						{data}
+						bind:currentLanguage
+						bind:currentCode
+						bind:editor
+						compiling={compiling}
+						authLoggedIn={$authLoggedIn}
+						lessonCompleted={lessonCompleted}
+						showSolution={showSolution}
+						slug={slug}
+						onRun={handleRun}
+						onReset={handleReset}
+						onShowSolution={handleShowSolution}
+					/>
 				</div>
-
 				{/if}
 
 				<!-- Output tab panel -->
@@ -1010,304 +673,3 @@
 
 {/if}
 
-<style>
-	/* ── Shared rich-text styles (.prose + .tab-content) ──── */
-	.tab-content {
-		font-size: 0.85rem;
-		padding: 0.75rem 0.5rem;
-		line-height: 1.65;
-	}
-	.tab-heading {
-		color: var(--color-primary);
-		font-size: 1.1rem;
-		margin-top: 0;
-	}
-	.prose :global(pre),
-	.tab-content :global(pre) {
-		background: var(--color-bg-secondary);
-		padding: 0.75rem;
-		border-radius: var(--radius);
-		overflow-x: auto;
-	}
-	.prose :global(code),
-	.tab-content :global(code) {
-		font-family: var(--font-mono);
-		font-size: 0.85rem;
-	}
-	.prose :global(p),
-	.tab-content :global(p) {
-		margin-bottom: 0.75rem;
-	}
-	.prose :global(h2), .prose :global(h3),
-	.tab-content :global(h2), .tab-content :global(h3) {
-		margin-top: 1.25rem;
-		margin-bottom: 0.5rem;
-	}
-	.tab-content :global(ul),
-	.tab-content :global(ol) {
-		margin-bottom: 0.75rem;
-		padding-left: 1.5rem;
-	}
-	.tab-content :global(li) {
-		margin-bottom: 0.25rem;
-	}
-
-	/* ── Two-column layout ─────────────────────────────────── */
-	.lesson-layout {
-		display: grid;
-		grid-template-columns: 3fr 2fr;
-		gap: 1.5rem;
-		align-items: start;
-	}
-
-	.lesson-content {
-		overflow-y: auto;
-		max-height: 90vh;
-		padding-right: 0.5rem;
-		-webkit-user-select: none;
-		user-select: none;
-		-webkit-touch-callout: none;
-	}
-
-	/* ── Editor area (docked mode) ──────────────────────────── */
-	.editor-area {
-		position: sticky;
-		top: 3.5rem;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		max-height: 85vh;
-	}
-	.editor-area .editor-body {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		overflow-y: auto;
-		padding: 0.5rem;
-		min-height: 0;
-	}
-
-	/* ── Single-column layout ──────────────────────────────── */
-	.lesson-layout.single-col {
-		grid-template-columns: 1fr;
-	}
-	.lesson-content.full-width {
-		max-height: none;
-		padding-right: 0;
-		padding-bottom: 60px;
-	}
-
-	/* ── Toolbar ───────────────────────────────────────────── */
-	.toolbar {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-		flex-wrap: wrap;
-	}
-	.btn-secondary {
-		background: var(--color-bg-secondary);
-		color: var(--color-text);
-		border: 1px solid var(--color-border);
-	}
-	.btn-secondary:hover {
-		background: var(--color-border);
-	}
-	.btn-run-all {
-		padding: 0.3rem 0.6rem;
-		font-size: 0.8rem;
-	}
-	.lang-label {
-		margin-left: auto;
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		font-weight: 600;
-		text-transform: uppercase;
-	}
-	.panel {
-		margin-bottom: 0.75rem;
-	}
-	.expected-output {
-		font-size: 0.8rem;
-		color: var(--color-text-muted);
-	}
-	.expected-output pre {
-		background: var(--color-bg-secondary);
-		padding: 0.5rem;
-		border-radius: var(--radius);
-		margin-top: 0.5rem;
-	}
-
-	/* ── Floating restore button ────────────────────────────── */
-	.float-restore-btn {
-		position: fixed;
-		bottom: 1rem;
-		right: 1rem;
-		z-index: 9999;
-		background: var(--color-primary);
-		color: #fff;
-		border: none;
-		border-radius: var(--radius);
-		padding: 0.6rem 1rem;
-		font-size: 0.85rem;
-		font-weight: 600;
-		cursor: pointer;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-		transition: background 0.15s, transform 0.1s;
-	}
-	.float-restore-btn:hover {
-		background: var(--color-primary-dark);
-	}
-	.float-restore-btn:active {
-		transform: scale(0.95);
-	}
-
-	/* ── Desktop floating mode ─────────────────────────────── */
-	.editor-area.floating {
-		position: fixed;
-		bottom: 1rem;
-		right: 1rem;
-		top: auto;
-		width: 45vw;
-		height: 70vh;
-		min-width: 320px;
-		max-width: 100vw;
-		max-height: 100vh;
-		z-index: 9999;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-	}
-	.editor-area.floating-hidden {
-		display: none !important;
-	}
-
-	/* ── Mobile bottom sheet ──────────────────────────────── */
-	.editor-area.mobile-sheet {
-		position: fixed;
-		top: auto;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		z-index: 9999;
-		background: var(--color-bg);
-		border-top: 2px solid var(--color-primary);
-		border-radius: 12px 12px 0 0;
-		box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.2s ease;
-	}
-	.editor-area.mobile-hidden {
-		height: 52px;
-	}
-	.editor-area.mobile-half {
-		height: 60vh;
-	}
-	.editor-area.mobile-full {
-		height: calc(100vh - 3rem);
-		border-radius: 0;
-	}
-	.mobile-sheet .editor-body {
-		overscroll-behavior: contain;
-	}
-	/* ── Mobile full: expand content to fill ────────────── */
-	.editor-area.mobile-full .editor-body,
-	.editor-area.mobile-full .tab-panel:not(.tab-hidden),
-	.editor-area.mobile-full .panel,
-	.editor-area.mobile-full :global(.circuit-container),
-	.editor-area.mobile-full :global(.editor-wrapper) {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-	}
-	.editor-area.mobile-full :global(.circuit-wrapper) {
-		flex: 1;
-		height: auto;
-	}
-	.editor-area.mobile-full :global(.cm-editor) {
-		flex: 1;
-		max-height: none;
-		min-height: 0;
-	}
-	.editor-area.mobile-full :global(.cm-scroller) {
-		flex: 1;
-	}
-
-	/* ── Tab panels ────────────────────────────────────────── */
-	.tab-panel {
-		overflow-y: auto;
-	}
-	.tab-hidden {
-		display: none;
-	}
-
-	/* ── Velxio (Arduino simulator) ─────────────────────── */
-	.storage-indicator-inline {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		background: var(--color-bg-secondary);
-		padding: 3px 10px;
-		border-radius: 12px;
-		border: 1px solid var(--color-border);
-		position: absolute;
-		bottom: 1rem;
-		right: 1.5rem;
-		z-index: 10;
-		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-		pointer-events: none;
-		opacity: 0.8;
-	}
-	.storage-indicator-inline .indicator-icon {
-		line-height: 1;
-		font-size: 0.8rem;
-		color: var(--color-success);
-	}
-	.storage-indicator-inline .indicator-icon.saving {
-		color: var(--color-primary);
-		animation: pulse 1s infinite;
-	}
-	.storage-indicator-inline .indicator-text {
-		font-weight: 500;
-	}
-
-	.velxio-panel {
-		display: flex;
-		flex-direction: column;
-		flex: 1;
-		min-height: 0;
-		position: relative;
-	}
-	.velxio-panel.tab-hidden {
-		display: none;
-	}
-	.velxio-iframe {
-		flex: 1;
-		width: 100%;
-		min-height: 400px;
-		border: none;
-		border-radius: var(--radius);
-	}
-	.velxio-fallback {
-		padding: 2rem;
-		text-align: center;
-		color: var(--color-text-muted);
-		background: var(--color-bg-secondary);
-		border-radius: var(--radius);
-		margin: 0.5rem 0;
-	}
-
-</style>
