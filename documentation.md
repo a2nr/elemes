@@ -149,11 +149,11 @@ lms-c/
     │       │       ├── compiler.ts
     │       │       └── circuitjs.ts        # CircuitJSApi interface
     │       ├── routes/
-    │       │   ├── +layout.svelte          # App shell (Navbar, theme)
+    │       │   ├── +layout.svelte          # App shell (Navbar, theme sinkronisasi)
     │       │   ├── +page.svelte            # Home (lesson grid)
     │       │   ├── +page.ts                # SSR data loader
     │       │   ├── lesson/[slug]/
-    │       │   │   ├── +page.svelte        # Lesson viewer (semua mode)
+    │       │   │   ├── +page.svelte        # Lesson viewer (Layout utama & inisialisasi)
     │       │   │   └── +page.ts            # SSR data loader
     │       │   └── progress/
     │       │       └── +page.svelte        # Teacher dashboard
@@ -182,6 +182,13 @@ lms-c/
 ---
 
 ## Keputusan Teknis
+
+### Refactoring Halaman Lesson (Modularitas)
+Halaman lesson (`+page.svelte`) sebelumnya bertindak sebagai "God Component" (>1.300 baris) yang menangani state, integrasi iframe, logika kompilasi, dan UI rendering. Untuk skalabilitas, halaman ini telah direfaktor menjadi arsitektur modular:
+1. **`lessonState.svelte.ts`**: Menggunakan Svelte 5 Runes (`$state`, `$derived`) untuk mengelola seluruh state pelajaran secara reaktif di luar komponen UI.
+2. **`LessonWorkspace.svelte`**: Komponen presentasional yang membungkus seluruh area interaktif (Editor, Output, Tab).
+3. **`VelxioIframe.svelte`**: Mengisolasi logika inisialisasi bridge, `postMessage`, dan *auto-save* khusus untuk simulator Arduino.
+4. **`highlightCode.ts` (Svelte Action)**: Syntax highlighting menggunakan eksekusi level DOM (via `use:highlightAction`) yang dipicu ulang setiap kali string HTML materi berubah, menggantikan efek reaktif (`$effect`) yang rentan *race-condition*.
 
 ### Kenapa SvelteKit, bukan Flutter?
 - CodeMirror 6 (code editor production-grade) — tidak ada equivalent di Flutter
@@ -301,6 +308,21 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 | `---KEY_TEXT_CIRCUIT---` / `---END_KEY_TEXT_CIRCUIT---` | Keyword wajib di circuit (hybrid) |
 | `---SOLUTION_CODE---` / `---END_SOLUTION_CODE---` | Solusi kode (ditampilkan setelah selesai) |
 | `---SOLUTION_CIRCUIT---` / `---END_SOLUTION_CIRCUIT---` | Solusi circuit |
+
+### Fitur Tombol "Coba" (Code Try-out)
+
+LMS menyediakan fitur tombol **"Coba ▶"** pada blok kode di dalam materi pelajaran.
+
+**Penentuan Kemunculan Tombol:**
+- Tombol **hanya muncul** jika instruktur secara eksplisit memberikan label bahasa pada *code fence* di file Markdown (contoh: ` ```c `, ` ```python `, ` ```arduino ` atau ` ```cpp `).
+- Jika blok kode bersifat generik atau tidak memiliki label (hanya ` ``` `), tombol **tidak akan muncul**. Ini memberikan kendali untuk membedakan mana cuplikan kode yang bisa dicoba dan mana yang sekadar teks penjelasan/diagram.
+
+**Perilaku Tombol:**
+1. **Load & Switch Tab:** Mengklik tombol akan menyalin teks kode ke editor dan mengalihkan fokus LMS ke tab yang relevan (C, Python, atau Arduino/Velxio).
+2. **Review Sebelum Eksekusi:** Kode **tidak langsung dieksekusi** (No Auto-Run). Siswa berkesempatan untuk meninjau atau memodifikasi kode sebelum menekan tombol "Run".
+3. **Mobile UX (Layar < 768px):**
+   - Tombol "Coba ▶" selalu terlihat (karena ketiadaan fitur *hover* pada layar sentuh).
+   - Saat diklik, panel *workspace* di bawah akan otomatis membuka setengah layar (`half-sheet`) dan browser akan melakukan *smooth scroll* agar editor langsung terfokus.
 
 ---
 

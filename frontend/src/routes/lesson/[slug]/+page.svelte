@@ -22,6 +22,7 @@
 	import { noSelect } from '$actions/noSelect';
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
 	import { highlightAllCode } from '$actions/highlightCode';
+	import { setupTryButtons } from '$actions/setupTryButtons';
 	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
 	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
 	import { tick, untrack } from 'svelte';
@@ -242,16 +243,50 @@
 		if (velxioBridge) { velxioBridge.destroy(); velxioBridge = null; }
 	});
 
+	function handleTryCode(code: string, lang: string) {
+		if (lang === 'python' || lang === 'c') {
+			currentLanguage = lang;
+			currentCode = code;
+			if (lang === 'c') cCode = code;
+			else pythonCode = code;
+			editor?.setCode(code);
+			activeTab = 'editor';
+			if (!isMobile) {
+				float.floating = true;
+			} else {
+				mobileMode = 'half';
+				tick().then(() => {
+					document.querySelector('.editor-area')?.scrollIntoView({ behavior: 'smooth' });
+				});
+			}
+		} else if (lang === 'cpp') {
+			if (isVelxio && velxioBridge) {
+				velxioBridge.loadCode([{ name: 'sketch.ino', content: code }]);
+				activeTab = 'velxio';
+				if (!isMobile) {
+					float.floating = true;
+				} else {
+					mobileMode = 'half';
+					tick().then(() => {
+						document.querySelector('.editor-area')?.scrollIntoView({ behavior: 'smooth' });
+					});
+				}
+			}
+		}
+	}
+
 	// Apply syntax highlighting + circuit embeds after content renders
 	$effect(() => {
 		if (data) {
 			tick().then(() => {
 				if (contentEl) {
+					setupTryButtons(contentEl, handleTryCode);
 					highlightAllCode(contentEl);
 					renderCircuitEmbeds(contentEl);
 					autoRenderMath(contentEl);
 				}
 				if (tabsEl) {
+					setupTryButtons(tabsEl, handleTryCode);
 					highlightAllCode(tabsEl);
 					renderCircuitEmbeds(tabsEl);
 					autoRenderMath(tabsEl);
