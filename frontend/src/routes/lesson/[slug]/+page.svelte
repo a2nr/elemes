@@ -150,7 +150,7 @@
 
 	// Mobile state: 'hidden' (only handle bar), 'half' (60%), 'full' (100%)
 	let isMobile = $state(false);
-	let mobileMode = $state<'hidden' | 'half' | 'full'>('half');
+	let mobileMode = $state<'hidden' | 'half' | 'full'>('hidden');
 
 	// Media query detection
 	$effect(() => {
@@ -209,7 +209,7 @@
 			else if (isVelxioLesson) activeTab = 'velxio' as any;
 			else if (lesson.active_tabs?.includes('circuit') && !hasC && !hasPython) activeTab = 'circuit';
 			else activeTab = 'editor';
-			mobileMode = 'half';
+			mobileMode = 'hidden';
 
 			// Populate navbar context
 			lessonContext.set({

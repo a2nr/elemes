@@ -60,30 +60,38 @@
 			else mobileMode = 'hidden';
 		}
 	}
+
+	function handleTabClick(tab: TabType, lang?: string) {
+		activeTab = tab;
+		if (lang) currentLanguage = lang;
+		if (isMobile && mobileMode === 'hidden') {
+			mobileMode = 'half';
+		}
+	}
 </script>
 
 {#snippet chromeTabs()}
 	{#if hasInfo}
-		<button class="chrome-tab" class:active={activeTab === 'info'} onclick={() => (activeTab = 'info')}>Info</button>
+		<button class="chrome-tab" class:active={activeTab === 'info'} onclick={() => handleTabClick('info')}>Info</button>
 	{/if}
 	{#if hasExercise}
-		<button class="chrome-tab" class:active={activeTab === 'exercise'} onclick={() => (activeTab = 'exercise')}>Exercise</button>
+		<button class="chrome-tab" class:active={activeTab === 'exercise'} onclick={() => handleTabClick('exercise')}>Exercise</button>
 	{/if}
 	{#if hasCodeEditor}
 		{#if hasMultiLang}
-			<button class="chrome-tab" class:active={activeTab === 'editor' && currentLanguage === 'c'} onclick={() => { activeTab = 'editor'; currentLanguage = 'c'; }}>C</button>
-			<button class="chrome-tab" class:active={activeTab === 'editor' && currentLanguage === 'python'} onclick={() => { activeTab = 'editor'; currentLanguage = 'python'; }}>Python</button>
+			<button class="chrome-tab" class:active={activeTab === 'editor' && currentLanguage === 'c'} onclick={() => handleTabClick('editor', 'c')}>C</button>
+			<button class="chrome-tab" class:active={activeTab === 'editor' && currentLanguage === 'python'} onclick={() => handleTabClick('editor', 'python')}>Python</button>
 		{:else}
-			<button class="chrome-tab" class:active={activeTab === 'editor'} onclick={() => (activeTab = 'editor')}>Code</button>
+			<button class="chrome-tab" class:active={activeTab === 'editor'} onclick={() => handleTabClick('editor')}>Code</button>
 		{/if}
 	{/if}
 	{#if hasCircuit}
-		<button class="chrome-tab" class:active={activeTab === 'circuit'} onclick={() => (activeTab = 'circuit')}>Circuit</button>
+		<button class="chrome-tab" class:active={activeTab === 'circuit'} onclick={() => handleTabClick('circuit')}>Circuit</button>
 	{/if}
 	{#if hasVelxio}
-		<button class="chrome-tab" class:active={activeTab === 'velxio'} onclick={() => (activeTab = 'velxio')}>Arduino</button>
+		<button class="chrome-tab" class:active={activeTab === 'velxio'} onclick={() => handleTabClick('velxio')}>Arduino</button>
 	{/if}
-	<button class="chrome-tab" class:active={activeTab === 'output'} onclick={() => (activeTab = 'output')}>Output</button>
+	<button class="chrome-tab" class:active={activeTab === 'output'} onclick={() => handleTabClick('output')}>Output</button>
 {/snippet}
 
 {#if isMobile}
