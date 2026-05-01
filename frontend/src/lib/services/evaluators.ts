@@ -61,12 +61,16 @@ export function processLanguageEvaluation(
 	pythonCode: string,
 	data: LessonContent
 ): { isCorrect: boolean } {
-	if (!data.expected_output) return { isCorrect: true };
+	if (!data.expected_output && !data.expected_output_python) return { isCorrect: true };
 
 	const currentCCode = (currentLanguage === 'c') ? code : cCode;
 	const currentPythonCode = (currentLanguage === 'python') ? code : pythonCode;
 	const mergedCode = currentCCode + '\n' + currentPythonCode;
 	
-	const isCorrect = compileOutput.trim() === data.expected_output.trim() && checkKeyText(mergedCode, data.key_text ?? '');
+	const expected = (lang === 'python' && data.expected_output_python) 
+		? data.expected_output_python 
+		: data.expected_output;
+
+	const isCorrect = compileOutput.trim() === expected.trim() && checkKeyText(mergedCode, data.key_text ?? '');
 	return { isCorrect };
 }

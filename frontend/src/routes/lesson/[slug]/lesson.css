@@ -229,8 +229,7 @@
 	height: 60vh;
 }
 .editor-area.mobile-full {
-	height: 100vh;
-	top: 0;
+	height: 100dvh;
 	border-radius: 0;
 	max-height: none;
 }

@@ -294,6 +294,9 @@ def render_markdown_content(file_path):
     expected_output, lesson_content = _extract_section(
         lesson_content, '---EXPECTED_OUTPUT---', '---END_EXPECTED_OUTPUT---')
 
+    expected_output_python, lesson_content = _extract_section(
+        lesson_content, '---EXPECTED_OUTPUT_PYTHON---', '---END_EXPECTED_OUTPUT_PYTHON---')
+
     expected_circuit_output, lesson_content = _extract_section(
         lesson_content, '---EXPECTED_CIRCUIT_OUTPUT---', '---END_EXPECTED_CIRCUIT_OUTPUT---')
 
@@ -388,6 +391,7 @@ def render_markdown_content(file_path):
         'lesson_html': lesson_html,
         'exercise_html': exercise_html,
         'expected_output': expected_output,
+        'expected_output_python': expected_output_python,
         'expected_circuit_output': expected_circuit_output,
         'lesson_info': lesson_info_html,
         'initial_code': initial_code,

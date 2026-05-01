@@ -50,6 +50,7 @@ def api_lesson(filename):
     lesson_html = parsed_data['lesson_html']
     exercise_html = parsed_data['exercise_html']
     expected_output = parsed_data['expected_output']
+    expected_output_python = parsed_data.get('expected_output_python', '')
     expected_circuit_output = parsed_data.get('expected_circuit_output', '')
     key_text_circuit = parsed_data.get('key_text_circuit', '')
     lesson_info = parsed_data['lesson_info']
@@ -120,6 +121,7 @@ def api_lesson(filename):
         'lesson_content': lesson_html,
         'exercise_content': exercise_html,
         'expected_output': expected_output,
+        'expected_output_python': expected_output_python,
         'expected_circuit_output': expected_circuit_output,
         'lesson_info': lesson_info,
         'initial_code': initial_code,

@@ -9,6 +9,7 @@ export interface LessonContent {
 	lesson_content: string;
 	exercise_content: string;
 	expected_output: string;
+	expected_output_python: string;
 	expected_circuit_output: string;
 	key_text_circuit: string;
 	lesson_info: string;

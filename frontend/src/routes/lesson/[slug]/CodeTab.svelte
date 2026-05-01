@@ -57,9 +57,9 @@
 	{/key}
 </div>
 
-{#if data.expected_output}
+{#if (currentLanguage === 'python' ? (data.expected_output_python || data.expected_output) : data.expected_output)}
 	<details class="expected-output">
 		<summary>Expected Output</summary>
-		<pre>{data.expected_output}</pre>
+		<pre>{currentLanguage === 'python' ? (data.expected_output_python || data.expected_output) : data.expected_output}</pre>
 	</details>
 {/if}

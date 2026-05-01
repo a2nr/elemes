@@ -384,7 +384,7 @@
 			out.output = res.output;
 			out.success = true;
 
-			if (data.expected_output) {
+			if (data.expected_output || data.expected_output_python) {
 				const { isCorrect } = processLanguageEvaluation(res.output, code, lang, currentLanguage, cCode, pythonCode, data);
 				if (isCorrect) {
 					if (lang === 'c') cPassed = true;
