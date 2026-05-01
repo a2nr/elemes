@@ -299,14 +299,16 @@
 	font-weight: 500;
 }
 
-.velxio-panel {
+.velxio-panel,
+.flowchart-panel {
 	display: flex;
 	flex-direction: column;
 	flex: 1;
 	min-height: 0;
 	position: relative;
 }
-.velxio-panel.tab-hidden {
+.velxio-panel.tab-hidden,
+.flowchart-panel.tab-hidden {
 	display: none;
 }
 .velxio-iframe {

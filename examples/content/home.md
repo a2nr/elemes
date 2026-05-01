@@ -15,7 +15,8 @@ Semua materi bisa dikerjakan langsung di browser!
 ### Dasar-Dasar
 1. [Hello, World!](lesson/hello_world.md)
 2. [Variabel](lesson/variabel.md)
-3. [Uji Coba LaTeX](/lesson/latex_test)
+3. [Uji Coba Flowchart](/lesson/flowchart_test)
+4. [Uji Coba LaTeX](/lesson/latex_test)
 
 ### Elektronika (Hybrid)
 3. [Rangkaian Dasar](lesson/rangkaian_dasar.md)

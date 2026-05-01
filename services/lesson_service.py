@@ -276,6 +276,8 @@ def render_markdown_content(file_path):
             active_tabs.append('python')
     if '---INITIAL_CIRCUIT---' in lesson_content:
         active_tabs.append('circuit')
+    if '---INITIAL_FLOWCHART---' in lesson_content:
+        active_tabs.append('flowchart')
     if '---INITIAL_QUIZ---' in lesson_content:
         active_tabs.append('quiz')
     # Velxio circuit-only: has VELXIO_CIRCUIT but no INITIAL_CODE_ARDUINO
@@ -283,7 +285,7 @@ def render_markdown_content(file_path):
         active_tabs.append('velxio')
 
     # Default to 'c' if nothing specified (for backwards compatibility)
-    if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_QUIZ---' not in lesson_content:
+    if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_FLOWCHART---' not in lesson_content and '---INITIAL_QUIZ---' not in lesson_content:
         # If it's a completely plain old file, assume it has a code editor available
         if '---EXERCISE---' in lesson_content:
             active_tabs.append('c')
@@ -330,6 +332,17 @@ def render_markdown_content(file_path):
 
     initial_circuit, lesson_content = _extract_section(
         lesson_content, '---INITIAL_CIRCUIT---', '---END_INITIAL_CIRCUIT---')
+
+    initial_flowchart_str, lesson_content = _extract_section(
+        lesson_content, '---INITIAL_FLOWCHART---', '---END_INITIAL_FLOWCHART---')
+        
+    initial_flowchart = None
+    if initial_flowchart_str:
+        import json
+        try:
+            initial_flowchart = json.loads(initial_flowchart_str)
+        except:
+            initial_flowchart = {}
 
     initial_quiz, lesson_content = _extract_section(
         lesson_content, '---INITIAL_QUIZ---', '---END_INITIAL_QUIZ---')
@@ -386,6 +399,7 @@ def render_markdown_content(file_path):
         'initial_code_c': initial_code_c,
         'initial_python': initial_python,
         'initial_circuit': initial_circuit,
+        'initial_flowchart': initial_flowchart,
         'initial_quiz': initial_quiz,
         'initial_code_arduino': initial_code_arduino,
         'velxio_circuit': velxio_circuit,

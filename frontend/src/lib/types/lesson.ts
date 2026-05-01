@@ -16,6 +16,7 @@ export interface LessonContent {
 	initial_code_c: string;
 	initial_python: string;
 	initial_circuit: string;
+	initial_flowchart?: any;
 	initial_quiz: string;
 	initial_code_arduino: string;
 	velxio_circuit: string;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabType = 'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio';
+	type TabType = 'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart';
 
 	interface Props {
 		isMobile: boolean;
@@ -38,8 +38,9 @@
 	const hasC = $derived(activeTabs?.includes('c') ?? false);
 	const hasPython = $derived(activeTabs?.includes('python') ?? false);
 	const hasVelxio = $derived(activeTabs?.includes('velxio') ?? false);
+	const hasFlowchart = $derived(activeTabs?.includes('flowchart') ?? false);
 	const hasCodeEditor = $derived(
-		!hasVelxio && (!activeTabs || activeTabs.length === 0 || hasC || hasPython)
+		!hasVelxio && !hasFlowchart && (!activeTabs || activeTabs.length === 0 || hasC || hasPython)
 	);
 	const hasMultiLang = $derived(hasC && hasPython);
 	const hasCircuit = $derived(activeTabs?.includes('circuit') ?? false);
@@ -90,6 +91,9 @@
 	{/if}
 	{#if hasVelxio}
 		<button class="chrome-tab" class:active={activeTab === 'velxio'} onclick={() => handleTabClick('velxio')}>Arduino</button>
+	{/if}
+	{#if hasFlowchart}
+		<button class="chrome-tab" class:active={activeTab === 'flowchart'} onclick={() => handleTabClick('flowchart')}>Flowchart</button>
 	{/if}
 	<button class="chrome-tab" class:active={activeTab === 'output'} onclick={() => handleTabClick('output')}>Output</button>
 {/snippet}

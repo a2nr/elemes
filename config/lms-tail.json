@@ -21,6 +21,9 @@
         },
         "/velxio/": {
           "Proxy": "http://velxio:80/"
+        },
+        "/flowchart/": {
+          "Proxy": "http://flowchart:80/"
         }
       }
     }

@@ -64,6 +64,7 @@ def api_lesson(filename):
     initial_circuit = parsed_data.get('initial_circuit', '')
     initial_code_c = parsed_data.get('initial_code_c', '')
     initial_python = parsed_data.get('initial_python', '')
+    initial_flowchart = parsed_data.get('initial_flowchart', None)
     initial_quiz = parsed_data.get('initial_quiz', '')
 
     # Arduino/Velxio fields
@@ -125,6 +126,7 @@ def api_lesson(filename):
         'initial_circuit': initial_circuit,
         'initial_code_c': initial_code_c,
         'initial_python': initial_python,
+        'initial_flowchart': initial_flowchart,
         'initial_quiz': initial_quiz,
         'initial_code_arduino': initial_code_arduino,
         'velxio_circuit': velxio_circuit,

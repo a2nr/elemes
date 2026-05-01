@@ -1,0 +1,2435 @@
+```html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FlowLearn - Editor Flowchart Interaktif</title>
+<link rel="icon" type="image/png" href="https://image.qwenlm.ai/public_source/677be9b9-09a4-48bc-968c-1188ac5174f7/15bb3ddcc-387e-4c3b-8c4b-070c72b42b76.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  :root {
+    --primary: #2563eb;
+    --primary-light: #3b82f6;
+    --primary-dark: #1d4ed8;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #e2e8f0;
+    --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    --radius: 8px;
+    --toolbar-w: 64px;
+    --topbar-h: 56px;
+  }
+  
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #canvas-container {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    cursor: crosshair;
+  }
+  
+  #canvas-container.tool-select,
+  #canvas-container.tool-text,
+  #canvas-container.tool-move {
+    cursor: default;
+  }
+  
+  #canvas-container.tool-eraser {
+    cursor: pointer;
+  }
+
+  canvas#main-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  #topbar {
+    position: fixed;
+    top: 0; left: var(--toolbar-w); right: 0;
+    height: var(--topbar-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    z-index: 100;
+    gap: 8px;
+    box-shadow: var(--shadow);
+  }
+
+  .topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 16px;
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--primary);
+    white-space: nowrap;
+  }
+  
+  .topbar-brand svg { width: 28px; height: 28px; }
+
+  .topbar-divider {
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    margin: 0 8px;
+  }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .topbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .topbar-btn:hover { background: #f1f5f9; }
+  .topbar-btn:active { transform: scale(0.96); }
+  .topbar-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+  
+  .topbar-btn.primary {
+    background: var(--primary);
+    color: white;
+  }
+  .topbar-btn.primary:hover { background: var(--primary-dark); }
+  
+  .topbar-btn.danger { color: #ef4444; }
+  .topbar-btn.danger:hover { background: #fef2f2; }
+
+  .topbar-btn:disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .topbar-btn .label { display: none; }
+  
+  @media (min-width: 768px) {
+    .topbar-btn .label { display: inline; }
+  }
+
+  #toolbar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: var(--toolbar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 6px;
+    gap: 4px;
+    z-index: 100;
+    box-shadow: var(--shadow);
+    overflow-y: auto;
+  }
+
+  .tool-btn {
+    width: 50px;
+    height: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .tool-btn:hover { background: #f1f5f9; color: var(--text); }
+  .tool-btn.active { background: #dbeafe; color: var(--primary); }
+  .tool-btn svg { width: 24px; height: 24px; }
+
+  .tool-btn .tooltip {
+    position: absolute;
+    left: 60px;
+    background: var(--text);
+    color: white;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 200;
+  }
+
+  .tool-btn:hover .tooltip { opacity: 1; }
+
+  .tool-divider {
+    width: 36px;
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+    flex-shrink: 0;
+  }
+
+  #zoom-controls {
+    position: fixed;
+    bottom: 16px;
+    left: calc(var(--toolbar-w) + 16px);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 4px;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+  }
+
+  #zoom-controls .topbar-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  #zoom-controls .zoom-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-muted);
+    min-width: 44px;
+    text-align: center;
+  }
+
+  #properties-panel {
+    position: fixed;
+    top: calc(var(--topbar-h) + 12px);
+    right: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+    min-width: 220px;
+    display: none;
+  }
+
+  #properties-panel.visible { display: block; }
+
+  #properties-panel h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .prop-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
+  .prop-row label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .prop-row input[type="color"] {
+    width: 36px;
+    height: 28px;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 1px;
+  }
+
+  .prop-row input[type="number"],
+  .prop-row input[type="text"],
+  .prop-row select {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 1000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-overlay.visible { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 24px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .modal h2 {
+    font-size: 20px;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+
+  .modal textarea {
+    width: 100%;
+    min-height: 200px;
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    font-family: monospace;
+    font-size: 12px;
+    resize: vertical;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+
+  .modal-actions button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .modal-actions .btn-cancel {
+    background: #f1f5f9;
+    color: var(--text);
+  }
+
+  .modal-actions .btn-confirm {
+    background: var(--primary);
+    color: white;
+  }
+
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--text);
+    color: white;
+    padding: 12px 24px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    white-space: nowrap;
+  }
+
+  #toast.visible {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  #text-input-overlay {
+    position: fixed;
+    display: none;
+    z-index: 500;
+  }
+
+  #text-input-overlay.visible { display: block; }
+
+  #text-input-overlay textarea {
+    width: 100%;
+    min-height: 40px;
+    border: 2px solid var(--primary);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    resize: none;
+    outline: none;
+    background: rgba(255,255,255,0.95);
+  }
+
+  @media (max-width: 768px) {
+    :root {
+      --toolbar-w: 56px;
+      --topbar-h: 48px;
+    }
+    
+    #toolbar { width: var(--toolbar-w); padding: 6px 3px; gap: 2px; }
+    .tool-btn { width: 44px; height: 44px; }
+    .tool-btn svg { width: 20px; height: 20px; }
+    .tool-divider { width: 28px; }
+    .tool-btn .tooltip { display: none; }
+    
+    #topbar { left: var(--toolbar-w); padding: 0 8px; }
+    .topbar-brand { margin-right: 8px; font-size: 15px; }
+    .topbar-brand svg { width: 24px; height: 24px; }
+    
+    #zoom-controls {
+      bottom: 12px;
+      left: calc(var(--toolbar-w) + 8px);
+    }
+    
+    #properties-panel {
+      right: 8px;
+      min-width: 180px;
+      padding: 12px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    :root {
+      --toolbar-w: 48px;
+    }
+    
+    .topbar-brand span { display: none; }
+    .topbar-divider { margin: 0 4px; }
+  }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <defs>
+    <symbol id="icon-pointer" viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-rect" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="icon-roundrect" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="6" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="icon-diamond" viewBox="0 0 24 24"><path d="M12 2L22 12L12 22L2 12Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="icon-parallelogram" viewBox="0 0 24 24"><path d="M8 4h12l4 16H8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M3 12h15M13 7l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-line" viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="icon-text" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="icon-eraser" viewBox="0 0 24 24"><path d="M7 21h10M2.5 14.5l5-5 9.5 9.5-5 5-9.5-9.5zM16 4l4 4-5 5-4-4 5-5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 00-4 0v1M14 10V4a2 2 0 00-4 0v6M10 10.5V5a2 2 0 00-4 0v9M20 14v-3a2 2 0 00-4 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 10v9a2 2 0 002 2h10a2 2 0 002-2v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-undo" viewBox="0 0 24 24"><path d="M3 10h10a5 5 0 010 10H9M3 10l4-4M3 10l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-redo" viewBox="0 0 24 24"><path d="M21 10H11a5 5 0 000 10h4M21 10l-4-4M21 10l-4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-import" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-export" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-delete" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-zoomin" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="icon-zoomout" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.35-4.35M8 11h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="icon-fit" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-logo" viewBox="0 0 32 32"><rect x="2" y="10" width="10" height="12" rx="3" fill="#3b82f6" stroke="#2563eb" stroke-width="1.5"/><path d="M12 16h4l2-3 2 3h4" fill="none" stroke="#2563eb" stroke-width="2" stroke-linejoin="round"/><polygon points="22,8 30,16 22,24" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-new" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M12 18v-6M9 15h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="icon-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<div id="topbar">
+  <div class="topbar-brand">
+    <svg><use href="#icon-logo"/></svg>
+    <span>FlowLearn</span>
+  </div>
+  <div class="topbar-divider"></div>
+  <div class="topbar-actions">
+    <button class="topbar-btn" id="btn-new" title="Baru">
+      <svg><use href="#icon-new"/></svg>
+      <span class="label">Baru</span>
+    </button>
+    <button class="topbar-btn" id="btn-save" title="Simpan">
+      <svg><use href="#icon-save"/></svg>
+      <span class="label">Simpan</span>
+    </button>
+    <button class="topbar-btn" id="btn-load" title="Muat">
+      <svg><use href="#icon-import"/></svg>
+      <span class="label">Muat</span>
+    </button>
+    <div class="topbar-divider"></div>
+    <button class="topbar-btn" id="btn-undo" title="Undo" disabled>
+      <svg><use href="#icon-undo"/></svg>
+      <span class="label">Undo</span>
+    </button>
+    <button class="topbar-btn" id="btn-redo" title="Redo" disabled>
+      <svg><use href="#icon-redo"/></svg>
+      <span class="label">Redo</span>
+    </button>
+    <div class="topbar-divider"></div>
+    <button class="topbar-btn primary" id="btn-export" title="Ekspor">
+      <svg><use href="#icon-export"/></svg>
+      <span class="label">Ekspor</span>
+    </button>
+    <button class="topbar-btn primary" id="btn-import" title="Impor">
+      <svg><use href="#icon-import"/></svg>
+      <span class="label">Impor</span>
+    </button>
+    <div class="topbar-divider"></div>
+    <button class="topbar-btn danger" id="btn-delete" title="Hapus Terpilih">
+      <svg><use href="#icon-delete"/></svg>
+      <span class="label">Hapus</span>
+    </button>
+  </div>
+</div>
+
+<div id="toolbar">
+  <button class="tool-btn active" data-tool="select" title="Pilih (V)">
+    <svg><use href="#icon-pointer"/></svg>
+    <span class="tooltip">Pilih (V)</span>
+  </button>
+  <button class="tool-btn" data-tool="hand" title="Geser (H)">
+    <svg><use href="#icon-hand"/></svg>
+    <span class="tooltip">Geser (H)</span>
+  </button>
+  <div class="tool-divider"></div>
+  <button class="tool-btn" data-tool="rect" title="Persegi (R)">
+    <svg><use href="#icon-rect"/></svg>
+    <span class="tooltip">Persegi (R)</span>
+  </button>
+  <button class="tool-btn" data-tool="roundrect" title="Persegi Bulat">
+    <svg><use href="#icon-roundrect"/></svg>
+    <span class="tooltip">Persegi Bulat</span>
+  </button>
+  <button class="tool-btn" data-tool="diamond" title="Belah Ketupat (D)">
+    <svg><use href="#icon-diamond"/></svg>
+    <span class="tooltip">Belah Ketupat (D)</span>
+  </button>
+  <button class="tool-btn" data-tool="circle" title="Lingkaran (C)">
+    <svg><use href="#icon-circle"/></svg>
+    <span class="tooltip">Lingkaran (C)</span>
+  </button>
+  <button class="tool-btn" data-tool="parallelogram" title="Jajar Genjang">
+    <svg><use href="#icon-parallelogram"/></svg>
+    <span class="tooltip">Jajar Genjang</span>
+  </button>
+  <div class="tool-divider"></div>
+  <button class="tool-btn" data-tool="arrow" title="Panah (A)">
+    <svg><use href="#icon-arrow"/></svg>
+    <span class="tooltip">Panah (A)</span>
+  </button>
+  <button class="tool-btn" data-tool="line" title="Garis (L)">
+    <svg><use href="#icon-line"/></svg>
+    <span class="tooltip">Garis (L)</span>
+  </button>
+  <button class="tool-btn" data-tool="text" title="Teks (T)">
+    <svg><use href="#icon-text"/></svg>
+    <span class="tooltip">Teks (T)</span>
+  </button>
+  <div class="tool-divider"></div>
+  <button class="tool-btn" data-tool="eraser" title="Penghapus (E)">
+    <svg><use href="#icon-eraser"/></svg>
+    <span class="tooltip">Penghapus (E)</span>
+  </button>
+</div>
+
+<div id="canvas-container">
+  <canvas id="main-canvas"></canvas>
+</div>
+
+<div id="zoom-controls">
+  <button class="topbar-btn" id="btn-zoomout" title="Perkecil">
+    <svg><use href="#icon-zoomout"/></svg>
+  </button>
+  <span class="zoom-label" id="zoom-label">100%</span>
+  <button class="topbar-btn" id="btn-zoomin" title="Perbesar">
+    <svg><use href="#icon-zoomin"/></svg>
+  </button>
+  <button class="topbar-btn" id="btn-fit" title="Sesuaikan">
+    <svg><use href="#icon-fit"/></svg>
+  </button>
+</div>
+
+<div id="properties-panel">
+  <h3>Properti</h3>
+  <div id="prop-content"></div>
+</div>
+
+<div id="text-input-overlay">
+  <textarea id="text-input-area" rows="1" placeholder="Ketik teks..."></textarea>
+</div>
+
+<div class="modal-overlay" id="import-modal">
+  <div class="modal">
+    <h2>Impor Flowchart</h2>
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Tempelkan JSON flowchart di bawah ini:</p>
+    <textarea id="import-textarea" placeholder='{"shapes":[...],"arrows":[...],"zoom":1,"panX":0,"panY":0}'></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeImportModal()">Batal</button>
+      <button class="btn-confirm" onclick="confirmImport()">Impor</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="file-input" accept=".json,.flow" style="display:none">
+
+<script>
+const canvas = document.getElementById('main-canvas');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('canvas-container');
+
+let state = {
+  shapes: [],
+  arrows: [],
+  selectedIds: [],
+  tool: 'select',
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+  isDragging: false,
+  isPanning: false,
+  dragStart: null,
+  dragOffset: null,
+  creatingShape: null,
+  creatingArrow: null,
+  isResizing: false,
+  resizeHandle: null,
+  resizeStart: null,
+  resizingShape: null,
+  arrowStartId: null,
+  arrowTemp: null,
+  hoveredConnection: null,
+  hoveredHandle: null,
+  history: [],
+  historyIndex: -1,
+  maxHistory: 50,
+  textEditShape: null,
+  snapGrid: true,
+  gridSize: 20,
+};
+
+let nextId = 1;
+let clipboard = null;
+
+const defaultFillColor = '#ffffff';
+const defaultStrokeColor = '#2563eb';
+const defaultStrokeWidth = 2;
+
+function generateId() {
+  return 's_' + (nextId++);
+}
+
+function getCanvasRect() {
+  const rect = canvas.getBoundingClientRect();
+  return { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+}
+
+function screenToWorld(sx, sy) {
+  const rect = getCanvasRect();
+  return {
+    x: (sx - rect.x - state.panX) / state.zoom,
+    y: (sy - rect.y - state.panY) / state.zoom
+  };
+}
+
+function worldToScreen(wx, wy) {
+  const rect = getCanvasRect();
+  return {
+    x: wx * state.zoom + state.panX + rect.x,
+    y: wy * state.zoom + state.panY + rect.y
+  };
+}
+
+function snapToGrid(val) {
+  if (!state.snapGrid) return val;
+  return Math.round(val / state.gridSize) * state.gridSize;
+}
+
+function distance(ax, ay, bx, by) {
+  return Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
+}
+
+function pointInRect(px, py, rx, ry, rw, rh) {
+  return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
+}
+
+function pointInCircle(px, py, cx, cy, r) {
+  return distance(px, py, cx, cy) <= r;
+}
+
+function pointInDiamond(px, py, dx, dy, dw, dh) {
+  const hw = dw / 2, hh = dh / 2;
+  const cx = dx + hw, cy = dy + hh;
+  const nx = Math.abs(px - cx) / hw;
+  const ny = Math.abs(py - cy) / hh;
+  return nx + ny <= 1;
+}
+
+function pointInParallelogram(px, py, x, y, w, h) {
+  const skew = w * 0.25;
+  const pts = [
+    [x + skew, y],
+    [x + w, y],
+    [x + w - skew, y + h],
+    [x, y + h]
+  ];
+  return pointInPolygon(px, py, pts);
+}
+
+function pointInPolygon(px, py, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i][0], yi = pts[i][1];
+    const xj = pts[j][0], yj = pts[j][1];
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function getShapeBounds(shape) {
+  if (shape.type === 'circle') {
+    return { x: shape.x - shape.r, y: shape.y - shape.r, w: shape.r * 2, h: shape.r * 2 };
+  }
+  return { x: shape.x, y: shape.y, w: shape.w, h: shape.h };
+}
+
+function getShapeCenter(shape) {
+  const b = getShapeBounds(shape);
+  return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+}
+
+function getShapeBorderPoint(shape, tx, ty) {
+  const c = getShapeCenter(shape);
+  const dx = tx - c.x;
+  const dy = ty - c.y;
+  
+  if (shape.type === 'circle') {
+    const angle = Math.atan2(dy, dx);
+    return { x: c.x + Math.cos(angle) * shape.r, y: c.y + Math.sin(angle) * shape.r };
+  }
+  
+  const b = getShapeBounds(shape);
+  const hw = b.w / 2, hh = b.h / 2;
+  
+  if (dx === 0 && dy === 0) return { x: c.x, y: c.y - hh };
+  
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const slope = absDy / absDx;
+  const shapeSlope = hh / hw;
+  
+  let ex, ey;
+  if (slope <= shapeSlope) {
+    ex = hw * (dx > 0 ? 1 : -1);
+    ey = ex * slope * (dy > 0 ? 1 : -1);
+  } else {
+    ey = hh * (dy > 0 ? 1 : -1);
+    ex = ey / slope * (dx > 0 ? 1 : -1);
+  }
+  
+  return { x: c.x + ex, y: c.y + ey };
+}
+
+function getResizeHandles(shape) {
+  const b = getShapeBounds(shape);
+  const s = 8 / state.zoom;
+  return [
+    { id: 'nw', x: b.x - s, y: b.y - s },
+    { id: 'ne', x: b.x + b.w - s, y: b.y - s },
+    { id: 'sw', x: b.x - s, y: b.y + b.h - s },
+    { id: 'se', x: b.x + b.w - s, y: b.y + b.h - s },
+    { id: 'n', x: b.x + b.w / 2 - s / 2, y: b.y - s },
+    { id: 's', x: b.x + b.w / 2 - s / 2, y: b.y + b.h - s },
+    { id: 'w', x: b.x - s, y: b.y + b.h / 2 - s / 2 },
+    { id: 'e', x: b.x + b.w - s, y: b.y + b.h / 2 - s / 2 },
+  ];
+}
+
+function isHandleAtPos(sx, sy) {
+  const margin = 10 / state.zoom;
+  if (state.selectedIds.length === 1) {
+    const shape = state.shapes.find(s => s.id === state.selectedIds[0]);
+    if (shape) {
+      const handles = getResizeHandles(shape);
+      for (const h of handles) {
+        if (pointInRect(sx, sy, h.x, h.y, 8 / state.zoom, 8 / state.zoom)) {
+          return h.id;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function getShapeAtPos(wx, wy) {
+  for (let i = state.shapes.length - 1; i >= 0; i--) {
+    const s = state.shapes[i];
+    if (isPointInShape(s, wx, wy)) return s;
+  }
+  return null;
+}
+
+function isPointInShape(shape, px, py) {
+  const sw = defaultStrokeWidth / 2;
+  if (shape.type === 'circle') {
+    return pointInCircle(px, py, shape.x, shape.y, shape.r + sw);
+  } else if (shape.type === 'diamond') {
+    return pointInDiamond(px, py, shape.x, shape.y, shape.w, shape.h);
+  } else if (shape.type === 'parallelogram') {
+    return pointInParallelogram(px, py, shape.x, shape.y, shape.w, shape.h);
+  } else {
+    return pointInRect(px, py, shape.x - sw, shape.y - sw, shape.w + sw * 2, shape.h + sw * 2);
+  }
+}
+
+function getArrowAtPos(wx, wy) {
+  for (let i = state.arrows.length - 1; i >= 0; i--) {
+    const a = state.arrows[i];
+    if (isPointNearArrow(a, wx, wy, 8 / state.zoom)) return a;
+  }
+  return null;
+}
+
+function isPointNearArrow(arrow, px, py, tolerance) {
+  const pts = getArrowPoints(arrow);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = distToSegment(px, py, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+    if (d <= tolerance) return true;
+  }
+  return false;
+}
+
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return distance(px, py, x1, y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return distance(px, py, x1 + t * dx, y1 + t * dy);
+}
+
+function getArrowPoints(arrow) {
+  const fromShape = state.shapes.find(s => s.id === arrow.fromId);
+  const toShape = state.shapes.find(s => s.id === arrow.toId);
+  
+  if (!fromShape || !toShape) return [];
+  
+  const fromC = getShapeCenter(fromShape);
+  const toC = getShapeCenter(toShape);
+  const fromBorder = getShapeBorderPoint(fromShape, toC.x, toC.y);
+  const toBorder = getShapeBorderPoint(toShape, fromC.x, fromC.y);
+  
+  const pts = [{ x: fromBorder.x, y: fromBorder.y }];
+  
+  if (arrow.points && arrow.points.length > 0) {
+    pts.push(...arrow.points);
+  }
+  
+  pts.push({ x: toBorder.x, y: toBorder.y });
+  return pts;
+}
+
+// ============================================================
+// NEW: Improved arrow label positioning - centered on the line
+// ============================================================
+
+function getArrowLabelPosition(arrow) {
+  const pts = getArrowPoints(arrow);
+  if (pts.length < 2) return null;
+  
+  if (pts.length === 2) {
+    // Simple straight line - label at exact center
+    return {
+      x: (pts[0].x + pts[1].x) / 2,
+      y: (pts[0].y + pts[1].y) / 2,
+      angle: Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x)
+    };
+  }
+  
+  // Multi-segment path - find the true midpoint along the path length
+  let totalLength = 0;
+  const segments = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const len = distance(pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+    segments.push(len);
+    totalLength += len;
+  }
+  
+  const halfLength = totalLength / 2;
+  let accumulatedLength = 0;
+  
+  for (let i = 0; i < segments.length; i++) {
+    if (accumulatedLength + segments[i] >= halfLength) {
+      const remaining = halfLength - accumulatedLength;
+      const t = segments[i] > 0 ? remaining / segments[i] : 0;
+      const x = pts[i].x + (pts[i + 1].x - pts[i].x) * t;
+      const y = pts[i].y + (pts[i + 1].y - pts[i].y) * t;
+      const angle = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x);
+      return { x, y, angle };
+    }
+    accumulatedLength += segments[i];
+  }
+  
+  // Fallback
+  const last = pts[pts.length - 1];
+  const prev = pts[pts.length - 2];
+  return {
+    x: (last.x + prev.x) / 2,
+    y: (last.y + prev.y) / 2,
+    angle: Math.atan2(last.y - prev.y, last.x - prev.x)
+  };
+}
+
+function saveHistory() {
+  state.history = state.history.slice(0, state.historyIndex + 1);
+  state.history.push(JSON.stringify({ shapes: state.shapes, arrows: state.arrows }));
+  if (state.history.length > state.maxHistory) {
+    state.history.shift();
+  }
+  state.historyIndex = state.history.length - 1;
+  updateUndoRedoButtons();
+}
+
+function undo() {
+  if (state.historyIndex <= 0) return;
+  state.historyIndex--;
+  const data = JSON.parse(state.history[state.historyIndex]);
+  state.shapes = data.shapes;
+  state.arrows = data.arrows;
+  state.selectedIds = [];
+  updateUndoRedoButtons();
+  render();
+}
+
+function redo() {
+  if (state.historyIndex >= state.history.length - 1) return;
+  state.historyIndex++;
+  const data = JSON.parse(state.history[state.historyIndex]);
+  state.shapes = data.shapes;
+  state.arrows = data.arrows;
+  state.selectedIds = [];
+  updateUndoRedoButtons();
+  render();
+}
+
+function updateUndoRedoButtons() {
+  document.getElementById('btn-undo').disabled = state.historyIndex <= 0;
+  document.getElementById('btn-redo').disabled = state.historyIndex >= state.history.length - 1;
+}
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = container.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  render();
+}
+
+function render() {
+  const rect = getCanvasRect();
+  ctx.clearRect(0, 0, rect.w, rect.h);
+  
+  drawGrid(rect);
+  
+  ctx.save();
+  ctx.translate(state.panX, state.panY);
+  ctx.scale(state.zoom, state.zoom);
+  
+  // Draw arrows first (behind shapes)
+  for (const arrow of state.arrows) {
+    drawArrow(arrow);
+  }
+  
+  // Draw temp arrow while creating
+  if (state.arrowTemp && state.arrowStartId) {
+    const fromShape = state.shapes.find(s => s.id === state.arrowStartId);
+    if (fromShape) {
+      const mouseWorld = screenToWorld(state.creatingArrow ? state.creatingArrow.x : 0, state.creatingArrow ? state.creatingArrow.y : 0);
+      const fromBorder = getShapeBorderPoint(fromShape, mouseWorld.x, mouseWorld.y);
+      drawLineArrow(fromBorder.x, fromBorder.y, mouseWorld.x, mouseWorld.y);
+    }
+  }
+  
+  // Draw shapes (on top of arrows)
+  for (const shape of state.shapes) {
+    drawShape(shape);
+  }
+  
+  // Draw selection handles
+  if (state.tool === 'select') {
+    for (const id of state.selectedIds) {
+      const shape = state.shapes.find(s => s.id === id);
+      if (shape) drawSelectionBox(shape);
+      const arrow = state.arrows.find(a => a.id === id);
+      if (arrow) drawArrowSelection(arrow);
+    }
+  }
+  
+  ctx.restore();
+}
+
+function drawGrid(rect) {
+  const gridSize = state.gridSize * state.zoom;
+  const offsetX = state.panX % gridSize;
+  const offsetY = state.panY % gridSize;
+  
+  ctx.fillStyle = '#e2e8f0';
+  for (let x = offsetX; x < rect.w; x += gridSize) {
+    for (let y = offsetY; y < rect.h; y += gridSize) {
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawShape(shape) {
+  ctx.save();
+  ctx.fillStyle = shape.fillColor || defaultFillColor;
+  ctx.strokeStyle = shape.strokeColor || defaultStrokeColor;
+  ctx.lineWidth = shape.strokeWidth || defaultStrokeWidth;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  
+  const isSelected = state.selectedIds.includes(shape.id);
+  if (isSelected) {
+    ctx.shadowColor = '#3b82f6';
+    ctx.shadowBlur = 8 / state.zoom;
+  }
+  
+  switch (shape.type) {
+    case 'rect':
+      ctx.beginPath();
+      ctx.roundRect(shape.x, shape.y, shape.w, shape.h, 4);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    
+    case 'roundrect':
+      const r = Math.min(shape.w, shape.h) * 0.3;
+      ctx.beginPath();
+      ctx.roundRect(shape.x, shape.y, shape.w, shape.h, r);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    
+    case 'diamond':
+      ctx.beginPath();
+      const cx = shape.x + shape.w / 2;
+      const cy = shape.y + shape.h / 2;
+      ctx.moveTo(cx, shape.y);
+      ctx.lineTo(shape.x + shape.w, cy);
+      ctx.lineTo(cx, shape.y + shape.h);
+      ctx.lineTo(shape.x, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+    
+    case 'circle':
+      ctx.beginPath();
+      ctx.arc(shape.x, shape.y, shape.r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      break;
+    
+    case 'parallelogram':
+      ctx.beginPath();
+      const skew = shape.w * 0.25;
+      ctx.moveTo(shape.x + skew, shape.y);
+      ctx.lineTo(shape.x + shape.w, shape.y);
+      ctx.lineTo(shape.x + shape.w - skew, shape.y + shape.h);
+      ctx.lineTo(shape.x, shape.y + shape.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      break;
+  }
+  
+  if (shape.text) {
+    drawShapeText(shape);
+  }
+  
+  ctx.restore();
+}
+
+function drawShapeText(shape) {
+  const b = getShapeBounds(shape);
+  const cx = b.x + b.w / 2;
+  const cy = b.y + b.h / 2;
+  const padding = 8;
+  
+  ctx.fillStyle = '#1e293b';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  let fontSize = 14;
+  ctx.font = `600 ${fontSize}px Nunito, sans-serif`;
+  
+  const lines = wrapText(shape.text, b.w - padding * 2, fontSize);
+  const lineHeight = fontSize * 1.3;
+  const totalH = lines.length * lineHeight;
+  const startY = cy - totalH / 2 + lineHeight / 2;
+  
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], cx, startY + i * lineHeight);
+  }
+}
+
+function wrapText(text, maxWidth, fontSize) {
+  const words = text.split(' ');
+  const lines = [];
+  let currentLine = '';
+  
+  for (const word of words) {
+    const testLine = currentLine ? currentLine + ' ' + word : word;
+    ctx.font = `600 ${fontSize}px Nunito, sans-serif`;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines;
+}
+
+// ============================================================
+// IMPROVED: Arrow drawing with properly centered label
+// ============================================================
+
+function drawArrow(arrow) {
+  const pts = getArrowPoints(arrow);
+  if (pts.length < 2) return;
+  
+  ctx.save();
+  ctx.strokeStyle = arrow.strokeColor || '#64748b';
+  ctx.fillStyle = arrow.strokeColor || '#64748b';
+  ctx.lineWidth = arrow.strokeWidth || 2;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  
+  const isSelected = state.selectedIds.includes(arrow.id);
+  if (isSelected) {
+    ctx.strokeStyle = '#2563eb';
+    ctx.fillStyle = '#2563eb';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#3b82f6';
+    ctx.shadowBlur = 6 / state.zoom;
+  }
+  
+  const strokeColor = ctx.strokeStyle;
+  const lineWidth = ctx.lineWidth;
+  
+  // Calculate label position and dimensions
+  const labelInfo = getArrowLabelPosition(arrow);
+  let labelBgRect = null;
+  
+  if (arrow.label && labelInfo) {
+    ctx.font = `700 12px Nunito, sans-serif`;
+    const metrics = ctx.measureText(arrow.label);
+    const textWidth = metrics.width;
+    const textHeight = 18;
+    const padding = 8;
+    const labelW = textWidth + padding * 2;
+    const labelH = textHeight + padding;
+    const labelPadding = 3; // Extra gap between label and line
+    
+    // Create a bounding box for the label, expanded slightly
+    labelBgRect = {
+      x: labelInfo.x - labelW / 2 - labelPadding,
+      y: labelInfo.y - labelH / 2 - labelPadding,
+      w: labelW + labelPadding * 2,
+      h: labelH + labelPadding * 2,
+      cornerRadius: 6
+    };
+  }
+  
+  // Method: Draw the path, but clip out the label area so the line doesn't show behind the label
+  if (labelBgRect) {
+    // Use clipping to create a gap in the line where the label will be
+    ctx.save();
+    
+    // Create a clipping path that excludes the label area
+    const clipPath = new Path2D();
+    
+    // Add the full canvas area
+    const rect = getCanvasRect();
+    const worldW = rect.w / state.zoom;
+    const worldH = rect.h / state.zoom;
+    const panOffset = { x: -state.panX / state.zoom, y: -state.panY / state.zoom };
+    
+    // Draw the exclusion path (the label area)
+    const lr = labelBgRect;
+    const lb = new Path2D();
+    lb.moveTo(lr.x + lr.cornerRadius, lr.y);
+    lb.lineTo(lr.x + lr.w - lr.cornerRadius, lr.y);
+    lb.arcTo(lr.x + lr.w, lr.y, lr.x + lr.w, lr.y + lr.cornerRadius, lr.cornerRadius);
+    lb.lineTo(lr.x + lr.w, lr.y + lr.h - lr.cornerRadius);
+    lb.arcTo(lr.x + lr.w, lr.y + lr.h, lr.x + lr.w - lr.cornerRadius, lr.y + lr.h, lr.cornerRadius);
+    lb.lineTo(lr.x + lr.cornerRadius, lr.y + lr.h);
+    lb.arcTo(lr.x, lr.y + lr.h, lr.x, lr.y + lr.h - lr.cornerRadius, lr.cornerRadius);
+    lb.lineTo(lr.x, lr.y + lr.cornerRadius);
+    lb.arcTo(lr.x, lr.y, lr.x + lr.cornerRadius, lr.y, lr.cornerRadius);
+    lb.closePath();
+    
+    // Create a combined clip: full area minus the label area
+    const mainPath = new Path2D();
+    mainPath.rect(panOffset.x - 100, panOffset.y - 100, worldW + 200, worldH + 200);
+    
+    // Clip out the label area
+    ctx.save();
+    ctx.clip(mainPath);
+    // Draw the exclusion by using the evenodd rule isn't supported for clipping in all browsers
+    // Instead, use a different approach: draw the arrow in segments, skipping the label area
+    
+    ctx.restore();
+    
+    // Alternative approach: Draw the arrow path, then draw the label background to cover the line
+    ctx.restore(); // undo the failed clip
+    
+    // Draw the full arrow line
+    drawArrowPath(pts, strokeColor, lineWidth, isSelected);
+    
+    // Now draw the label background to cover the line underneath
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = isSelected ? '#2563eb' : '#cbd5e1';
+    ctx.lineWidth = 1.5;
+    
+    // Draw rounded rectangle background for label
+    const br = labelBgRect.cornerRadius;
+    ctx.beginPath();
+    ctx.moveTo(lr.x + br, lr.y);
+    ctx.lineTo(lr.x + lr.w - br, lr.y);
+    ctx.arcTo(lr.x + lr.w, lr.y, lr.x + lr.w, lr.y + br, br);
+    ctx.lineTo(lr.x + lr.w, lr.y + lr.h - br);
+    ctx.arcTo(lr.x + lr.w, lr.y + lr.h, lr.x + lr.w - br, lr.y + lr.h, br);
+    ctx.lineTo(lr.x + br, lr.y + lr.h);
+    ctx.arcTo(lr.x, lr.y + lr.h, lr.x, lr.y + lr.h - br, br);
+    ctx.lineTo(lr.x, lr.y + br);
+    ctx.arcTo(lr.x, lr.y, lr.x + br, lr.y, br);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    
+    // Draw the label text
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `700 12px Nunito, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(arrow.label, labelInfo.x, labelInfo.y);
+    
+    ctx.restore();
+    
+    // Draw arrowhead
+    const last = pts[pts.length - 1];
+    const secondLast = pts[pts.length - 2];
+    drawArrowhead(secondLast.x, secondLast.y, last.x, last.y, 12 / state.zoom);
+    
+  } else {
+    // No label - just draw the full arrow
+    drawArrowPath(pts, strokeColor, lineWidth, isSelected);
+    
+    const last = pts[pts.length - 1];
+    const secondLast = pts[pts.length - 2];
+    drawArrowhead(secondLast.x, secondLast.y, last.x, last.y, 12 / state.zoom);
+  }
+  
+  ctx.restore();
+}
+
+// Helper function to draw the arrow path (line/curve only)
+function drawArrowPath(pts, strokeColor, lineWidth, isSelected) {
+  ctx.save();
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = lineWidth;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  
+  if (pts.length === 2) {
+    ctx.lineTo(pts[1].x, pts[1].y);
+  } else {
+    for (let i = 1; i < pts.length - 1; i++) {
+      const prev = pts[i - 1];
+      const curr = pts[i];
+      const next = pts[i + 1];
+      const cp1x = curr.x + (next.x - prev.x) * 0.15;
+      const cp1y = curr.y + (next.y - prev.y) * 0.15;
+      const cp2x = curr.x + (prev.x - next.x) * 0.15;
+      const cp2y = curr.y + (prev.y - next.y) * 0.15;
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next.x, next.y);
+    }
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawArrowhead(fx, fy, tx, ty, size) {
+  const angle = Math.atan2(ty - fy, tx - fx);
+  ctx.beginPath();
+  ctx.moveTo(tx, ty);
+  ctx.lineTo(tx - size * Math.cos(angle - Math.PI / 6), ty - size * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(tx - size * Math.cos(angle + Math.PI / 6), ty - size * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawLineArrow(x1, y1, x2, y2) {
+  ctx.save();
+  ctx.strokeStyle = '#2563eb';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  drawArrowhead(x1, y1, x2, y2, 10);
+  ctx.restore();
+}
+
+function drawArrowSelection(arrow) {
+  // Draw a small dot at the label position to indicate selection
+  const labelInfo = getArrowLabelPosition(arrow);
+  if (labelInfo) {
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 1.5 / state.zoom;
+    const s = 5 / state.zoom;
+    ctx.beginPath();
+    ctx.arc(labelInfo.x, labelInfo.y, s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawSelectionBox(shape) {
+  const b = getShapeBounds(shape);
+  const margin = 4 / state.zoom;
+  
+  ctx.save();
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5 / state.zoom;
+  ctx.setLineDash([5 / state.zoom, 3 / state.zoom]);
+  ctx.strokeRect(b.x - margin, b.y - margin, b.w + margin * 2, b.h + margin * 2);
+  ctx.setLineDash([]);
+  
+  const handles = getResizeHandles(shape);
+  const hs = 8 / state.zoom;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2 / state.zoom;
+  
+  for (const h of handles) {
+    ctx.fillRect(h.x, h.y, hs, hs);
+    ctx.strokeRect(h.x, h.y, hs, hs);
+  }
+  
+  ctx.restore();
+}
+
+function createShape(type, x, y, w, h) {
+  const shape = {
+    id: generateId(),
+    type: type,
+    x: x,
+    y: y,
+    w: type === 'circle' ? 80 : w,
+    h: type === 'circle' ? 80 : h,
+    r: type === 'circle' ? 40 : 0,
+    text: type === 'diamond' ? 'Kondisi?' : type === 'circle' ? '' : type === 'roundrect' ? '' : '',
+    fillColor: defaultFillColor,
+    strokeColor: defaultStrokeColor,
+    strokeWidth: defaultStrokeWidth,
+  };
+  
+  if (type === 'circle') {
+    shape.r = Math.min(w, h) / 2;
+    shape.x = x + shape.r;
+    shape.y = y + shape.r;
+  }
+  
+  return shape;
+}
+
+function createArrow(fromId, toId, label) {
+  return {
+    id: generateId(),
+    type: 'arrow',
+    fromId: fromId,
+    toId: toId,
+    label: label || '',
+    strokeColor: '#64748b',
+    strokeWidth: 2,
+    points: []
+  };
+}
+
+// Event Handlers
+let lastTouchDist = null;
+let lastTouchCenter = null;
+
+container.addEventListener('mousedown', handleMouseDown);
+container.addEventListener('mousemove', handleMouseMove);
+container.addEventListener('mouseup', handleMouseUp);
+container.addEventListener('dblclick', handleDblClick);
+container.addEventListener('wheel', handleWheel, { passive: false });
+container.addEventListener('touchstart', handleTouchStart, { passive: false });
+container.addEventListener('touchmove', handleTouchMove, { passive: false });
+container.addEventListener('touchend', handleTouchEnd);
+
+function handleMouseDown(e) {
+  if (e.target !== canvas) return;
+  const rect = getCanvasRect();
+  const mx = e.clientX, my = e.clientY;
+  const world = screenToWorld(mx, my);
+  
+  if (state.tool === 'hand') {
+    state.isPanning = true;
+    state.dragStart = { x: mx, y: my };
+    state.dragOffset = { x: state.panX, y: state.panY };
+    container.style.cursor = 'grabbing';
+    return;
+  }
+  
+  if (state.tool === 'eraser') {
+    const shape = getShapeAtPos(world.x, world.y);
+    if (shape) {
+      state.arrows = state.arrows.filter(a => a.fromId !== shape.id && a.toId !== shape.id);
+      state.shapes = state.shapes.filter(s => s.id !== shape.id);
+      state.selectedIds = state.selectedIds.filter(id => id !== shape.id);
+      saveHistory();
+      updateProperties();
+      render();
+      showToast('Elemen dihapus');
+    } else {
+      const arrow = getArrowAtPos(world.x, world.y);
+      if (arrow) {
+        state.arrows = state.arrows.filter(a => a.id !== arrow.id);
+        saveHistory();
+        render();
+        showToast('Panah dihapus');
+      }
+    }
+    return;
+  }
+  
+  if (state.tool === 'select') {
+    const handle = isHandleAtPos(world.x, world.y);
+    if (handle && state.selectedIds.length === 1) {
+      const shape = state.shapes.find(s => s.id === state.selectedIds[0]);
+      if (shape) {
+        state.isResizing = true;
+        state.resizeHandle = handle;
+        state.resizeStart = { x: world.x, y: world.y };
+        state.resizingShape = { ...shape };
+        return;
+      }
+    }
+    
+    const shape = getShapeAtPos(world.x, world.y);
+    const arrow = getArrowAtPos(world.x, world.y);
+    
+    if (shape) {
+      if (!e.shiftKey) {
+        if (!state.selectedIds.includes(shape.id)) {
+          state.selectedIds = [shape.id];
+        }
+      } else {
+        const idx = state.selectedIds.indexOf(shape.id);
+        if (idx >= 0) {
+          state.selectedIds.splice(idx, 1);
+        } else {
+          state.selectedIds.push(shape.id);
+        }
+      }
+      state.isDragging = true;
+      state.dragStart = { x: world.x, y: world.y };
+      state.dragOffset = state.selectedIds.map(id => {
+        const s = state.shapes.find(s => s.id === id);
+        return s ? { id: s.id, ox: s.x, oy: s.y } : null;
+      }).filter(Boolean);
+    } else if (arrow) {
+      state.selectedIds = [arrow.id];
+      state.isDragging = true;
+      state.dragStart = { x: world.x, y: world.y };
+      state.dragOffset = [{ id: arrow.id, ox: 0, oy: 0 }];
+    } else {
+      state.selectedIds = [];
+      state.isPanning = true;
+      state.dragStart = { x: mx, y: my };
+      state.dragOffset = { x: state.panX, y: state.panY };
+    }
+    
+    updateProperties();
+    render();
+    return;
+  }
+  
+  if (['rect', 'roundrect', 'diamond', 'circle', 'parallelogram'].includes(state.tool)) {
+    const sx = snapToGrid(world.x);
+    const sy = snapToGrid(world.y);
+    state.creatingShape = { type: state.tool, x: sx, y: sy, w: 0, h: 0 };
+    state.isDragging = true;
+    render();
+    return;
+  }
+  
+  if (state.tool === 'arrow' || state.tool === 'line') {
+    const shape = getShapeAtPos(world.x, world.y);
+    if (shape) {
+      state.arrowStartId = shape.id;
+      state.arrowTemp = { x: world.x, y: world.y };
+      state.isDragging = true;
+      render();
+    } else {
+      if (state.arrowStartId) {
+        state.arrowStartId = null;
+        state.arrowTemp = null;
+        render();
+      }
+    }
+    return;
+  }
+  
+  if (state.tool === 'text') {
+    const shape = getShapeAtPos(world.x, world.y);
+    if (shape) {
+      startTextEdit(shape);
+    } else {
+      const newShape = createShape('rect', snapToGrid(world.x - 60), snapToGrid(world.y - 20), 120, 40);
+      newShape.text = 'Teks';
+      state.shapes.push(newShape);
+      saveHistory();
+      startTextEdit(newShape);
+      render();
+    }
+  }
+}
+
+function handleMouseMove(e) {
+  if (e.target !== canvas) return;
+  const mx = e.clientX, my = e.clientY;
+  const world = screenToWorld(mx, my);
+  
+  if (state.isPanning) {
+    state.panX = state.dragOffset.x + (mx - state.dragStart.x);
+    state.panY = state.dragOffset.y + (my - state.dragStart.y);
+    render();
+    return;
+  }
+  
+  if (state.isResizing && state.resizingShape) {
+    const shape = state.shapes.find(s => s.id === state.resizingShape.id);
+    if (!shape) return;
+    
+    const dx = world.x - state.resizeStart.x;
+    const dy = world.y - state.resizeStart.y;
+    const orig = state.resizingShape;
+    const handle = state.resizeHandle;
+    
+    let newX = orig.x, newY = orig.y, newW = orig.w, newH = orig.h;
+    
+    if (handle.includes('e')) { newW = Math.max(30, orig.w + dx); }
+    if (handle.includes('w')) { newW = Math.max(30, orig.w - dx); newX = orig.x + dx; }
+    if (handle.includes('s')) { newH = Math.max(30, orig.h + dy); }
+    if (handle.includes('n')) { newH = Math.max(30, orig.h - dy); newY = orig.y + dy; }
+    
+    if (shape.type === 'circle') {
+      shape.r = Math.min(newW, newH) / 2;
+      shape.x = newX + newW / 2;
+      shape.y = newY + newH / 2;
+    } else {
+      shape.x = snapToGrid(newX);
+      shape.y = snapToGrid(newY);
+      shape.w = snapToGrid(newW);
+      shape.h = snapToGrid(newH);
+    }
+    
+    render();
+    updateProperties();
+    return;
+  }
+  
+  if (state.isDragging && state.dragStart) {
+    if (state.creatingShape) {
+      const rawW = world.x - state.creatingShape.x;
+      const rawH = world.y - state.creatingShape.y;
+      state.creatingShape.w = rawW;
+      state.creatingShape.h = rawH;
+      render();
+      return;
+    }
+    
+    if (state.arrowTemp && state.arrowStartId) {
+      state.arrowTemp = { x: world.x, y: world.y };
+      render();
+      return;
+    }
+    
+    const dx = world.x - state.dragStart.x;
+    const dy = world.y - state.dragStart.y;
+    
+    for (const item of state.dragOffset) {
+      if (item.ox !== undefined) {
+        const shape = state.shapes.find(s => s.id === item.id);
+        if (shape) {
+          shape.x = snapToGrid(item.ox + dx);
+          shape.y = snapToGrid(item.oy + dy);
+        }
+      }
+    }
+    
+    render();
+    updateProperties();
+    return;
+  }
+  
+  if (state.tool === 'select') {
+    const handle = isHandleAtPos(world.x, world.y);
+    if (handle) {
+      const cursorMap = { nw: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', se: 'nwse-resize', n: 'ns-resize', s: 'ns-resize', w: 'ew-resize', e: 'ew-resize' };
+      container.style.cursor = cursorMap[handle] || 'default';
+    } else {
+      const shape = getShapeAtPos(world.x, world.y);
+      const arrow = getArrowAtPos(world.x, world.y);
+      container.style.cursor = (shape || arrow) ? 'move' : 'default';
+    }
+  }
+}
+
+function handleMouseUp(e) {
+  if (state.isPanning) {
+    state.isPanning = false;
+    container.style.cursor = state.tool === 'select' ? 'default' : 'crosshair';
+    return;
+  }
+  
+  if (state.isResizing) {
+    state.isResizing = false;
+    state.resizeHandle = null;
+    state.resizingShape = null;
+    saveHistory();
+    return;
+  }
+  
+  if (state.isDragging) {
+    if (state.creatingShape) {
+      const cs = state.creatingShape;
+      const w = Math.abs(cs.w);
+      const h = Math.abs(cs.h);
+      
+      if (w > 20 && h > 20) {
+        let x = Math.min(cs.x, cs.x + cs.w);
+        let y = Math.min(cs.y, cs.y + cs.h);
+        x = snapToGrid(x);
+        y = snapToGrid(y);
+        
+        const shape = createShape(cs.type, x, y, Math.max(w, 80), Math.max(h, 60));
+        if (cs.type === 'circle') {
+          shape.r = Math.max(shape.r, 30);
+        }
+        state.shapes.push(shape);
+        state.selectedIds = [shape.id];
+        saveHistory();
+        updateProperties();
+      }
+      
+      state.creatingShape = null;
+    }
+    
+    if (state.arrowTemp && state.arrowStartId) {
+      const toShape = getShapeAtPos(state.arrowTemp.x, state.arrowTemp.y);
+      if (toShape && toShape.id !== state.arrowStartId) {
+        const arrow = createArrow(state.arrowStartId, toShape.id);
+        state.arrows.push(arrow);
+        state.selectedIds = [arrow.id];
+        saveHistory();
+        showToast('Panah dibuat');
+      }
+      state.arrowStartId = null;
+      state.arrowTemp = null;
+    }
+    
+    if (state.dragOffset && state.dragOffset.length > 0 && !state.creatingShape) {
+      const moved = state.dragOffset.some(item => {
+        const shape = state.shapes.find(s => s.id === item.id);
+        return shape && (shape.x !== item.ox || shape.y !== item.oy);
+      });
+      if (moved) saveHistory();
+    }
+    
+    state.isDragging = false;
+    state.dragStart = null;
+    state.dragOffset = null;
+    render();
+    return;
+  }
+  
+  render();
+}
+
+function handleDblClick(e) {
+  if (e.target !== canvas) return;
+  const world = screenToWorld(e.clientX, e.clientY);
+  const shape = getShapeAtPos(world.x, world.y);
+  if (shape) {
+    startTextEdit(shape);
+  }
+}
+
+function handleWheel(e) {
+  e.preventDefault();
+  const rect = getCanvasRect();
+  const mx = e.clientX - rect.x;
+  const my = e.clientY - rect.y;
+  
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newZoom = Math.min(3, Math.max(0.1, state.zoom * delta));
+  
+  const worldX = (mx - state.panX) / state.zoom;
+  const worldY = (my - state.panY) / state.zoom;
+  
+  state.panX = mx - worldX * newZoom;
+  state.panY = my - worldY * newZoom;
+  state.zoom = newZoom;
+  
+  document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+  render();
+}
+
+function handleTouchStart(e) {
+  if (e.touches.length === 1) {
+    const touch = e.touches[0];
+    const mouseEvent = new MouseEvent('mousedown', {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+    container.dispatchEvent(mouseEvent);
+  } else if (e.touches.length === 2) {
+    state.isPanning = false;
+    const t1 = e.touches[0], t2 = e.touches[1];
+    lastTouchDist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
+    lastTouchCenter = {
+      x: (t1.clientX + t2.clientX) / 2,
+      y: (t1.clientY + t2.clientY) / 2
+    };
+    state.dragStart = { x: lastTouchCenter.x, y: lastTouchCenter.y };
+    state.dragOffset = { x: state.panX, y: state.panY };
+  }
+}
+
+function handleTouchMove(e) {
+  e.preventDefault();
+  if (e.touches.length === 1) {
+    const touch = e.touches[0];
+    const mouseEvent = new MouseEvent('mousemove', {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+    });
+    container.dispatchEvent(mouseEvent);
+  } else if (e.touches.length === 2 && lastTouchDist) {
+    const t1 = e.touches[0], t2 = e.touches[1];
+    const newDist = distance(t1.clientX, t1.clientY, t2.clientX, t2.clientY);
+    const center = {
+      x: (t1.clientX + t2.clientX) / 2,
+      y: (t1.clientY + t2.clientY) / 2
+    };
+    
+    const scale = newDist / lastTouchDist;
+    const newZoom = Math.min(3, Math.max(0.1, state.zoom * scale));
+    
+    const rect = getCanvasRect();
+    const mx = center.x - rect.x;
+    const my = center.y - rect.y;
+    const worldX = (mx - state.panX) / state.zoom;
+    const worldY = (my - state.panY) / state.zoom;
+    
+    state.panX = mx - worldX * newZoom;
+    state.panY = my - worldY * newZoom;
+    state.zoom = newZoom;
+    
+    state.panX += center.x - lastTouchCenter.x;
+    state.panY += center.y - lastTouchCenter.y;
+    
+    lastTouchDist = newDist;
+    lastTouchCenter = center;
+    
+    document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+    render();
+  }
+}
+
+function handleTouchEnd(e) {
+  if (e.touches.length === 0) {
+    const mouseEvent = new MouseEvent('mouseup', {});
+    container.dispatchEvent(mouseEvent);
+    lastTouchDist = null;
+    lastTouchCenter = null;
+  }
+}
+
+function startTextEdit(shape) {
+  state.textEditShape = shape;
+  const screenPos = worldToScreen(shape.x, shape.y);
+  const b = getShapeBounds(shape);
+  const sw = worldToScreen(shape.x + b.w, shape.y);
+  
+  const overlay = document.getElementById('text-input-overlay');
+  const textarea = document.getElementById('text-input-area');
+  
+  overlay.style.left = screenPos.x + 'px';
+  overlay.style.top = screenPos.y + 'px';
+  overlay.style.width = (sw.x - screenPos.x) + 'px';
+  overlay.classList.add('visible');
+  
+  textarea.value = shape.text || '';
+  textarea.focus();
+  textarea.select();
+}
+
+function finishTextEdit() {
+  const overlay = document.getElementById('text-input-overlay');
+  const textarea = document.getElementById('text-input-area');
+  
+  if (state.textEditShape && overlay.classList.contains('visible')) {
+    state.textEditShape.text = textarea.value;
+    saveHistory();
+    render();
+  }
+  
+  overlay.classList.remove('visible');
+  state.textEditShape = null;
+}
+
+document.getElementById('text-input-area').addEventListener('blur', finishTextEdit);
+document.getElementById('text-input-area').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.getElementById('text-input-overlay').classList.remove('visible');
+    state.textEditShape = null;
+  }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    finishTextEdit();
+  }
+});
+
+document.querySelectorAll('.tool-btn[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tool = btn.dataset.tool;
+    setTool(tool);
+  });
+});
+
+function setTool(tool) {
+  state.tool = tool;
+  
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = document.querySelector(`.tool-btn[data-tool="${tool}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
+  
+  container.className = '';
+  if (tool === 'select' || tool === 'text' || tool === 'hand') {
+    container.classList.add('tool-' + tool);
+  } else if (tool === 'eraser') {
+    container.classList.add('tool-eraser');
+  }
+  
+  if (tool !== 'select') {
+    state.selectedIds = [];
+    updateProperties();
+    render();
+  }
+  
+  if (state.arrowStartId) {
+    state.arrowStartId = null;
+    state.arrowTemp = null;
+    render();
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+  
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'z') { e.preventDefault(); undo(); }
+    if (e.key === 'y') { e.preventDefault(); redo(); }
+    if (e.key === 'a') { e.preventDefault(); state.selectedIds = state.shapes.map(s => s.id); render(); updateProperties(); }
+    if (e.key === 'c') { e.preventDefault(); copySelected(); }
+    if (e.key === 'v') { e.preventDefault(); pasteClipboard(); }
+    if (e.key === 'x') { e.preventDefault(); copySelected(); deleteSelected(); }
+    if (e.key === 's') { e.preventDefault(); saveToStorage(); showToast('Disimpan!'); }
+    if (e.key === 'e') { e.preventDefault(); exportJSON(); }
+    return;
+  }
+  
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    deleteSelected();
+  }
+  if (e.key === 'Escape') {
+    state.selectedIds = [];
+    state.arrowStartId = null;
+    state.arrowTemp = null;
+    setTool('select');
+    render();
+  }
+  if (e.key === 'v' || e.key === 'V') setTool('select');
+  if (e.key === 'h' || e.key === 'H') setTool('hand');
+  if (e.key === 'r' || e.key === 'R') setTool('rect');
+  if (e.key === 'd' || e.key === 'D') setTool('diamond');
+  if (e.key === 'c' || e.key === 'C') setTool('circle');
+  if (e.key === 'a' || e.key === 'A') setTool('arrow');
+  if (e.key === 'l' || e.key === 'L') setTool('line');
+  if (e.key === 't' || e.key === 'T') setTool('text');
+  if (e.key === 'e' || e.key === 'E') setTool('eraser');
+});
+
+function updateProperties() {
+  const panel = document.getElementById('properties-panel');
+  const content = document.getElementById('prop-content');
+  
+  if (state.selectedIds.length === 0) {
+    panel.classList.remove('visible');
+    return;
+  }
+  
+  if (state.selectedIds.length > 1) {
+    panel.classList.add('visible');
+    content.innerHTML = `
+      <div class="prop-row">
+        <label>${state.selectedIds.length} elemen dipilih</label>
+      </div>
+    `;
+    return;
+  }
+  
+  const id = state.selectedIds[0];
+  const shape = state.shapes.find(s => s.id === id);
+  const arrow = state.arrows.find(a => a.id === id);
+  
+  panel.classList.add('visible');
+  
+  if (shape) {
+    let sizeHTML = '';
+    if (shape.type === 'circle') {
+      sizeHTML = `
+        <div class="prop-row">
+          <label>Radius</label>
+          <input type="number" value="${shape.r}" min="10" onchange="updateShapeProp('${id}','r',this.value)">
+        </div>
+      `;
+    } else {
+      sizeHTML = `
+        <div class="prop-row">
+          <label>Lebar</label>
+          <input type="number" value="${Math.round(shape.w)}" min="20" onchange="updateShapeProp('${id}','w',this.value)">
+        </div>
+        <div class="prop-row">
+          <label>Tinggi</label>
+          <input type="number" value="${Math.round(shape.h)}" min="20" onchange="updateShapeProp('${id}','h',this.value)">
+        </div>
+      `;
+    }
+    
+    const shapeTypeNames = {
+      rect: 'Persegi', roundrect: 'Persegi Bulat', diamond: 'Belah Ketupat',
+      circle: 'Lingkaran', parallelogram: 'Jajar Genjang'
+    };
+    
+    content.innerHTML = `
+      <div class="prop-row">
+        <label>Tipe</label>
+        <span style="font-size:13px;font-weight:700">${shapeTypeNames[shape.type] || shape.type}</span>
+      </div>
+      ${sizeHTML}
+      <div class="prop-row">
+        <label>Warna Isi</label>
+        <input type="color" value="${shape.fillColor || defaultFillColor}" onchange="updateShapeProp('${id}','fillColor',this.value)">
+      </div>
+      <div class="prop-row">
+        <label>Warna Garis</label>
+        <input type="color" value="${shape.strokeColor || defaultStrokeColor}" onchange="updateShapeProp('${id}','strokeColor',this.value)">
+      </div>
+      <div class="prop-row">
+        <label>Teks</label>
+      </div>
+      <div class="prop-row">
+        <textarea style="width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;resize:vertical" rows="2" onchange="updateShapeProp('${id}','text',this.value)">${shape.text || ''}</textarea>
+      </div>
+    `;
+  } else if (arrow) {
+    content.innerHTML = `
+      <div class="prop-row">
+        <label>Tipe</label>
+        <span style="font-size:13px;font-weight:700">Panah</span>
+      </div>
+      <div class="prop-row">
+        <label>Label</label>
+      </div>
+      <div class="prop-row">
+        <input type="text" value="${arrow.label || ''}" placeholder="Ya/Tidak..." style="width:100%" onchange="updateArrowProp('${id}','label',this.value)">
+      </div>
+      <div class="prop-row">
+        <label>Warna</label>
+        <input type="color" value="${arrow.strokeColor || '#64748b'}" onchange="updateArrowProp('${id}','strokeColor',this.value)">
+      </div>
+    `;
+  }
+}
+
+function updateShapeProp(id, prop, value) {
+  const shape = state.shapes.find(s => s.id === id);
+  if (!shape) return;
+  
+  if (prop === 'r' || prop === 'w' || prop === 'h') {
+    value = Math.max(10, parseInt(value) || 10);
+  }
+  
+  shape[prop] = value;
+  saveHistory();
+  render();
+}
+
+function updateArrowProp(id, prop, value) {
+  const arrow = state.arrows.find(a => a.id === id);
+  if (!arrow) return;
+  arrow[prop] = value;
+  saveHistory();
+  render();
+}
+
+function copySelected() {
+  const shapes = state.shapes.filter(s => state.selectedIds.includes(s.id));
+  const arrowIds = state.selectedIds.filter(id => state.arrows.find(a => a.id === id));
+  const arrows = state.arrows.filter(a => arrowIds.includes(a.id));
+  clipboard = { shapes: JSON.parse(JSON.stringify(shapes)), arrows: JSON.parse(JSON.stringify(arrows)) };
+  if (shapes.length || arrows.length) showToast('Disalin ke clipboard');
+}
+
+function pasteClipboard() {
+  if (!clipboard || (!clipboard.shapes.length && !clipboard.arrows.length)) return;
+  
+  const newShapes = clipboard.shapes.map(s => {
+    const ns = { ...s, id: generateId(), x: s.x + 30, y: s.y + 30 };
+    state.shapes.push(ns);
+    return { oldId: s.id, newId: ns.id };
+  });
+  
+  const idMap = {};
+  newShapes.forEach(m => { idMap[m.oldId] = m.newId; });
+  
+  clipboard.arrows.forEach(a => {
+    const na = { ...a, id: generateId() };
+    if (idMap[a.fromId]) na.fromId = idMap[a.fromId];
+    if (idMap[a.toId]) na.toId = idMap[a.toId];
+    state.arrows.push(na);
+  });
+  
+  state.selectedIds = newShapes.map(m => m.newId);
+  saveHistory();
+  render();
+  showToast('Ditempel');
+}
+
+function deleteSelected() {
+  if (state.selectedIds.length === 0) return;
+  
+  state.shapes = state.shapes.filter(s => !state.selectedIds.includes(s.id));
+  state.arrows = state.arrows.filter(a => !state.selectedIds.includes(a.id));
+  state.arrows = state.arrows.filter(a => 
+    !state.selectedIds.includes(a.fromId) && !state.selectedIds.includes(a.toId)
+  );
+  
+  const deleted = state.selectedIds;
+  state.selectedIds = [];
+  saveHistory();
+  updateProperties();
+  render();
+  showToast(`${deleted.length} elemen dihapus`);
+}
+
+function exportJSON() {
+  const data = {
+    version: '1.0',
+    appName: 'FlowLearn',
+    exportDate: new Date().toISOString(),
+    zoom: state.zoom,
+    panX: state.panX,
+    panY: state.panY,
+    shapes: state.shapes.map(s => ({
+      ...s,
+      fillColor: s.fillColor || defaultFillColor,
+      strokeColor: s.strokeColor || defaultStrokeColor,
+      strokeWidth: s.strokeWidth || defaultStrokeWidth,
+    })),
+    arrows: state.arrows.map(a => ({
+      ...a,
+      strokeColor: a.strokeColor || '#64748b',
+      strokeWidth: a.strokeWidth || 2,
+    })),
+  };
+  
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'flowchart_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Flowchart diekspor!');
+}
+
+function importJSON(jsonStr) {
+  try {
+    const data = JSON.parse(jsonStr);
+    
+    if (!data.shapes || !data.arrows) {
+      throw new Error('Format tidak valid');
+    }
+    
+    state.shapes = data.shapes.map(s => ({ ...s }));
+    state.arrows = data.arrows.map(a => ({ ...a }));
+    state.selectedIds = [];
+    state.zoom = data.zoom || 1;
+    state.panX = data.panX || 0;
+    state.panY = data.panY || 0;
+    
+    const maxId = Math.max(
+      ...state.shapes.map(s => parseInt(s.id.replace(/\D/g, '')) || 0),
+      ...state.arrows.map(a => parseInt(a.id.replace(/\D/g, '')) || 0)
+    );
+    nextId = maxId + 1;
+    
+    document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+    saveHistory();
+    updateProperties();
+    render();
+    closeImportModal();
+    showToast('Flowchart berhasil diimpor!');
+  } catch (err) {
+    showToast('Gagal mengimpor: ' + err.message);
+  }
+}
+
+function showImportModal() {
+  document.getElementById('import-modal').classList.add('visible');
+  document.getElementById('import-textarea').value = '';
+  document.getElementById('import-textarea').focus();
+}
+
+function closeImportModal() {
+  document.getElementById('import-modal').classList.remove('visible');
+}
+
+function confirmImport() {
+  const text = document.getElementById('import-textarea').value.trim();
+  if (text) {
+    importJSON(text);
+  } else {
+    showToast('Tempelkan JSON terlebih dahulu');
+  }
+}
+
+function saveToStorage() {
+  const data = {
+    version: '1.0',
+    appName: 'FlowLearn',
+    saveDate: new Date().toISOString(),
+    zoom: state.zoom,
+    panX: state.panX,
+    panY: state.panY,
+    shapes: state.shapes,
+    arrows: state.arrows,
+  };
+  localStorage.setItem('flowlearn_project', JSON.stringify(data));
+}
+
+function loadFromStorage() {
+  try {
+    const raw = localStorage.getItem('flowlearn_project');
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    state.shapes = data.shapes || [];
+    state.arrows = data.arrows || [];
+    state.zoom = data.zoom || 1;
+    state.panX = data.panX || 0;
+    state.panY = data.panY || 0;
+    
+    const maxId = Math.max(
+      ...state.shapes.map(s => parseInt(s.id.replace(/\D/g, '')) || 0),
+      ...state.arrows.map(a => parseInt(a.id.replace(/\D/g, '')) || 0)
+    );
+    nextId = maxId + 1;
+    
+    document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function newProject() {
+  if (state.shapes.length > 0 || state.arrows.length > 0) {
+    if (!confirm('Buat proyek baru? Perubahan yang belum disimpan akan hilang.')) return;
+  }
+  state.shapes = [];
+  state.arrows = [];
+  state.selectedIds = [];
+  state.zoom = 1;
+  state.panX = 0;
+  state.panY = 0;
+  nextId = 1;
+  document.getElementById('zoom-label').textContent = '100%';
+  saveHistory();
+  updateProperties();
+  render();
+  showToast('Proyek baru dibuat');
+}
+
+document.getElementById('btn-new').addEventListener('click', newProject);
+document.getElementById('btn-save').addEventListener('click', () => { saveToStorage(); showToast('Disimpan!'); });
+document.getElementById('btn-load').addEventListener('click', () => {
+  if (loadFromStorage()) {
+    saveHistory();
+    render();
+    showToast('Proyek dimuat!');
+  } else {
+    showToast('Tidak ada proyek tersimpan');
+  }
+});
+document.getElementById('btn-undo').addEventListener('click', undo);
+document.getElementById('btn-redo').addEventListener('click', redo);
+document.getElementById('btn-export').addEventListener('click', exportJSON);
+document.getElementById('btn-import').addEventListener('click', showImportModal);
+document.getElementById('btn-delete').addEventListener('click', deleteSelected);
+
+document.getElementById('btn-zoomin').addEventListener('click', () => {
+  const rect = getCanvasRect();
+  const cx = rect.w / 2, cy = rect.h / 2;
+  const newZoom = Math.min(3, state.zoom * 1.2);
+  state.panX = cx - (cx - state.panX) * (newZoom / state.zoom);
+  state.panY = cy - (cy - state.panY) * (newZoom / state.zoom);
+  state.zoom = newZoom;
+  document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+  render();
+});
+
+document.getElementById('btn-zoomout').addEventListener('click', () => {
+  const rect = getCanvasRect();
+  const cx = rect.w / 2, cy = rect.h / 2;
+  const newZoom = Math.max(0.1, state.zoom / 1.2);
+  state.panX = cx - (cx - state.panX) * (newZoom / state.zoom);
+  state.panY = cy - (cy - state.panY) * (newZoom / state.zoom);
+  state.zoom = newZoom;
+  document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+  render();
+});
+
+document.getElementById('btn-fit').addEventListener('click', fitToScreen);
+
+function fitToScreen() {
+  if (state.shapes.length === 0) {
+    state.zoom = 1;
+    state.panX = 0;
+    state.panY = 0;
+    document.getElementById('zoom-label').textContent = '100%';
+    render();
+    return;
+  }
+  
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of state.shapes) {
+    const b = getShapeBounds(s);
+    minX = Math.min(minX, b.x);
+    minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.w);
+    maxY = Math.max(maxY, b.y + b.h);
+  }
+  
+  const padding = 60;
+  const cw = maxX - minX + padding * 2;
+  const ch = maxY - minY + padding * 2;
+  const rect = getCanvasRect();
+  
+  const zoomX = rect.w / cw;
+  const zoomY = rect.h / ch;
+  state.zoom = Math.min(zoomX, zoomY, 2);
+  
+  state.panX = rect.w / 2 - (minX + (maxX - minX) / 2) * state.zoom;
+  state.panY = rect.h / 2 - (minY + (maxY - minY) / 2) * state.zoom;
+  
+  document.getElementById('zoom-label').textContent = Math.round(state.zoom * 100) + '%';
+  render();
+}
+
+document.getElementById('file-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    importJSON(ev.target.result);
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+document.addEventListener('dragover', (e) => { e.preventDefault(); });
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && (file.name.endsWith('.json') || file.name.endsWith('.flow'))) {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      importJSON(ev.target.result);
+    };
+    reader.readAsText(file);
+  }
+});
+
+let toastTimeout = null;
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('visible');
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    toast.classList.remove('visible');
+  }, 2000);
+}
+
+function addWelcomeFlowchart() {
+  const cx = 400, cy = 200;
+  
+  const start = createShape('roundrect', cx - 70, cy - 150, 140, 40);
+  start.text = 'Mulai';
+  start.fillColor = '#2563eb';
+  start.strokeColor = '#1d4ed8';
+  state.shapes.push(start);
+  
+  const process = createShape('rect', cx - 80, cy - 50, 160, 50);
+  process.text = 'Proses';
+  state.shapes.push(process);
+  
+  const decision = createShape('diamond', cx - 70, cy + 60, 140, 80);
+  decision.text = 'Kondisi?';
+  state.shapes.push(decision);
+  
+  const yesCircle = createShape('circle', cx - 150, cy + 200, 80, 80);
+  yesCircle.text = 'Ya';
+  state.shapes.push(yesCircle);
+  
+  const noCircle = createShape('circle', cx + 150, cy + 200, 80, 80);
+  noCircle.text = 'Tidak';
+  state.shapes.push(noCircle);
+  
+  state.arrows.push(createArrow(start.id, process.id, ''));
+  state.arrows.push(createArrow(process.id, decision.id, ''));
+  
+  const yesArrow = createArrow(decision.id, yesCircle.id, 'Ya');
+  yesArrow.strokeColor = '#22c55e';
+  state.arrows.push(yesArrow);
+  
+  const noArrow = createArrow(decision.id, noCircle.id, 'Tidak');
+  noArrow.strokeColor = '#ef4444';
+  state.arrows.push(noArrow);
+  
+  state.zoom = 0.85;
+  state.panX = 0;
+  state.panY = 0;
+  document.getElementById('zoom-label').textContent = '85%';
+}
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (typeof r === 'number') r = [r, r, r, r];
+    const [tl, tr, br, bl] = r;
+    this.moveTo(x + tl, y);
+    this.lineTo(x + w - tr, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + tr);
+    this.lineTo(x + w, y + h - br);
+    this.quadraticCurveTo(x + w, y + h, x + w - br, y + h);
+    this.lineTo(x + bl, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - bl);
+    this.lineTo(x, y + tl);
+    this.quadraticCurveTo(x, y, x + tl, y);
+    this.closePath();
+    return this;
+  };
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+const loaded = loadFromStorage();
+saveHistory();
+
+if (!loaded) {
+  addWelcomeFlowchart();
+}
+
+render();
+updateUndoRedoButtons();
+</script>
+</body>
+</html>
+```

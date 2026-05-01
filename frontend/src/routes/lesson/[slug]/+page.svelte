@@ -7,6 +7,7 @@
 	import CodeTab from './CodeTab.svelte';
 	import CircuitTab from './CircuitTab.svelte';
 	import VelxioTab from './VelxioTab.svelte';
+	import FlowchartTab from './FlowchartTab.svelte';
 	import OutputPanel, { type OutputEntry } from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
 	import WorkspaceHeader from '$components/WorkspaceHeader.svelte';
@@ -65,6 +66,8 @@
 	let velxioIframe = $state<HTMLIFrameElement | null>(null);
 	let velxioOut = $state(freshOutput());
 	let hasArduinoCode = $derived(!!data?.initial_code_arduino);
+	let isFlowchart = $derived(data?.active_tabs?.includes('flowchart') ?? false);
+	let flowchartStorageKey = $derived(`elemes_flowchart_draft_${slug}`);
 
 	// Velxio storage keys
 	let arduinoCodeKey = $derived(`elemes_arduino_code_${slug}`);
@@ -135,7 +138,7 @@
 
 	// UI state
 	let showSolution = $state(false);
-	let activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio'>('info');
+	let activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart'>('info');
 
 	let editor = $state<CodeEditor | null>(null);
 	let circuitEditor = $state<CircuitEditor | null>(null);
@@ -204,9 +207,11 @@
 			velxioReady = false;
 			velxioError = false;
 			const isVelxioLesson = lesson.active_tabs?.includes('velxio');
+			const isFlowchartLesson = lesson.active_tabs?.includes('flowchart');
 			if (lesson.lesson_info) activeTab = 'info';
 			else if (lesson.exercise_content) activeTab = 'exercise';
 			else if (isVelxioLesson) activeTab = 'velxio' as any;
+			else if (isFlowchartLesson) activeTab = 'flowchart' as any;
 			else if (lesson.active_tabs?.includes('circuit') && !hasC && !hasPython) activeTab = 'circuit';
 			else activeTab = 'editor';
 			mobileMode = 'hidden';
@@ -447,6 +452,9 @@
 				velxioBridge?.loadCircuit(data.velxio_circuit);
 			}
 			Object.assign(velxioOut, freshOutput());
+		} else if (activeTab === 'flowchart') {
+			localStorage.removeItem(flowchartStorageKey);
+			// Draft cleared. A proper reset might require iframe reload or postMessage
 		} else {
 			const resetCode = currentLanguage === 'python'
 				? (data.initial_python || '')
@@ -666,6 +674,16 @@
 						authLoggedIn={$authLoggedIn}
 						velxioSaving={velxioSaving}
 						onSetupBridge={setupVelxioBridge}
+					/>
+				</div>
+				{/if}
+
+				<!-- Flowchart tab panel -->
+				{#if isFlowchart}
+				<div class="tab-panel flowchart-panel" class:tab-hidden={activeTab !== 'flowchart'}>
+					<FlowchartTab
+						storageKey={flowchartStorageKey}
+						initialData={data.initial_flowchart}
 					/>
 				</div>
 				{/if}

@@ -3,7 +3,7 @@ version: '3.8'
 services:
   elemes:
     build: .
-    image: lms-c-backend:latest
+    image: lms-backend:latest
     volumes:
       - ../content:/app/content:ro
       - ../tokens_siswa.csv:/app/tokens.csv:rw
@@ -21,14 +21,14 @@ services:
 
   compiler-worker:
     build: ./compiler_worker
-    image: lms-c-compiler-worker:latest
+    image: lms-compiler-worker:latest
     runtime: runsc # Enable gVisor
     networks:
       - elemes_network
 
   elemes-frontend:
     build: ./frontend
-    image: lms-c-frontend:latest
+    image: lms-frontend:latest
     # ports:
     #   - 3000:3000
     environment:
@@ -44,7 +44,7 @@ services:
       - elemes
 
   velxio:
-    image: lms-c-velxio:latest
+    image: lms-velxio:latest
     build:
       context: ./velxio
       dockerfile: Dockerfile.standalone
@@ -62,12 +62,19 @@ services:
       - velxio-data:/app/data
       - velxio-arduino-libs:/root/.arduino15
 
+  flowchart:
+    build: ./flowchart
+    image: lms-flowchart:latest
+    networks:
+      - elemes_network
+
+
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
     hostname: ${ELEMES_HOST}
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
-      - TS_SERVE_CONFIG=/config/sinau-c-tail.json
+      - TS_SERVE_CONFIG=/config/lms-tail.json
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=true
     volumes:
