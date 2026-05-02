@@ -363,6 +363,9 @@ def render_markdown_content(file_path):
     expected_wiring, lesson_content = _extract_section(
         lesson_content, '---EXPECTED_WIRING---', '---END_EXPECTED_WIRING---')
 
+    expected_flowchart, lesson_content = _extract_section(
+        lesson_content, '---EXPECTED_FLOWCHART---', '---END_EXPECTED_FLOWCHART---')
+
     evaluation_config, lesson_content = _extract_section(
         lesson_content, '---EVALUATION_CONFIG---', '---END_EVALUATION_CONFIG---')
 
@@ -393,6 +396,7 @@ def render_markdown_content(file_path):
         'expected_output': expected_output,
         'expected_output_python': expected_output_python,
         'expected_circuit_output': expected_circuit_output,
+        'expected_flowchart': expected_flowchart,
         'lesson_info': lesson_info_html,
         'initial_code': initial_code,
         'solution_code': solution_code,
@@ -403,7 +407,7 @@ def render_markdown_content(file_path):
         'initial_code_c': initial_code_c,
         'initial_python': initial_python,
         'initial_circuit': initial_circuit,
-        'initial_flowchart': initial_flowchart,
+        'initial_flowchart': initial_flowchart_str or initial_flowchart,
         'initial_quiz': initial_quiz,
         'initial_code_arduino': initial_code_arduino,
         'velxio_circuit': velxio_circuit,

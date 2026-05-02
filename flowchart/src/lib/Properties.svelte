@@ -55,7 +55,7 @@
       <span class="label-text">Warna Isi</span>
       <div class="color-palette">
         {#each predefinedColors as color}
-          <button class="color-btn" style="background: {color};" class:active={sharedFillColor === color} onclick={() => updateShape('fillColor', color)}></button>
+          <button class="color-btn" title={color} style="background: {color};" class:active={sharedFillColor === color} onclick={() => updateShape('fillColor', color)}></button>
         {/each}
       </div>
     </div>
@@ -87,7 +87,7 @@
       <span class="label-text">Warna Garis</span>
       <div class="color-palette">
         {#each predefinedColors as color}
-          <button class="color-btn" style="background: {color};" class:active={sharedStrokeColor === color} onclick={() => {
+          <button class="color-btn" title={color} style="background: {color};" class:active={sharedStrokeColor === color} onclick={() => {
             if (selectedShapes.length) updateShape('strokeColor', color);
             if (selectedArrows.length) updateArrow('strokeColor', color);
           }}></button>

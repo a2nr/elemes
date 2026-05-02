@@ -1,5 +1,7 @@
 <script lang="ts">
   import { fcState } from './flowchartState.svelte';
+  import { parseFlowchartText, exportToFlowchartText } from './parser';
+  import { applyAutoLayout } from './layout';
 
   let fileInput: HTMLInputElement;
 
@@ -27,9 +29,12 @@
   }
 
   function handleNew() {
-    if (fcState.isIframeMode && fcState.initialData) {
+    if (fcState.isIframeMode) {
       if (confirm('Kembalikan flowchart ke kondisi awal? Perubahan yang belum disimpan akan hilang.')) {
-        fcState.loadData(fcState.initialData);
+        // Notify parent to reset and re-send initial data
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: 'FLOWCHART_RESET' }, '*');
+        }
       }
     } else {
       if (confirm('Buat flowchart baru? Perubahan yang belum disimpan akan hilang.')) {
@@ -47,14 +52,8 @@
   }
 
   function handleExport() {
-    const data = JSON.stringify({
-      shapes: fcState.shapes,
-      arrows: fcState.arrows,
-      zoom: fcState.zoom,
-      panX: fcState.panX,
-      panY: fcState.panY
-    });
-    const blob = new Blob([data], { type: 'application/json' });
+    const text = exportToFlowchartText(fcState.shapes, fcState.arrows);
+    const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -75,9 +74,18 @@
       reader.onload = (ev) => {
         try {
           const content = ev.target?.result as string;
-          const data = JSON.parse(content);
-          fcState.loadData(data);
+          if (content.trim().startsWith('{')) {
+            // Legacy JSON support
+            const data = JSON.parse(content);
+            fcState.loadData(data);
+          } else {
+            // New Text-based parsing with Auto-Layout
+            const { shapes, arrows } = parseFlowchartText(content);
+            const layouted = applyAutoLayout(shapes, arrows);
+            fcState.loadData(layouted);
+          }
         } catch (err) {
+          console.error(err);
           alert("Format file tidak valid!");
         }
       };
@@ -149,7 +157,7 @@
   <!-- MOBILE MENU ACTION -->
   <div class="topbar-actions mobile-only">
     <div class="dropdown-container">
-      <button class="topbar-btn" onclick={(e) => { e.stopPropagation(); isMenuOpen = !isMenuOpen; }}>
+      <button class="topbar-btn" title="Menu" onclick={(e) => { e.stopPropagation(); isMenuOpen = !isMenuOpen; }}>
         <svg><use href="#icon-menu"/></svg>
       </button>
       {#if isMenuOpen}

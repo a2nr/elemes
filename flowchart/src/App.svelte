@@ -5,6 +5,8 @@
   import Properties from './lib/Properties.svelte';
   import Canvas from './lib/Canvas.svelte';
   import { fcState } from './lib/flowchartState.svelte';
+  import { parseFlowchartText, exportToFlowchartText } from './lib/parser';
+  import { applyAutoLayout } from './lib/layout';
   import { onMount } from 'svelte';
 
   onMount(() => {
@@ -21,26 +23,42 @@
     window.addEventListener('message', (event) => {
       if (event.data?.type === 'FLOWCHART_LOAD') {
         try {
-          const payload = JSON.parse(event.data.payload);
+          const payload = typeof event.data.payload === 'string' ? JSON.parse(event.data.payload) : event.data.payload;
           
+          function processData(data: any) {
+            if (typeof data === 'string' && !data.trim().startsWith('{')) {
+              const { shapes, arrows } = parseFlowchartText(data);
+              return applyAutoLayout(shapes, arrows);
+            }
+            return data;
+          }
+
           // Legacy format (just data object)
-          if (!payload.initialData && !payload.draftData && payload.shapes) {
-            fcState.initialData = payload;
-            fcState.loadData(payload);
+          if (!payload.initialData && !payload.draftData && (payload.shapes || typeof payload === 'string')) {
+            const data = processData(payload);
+            fcState.initialData = data;
+            fcState.loadData(data);
           } else {
             // New format { initialData, draftData }
             if (payload.initialData) {
-              fcState.initialData = payload.initialData;
+              fcState.initialData = processData(payload.initialData);
             }
             if (payload.draftData) {
-              fcState.loadData(payload.draftData);
+              fcState.loadData(processData(payload.draftData));
             } else if (payload.initialData) {
-              fcState.loadData(payload.initialData);
+              fcState.loadData(processData(payload.initialData));
             }
           }
         } catch(e) {
           console.error("Invalid data format", e);
         }
+      } else if (event.data?.type === 'FLOWCHART_GET_TEXT') {
+        const text = exportToFlowchartText(fcState.shapes, fcState.arrows);
+        window.parent.postMessage({
+          type: 'FLOWCHART_TEXT_RESPONSE',
+          requestId: event.data.requestId,
+          payload: text
+        }, '*');
       }
     });
 

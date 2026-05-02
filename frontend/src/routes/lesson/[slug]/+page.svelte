@@ -15,6 +15,7 @@
 	import { compileCode, trackProgress } from '$services/api';
 	import { checkKeyText, validateNodes } from '$services/exercise';
 	import { evaluateVelxioSubmission } from '$services/velxio-evaluator';
+	import { evaluateFlowchartSubmission } from '$services/flowchart-evaluator';
 	import { evaluateCircuitSubmission, processLanguageEvaluation } from '$services/evaluators';
 	import { getVelxioState, initVelxioBridge } from '$services/velxio-manager';
 	import { VelxioBridge, type EvaluationResult } from '$services/velxio-bridge';
@@ -56,6 +57,7 @@
 	let cPassed = $state(false);
 	let pythonPassed = $state(false);
 	let circuitPassed = $state(false);
+	let flowchartPassed = $state(false);
 
 	// Velxio (Arduino simulator) state
 	let isVelxio = $derived(data?.active_tabs?.includes('velxio') ?? false);
@@ -65,9 +67,11 @@
 	let velxioError = $state(false);
 	let velxioIframe = $state<HTMLIFrameElement | null>(null);
 	let velxioOut = $state(freshOutput());
+	let flowchartOut = $state(freshOutput());
 	let hasArduinoCode = $derived(!!data?.initial_code_arduino);
 	let isFlowchart = $derived(data?.active_tabs?.includes('flowchart') ?? false);
 	let flowchartStorageKey = $derived(`elemes_flowchart_draft_${slug}`);
+	let flowchartTab = $state<any>(null);
 
 	// Velxio storage keys
 	let arduinoCodeKey = $derived(`elemes_arduino_code_${slug}`);
@@ -115,7 +119,7 @@
 	);
 
 	// Derived: any loading state (for disabling Run button)
-	let compiling = $derived(cOut.loading || pyOut.loading || circuitOut.loading);
+	let compiling = $derived(cOut.loading || pyOut.loading || circuitOut.loading || flowchartOut.loading);
 
 	// Build output sections for OutputPanel
 	let outputSections = $derived.by(() => {
@@ -132,6 +136,9 @@
 		}
 		if (tabs.includes('velxio')) {
 			secs.push({ key: 'velxio', label: 'Arduino', icon: '\u{1F4DF}', data: velxioOut, placeholder: 'Klik "Compile & Run" untuk menjalankan kode', loadingText: 'Mengevaluasi...' });
+		}
+		if (tabs.includes('flowchart')) {
+			secs.push({ key: 'flowchart', label: 'Flowchart', icon: '\u{1F531}', data: flowchartOut, placeholder: 'Klik "Cek Flowchart" untuk mengevaluasi alur logika', loadingText: 'Mengevaluasi alur...' });
 		}
 		return secs;
 	});
@@ -317,14 +324,57 @@
 		const needsC = data?.active_tabs?.includes('c');
 		const needsPython = data?.active_tabs?.includes('python');
 		const needsCircuit = data?.active_tabs?.includes('circuit');
+		const needsFlowchart = data?.active_tabs?.includes('flowchart');
 		
 		if (!data?.active_tabs?.length) return true;
 
 		if (needsC && !cPassed) return false;
 		if (needsPython && !pythonPassed) return false;
 		if (needsCircuit && !circuitPassed) return false;
+		if (needsFlowchart && !flowchartPassed) return false;
 		
 		return true;
+	}
+
+	async function evaluateFlowchart() {
+		if (!pageData?.lesson || !flowchartTab) return;
+
+		Object.assign(flowchartOut, { loading: true, output: 'Mengevaluasi alur...', error: '', success: null });
+		activeTab = 'output';
+
+		try {
+			const flowchartText = await flowchartTab.getFlowchartText();
+			if (!flowchartText) {
+				Object.assign(flowchartOut, { error: 'Gagal mengambil data flowchart.', success: false });
+				return;
+			}
+
+			const expectedFlowchart = pageData.lesson.expected_flowchart || '';
+
+			if (!expectedFlowchart) {
+				Object.assign(flowchartOut, { error: 'Kunci jawaban tidak tersedia untuk pelajaran ini.', success: false });
+				return;
+			}
+
+			// Perform evaluation in frontend
+			const result = evaluateFlowchartSubmission(flowchartText, expectedFlowchart);
+
+			flowchartOut.output = result.output;
+			flowchartOut.success = result.pass;
+
+			if (flowchartOut.success) {
+				flowchartPassed = true;
+				if (checkAllPassed()) {
+					await completeLesson();
+					setTimeout(() => { showCelebration = false; activeTab = 'flowchart'; }, 3000);
+				}
+			}
+		} catch (err: any) {
+			console.error('[ERROR] Flowchart evaluation failed:', err);
+			Object.assign(flowchartOut, { error: `Terjadi kesalahan saat evaluasi: ${err.message}`, success: false });
+		} finally {
+			flowchartOut.loading = false;
+		}
 	}
 
 	async function evaluateCircuit() {
@@ -416,6 +466,7 @@
 
 	async function handleRun() {
 		if (activeTab === 'circuit') { await evaluateCircuit(); return; }
+		if (activeTab === 'flowchart') { await evaluateFlowchart(); return; }
 		if (!data) return;
 
 		activeTab = 'output';
@@ -434,6 +485,7 @@
 		if (hasPython) await evaluateLanguage('python');
 		if (tabs.includes('circuit')) await evaluateCircuit();
 		if (tabs.includes('velxio')) await handleVelxioSubmit();
+		if (tabs.includes('flowchart')) await evaluateFlowchart();
 	}
 
 	function handleReset() {
@@ -453,8 +505,10 @@
 			}
 			Object.assign(velxioOut, freshOutput());
 		} else if (activeTab === 'flowchart') {
-			localStorage.removeItem(flowchartStorageKey);
-			// Draft cleared. A proper reset might require iframe reload or postMessage
+			if (storageKey) localStorage.removeItem(flowchartStorageKey);
+			if (flowchartTab && typeof flowchartTab.handleLoad === 'function') {
+				flowchartTab.handleLoad(true);
+			}
 		} else {
 			const resetCode = currentLanguage === 'python'
 				? (data.initial_python || '')
@@ -682,8 +736,12 @@
 				{#if isFlowchart}
 				<div class="tab-panel flowchart-panel" class:tab-hidden={activeTab !== 'flowchart'}>
 					<FlowchartTab
+						bind:this={flowchartTab}
 						storageKey={flowchartStorageKey}
 						initialData={data.initial_flowchart}
+						onRun={handleRun}
+						onReset={handleReset}
+						compiling={compiling}
 					/>
 				</div>
 				{/if}

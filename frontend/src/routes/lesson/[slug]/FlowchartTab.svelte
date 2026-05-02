@@ -2,9 +2,13 @@
   let {
     storageKey,
     initialData,
+    onRun,
+    compiling
   }: {
     storageKey?: string;
     initialData?: any;
+    onRun?: () => void;
+    compiling?: boolean;
   } = $props();
 
   let iframe = $state<HTMLIFrameElement>(null!);
@@ -19,7 +23,15 @@
           localStorage.setItem(storageKey, event.data.payload);
         }
         setTimeout(() => saving = false, 1000);
+      } else if (event.data?.type === 'FLOWCHART_RESET') {
+        if (storageKey) {
+          localStorage.removeItem(storageKey);
+        }
+        handleLoad(true);
       } else if (event.data?.type === 'FLOWCHART_READY') {
+        // If READY is received, it means the iframe just loaded or was reset.
+        // We check if the last message from iframe was a request to reset.
+        // For simplicity, we can just send the data.
         handleLoad();
       }
     }
@@ -27,10 +39,10 @@
     return () => window.removeEventListener('message', handleMessage);
   });
 
-  function handleLoad() {
+  export function handleLoad(ignoreDraft = false) {
     if (iframe && iframe.contentWindow) {
       let draftData = null;
-      if (storageKey) {
+      if (storageKey && !ignoreDraft) {
         const draft = localStorage.getItem(storageKey);
         if (draft) {
           try {
@@ -39,22 +51,59 @@
         }
       }
       
-      if (initialData || draftData) {
-        iframe.contentWindow.postMessage({
-          type: 'FLOWCHART_LOAD',
-          payload: JSON.stringify({
-            initialData: initialData,
-            draftData: draftData
-          })
-        }, '*');
-      }
+      iframe.contentWindow.postMessage({
+        type: 'FLOWCHART_LOAD',
+        payload: JSON.stringify({
+          initialData: initialData,
+          draftData: draftData
+        })
+      }, '*');
     }
   }
   // Gunakan cache-busting sederhana agar tidak membuka Nginx default yang tersimpan di cache
   let cb = $state(Date.now());
+  export function getFlowchartText(): Promise<string> {
+    return new Promise((resolve) => {
+      const requestId = Math.random().toString(36).substring(7);
+      const handler = (event: MessageEvent) => {
+        if (event.data?.type === 'FLOWCHART_TEXT_RESPONSE' && event.data?.requestId === requestId) {
+          window.removeEventListener('message', handler);
+          resolve(event.data.payload);
+        }
+      };
+      window.addEventListener('message', handler);
+      
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({
+          type: 'FLOWCHART_GET_TEXT',
+          requestId: requestId
+        }, '*');
+      } else {
+        window.removeEventListener('message', handler);
+        resolve('');
+      }
+      
+      // Timeout fallback
+      setTimeout(() => {
+        window.removeEventListener('message', handler);
+        resolve('');
+      }, 2000);
+    });
+  }
 </script>
 
 <div class="flowchart-container">
+  <button 
+    type="button" 
+    class="floating-action-btn" 
+    onclick={onRun} 
+    disabled={compiling}
+    title="Evaluasi alur logika Anda"
+  >
+    <span class="btn-icon">{compiling ? '⌛' : '▶'}</span>
+    <span class="btn-text">{compiling ? 'Mengevaluasi...' : 'Cek Flowchart'}</span>
+  </button>
+
   {#if storageKey}
     <div class="storage-indicator-inline" title={saving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>
       <span class="indicator-icon" class:saving>
@@ -90,6 +139,47 @@
     width: 100%;
     flex: 1;
     border: none;
+  }
+
+  .floating-action-btn {
+    position: absolute;
+    top: 64px;
+    left: 12px;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #10b981;
+    color: white;
+    border: none;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .floating-action-btn:hover:not(:disabled) {
+    background: #059669;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
+  }
+
+  .floating-action-btn:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  .floating-action-btn:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .btn-icon {
+    font-size: 1rem;
+    line-height: 1;
   }
 
   .storage-indicator-inline {

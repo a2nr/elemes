@@ -73,6 +73,7 @@ def api_lesson(filename):
     velxio_circuit = parsed_data.get('velxio_circuit', '')
     expected_serial_output = parsed_data.get('expected_serial_output', '')
     expected_wiring = parsed_data.get('expected_wiring', '')
+    expected_flowchart = parsed_data.get('expected_flowchart', '')
     
     evaluation_config_raw = parsed_data.get('evaluation_config', '')
     evaluation_config = {}
@@ -134,6 +135,7 @@ def api_lesson(filename):
         'velxio_circuit': velxio_circuit,
         'expected_serial_output': expected_serial_output,
         'expected_wiring': expected_wiring,
+        'expected_flowchart': expected_flowchart,
         'evaluation_config': evaluation_config,
         'solution_code': solution_code,
         'solution_circuit': solution_circuit,
