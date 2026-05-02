@@ -218,15 +218,32 @@
       }
     }
 
-    if (isSelected) {
-      const handles = utils.getResizeHandles(shape);
-      ctx.fillStyle = '#ffffff';
-      ctx.strokeStyle = '#2563eb';
-      ctx.lineWidth = 1 / fcState.zoom;
-      const s = 12 / fcState.zoom; // Visual size (larger for touch friendliness)
-      for (const h of handles) {
-        ctx.fillRect(h.x - s/2, h.y - s/2, s, s);
-        ctx.strokeRect(h.x - s/2, h.y - s/2, s, s);
+    if (isSelected || isArrowStart) {
+      // Draw Ports
+      const ports: ('top' | 'bottom' | 'left' | 'right')[] = ['top', 'bottom', 'left', 'right'];
+      ctx.fillStyle = '#3b82f6';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.5 / fcState.zoom;
+      const portSize = 5 / fcState.zoom;
+
+      for (const p of ports) {
+        const pt = utils.getShapePort(shape, p);
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, portSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      if (isSelected) {
+        const handles = utils.getResizeHandles(shape);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#2563eb';
+        ctx.lineWidth = 1 / fcState.zoom;
+        const s = 12 / fcState.zoom; // Visual size (larger for touch friendliness)
+        for (const h of handles) {
+          ctx.fillRect(h.x - s/2, h.y - s/2, s, s);
+          ctx.strokeRect(h.x - s/2, h.y - s/2, s, s);
+        }
       }
     }
     ctx.restore();
@@ -280,6 +297,36 @@
       }
     }
     ctx.stroke();
+
+    // Render Label
+    if (arrow.label) {
+      const midIdx = Math.floor(pts.length / 2) - 1;
+      const p1 = pts[midIdx];
+      const p2 = pts[midIdx + 1];
+      const labelX = (p1.x + p2.x) / 2;
+      const labelY = (p1.y + p2.y) / 2;
+
+      ctx.save();
+      ctx.font = 'bold 12px sans-serif';
+      const metrics = ctx.measureText(arrow.label);
+      const padding = 4;
+      const bgW = metrics.width + padding * 2;
+      const bgH = 18;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(labelX - bgW / 2, labelY - bgH / 2, bgW, bgH, 4);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#475569';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(arrow.label, labelX, labelY);
+      ctx.restore();
+    }
 
     // Arrowhead logic
     let last, secondLast;

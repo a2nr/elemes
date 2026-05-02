@@ -43,12 +43,10 @@ export function applyAutoLayout(shapes: Shape[], arrows: Arrow[]): { shapes: Sha
     }
   });
 
-  // For arrows, we let the canvas logic or a simple straight line handle it for now
-  // unless we want to use dagre's edge points.
-  // Straight lines are easier to manage with manual dragging later.
+  // For arrows, use orthogonal routing by default to avoid overlapping with nodes
   arrows.forEach(arrow => {
-    arrow.points = []; // Reset points for straight lines
-    arrow.routing = 'straight';
+    arrow.points = []; 
+    arrow.routing = 'orthogonal';
   });
 
   return { shapes, arrows };

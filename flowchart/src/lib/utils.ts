@@ -123,66 +123,102 @@ export function distToSegment(px: number, py: number, x1: number, y1: number, x2
   return distance(px, py, x1 + t * dx, y1 + t * dy);
 }
 
+export function getShapePort(shape: Shape, port: 'top' | 'bottom' | 'left' | 'right') {
+  const b = getShapeBounds(shape);
+  const hw = b.w / 2, hh = b.h / 2;
+  const cx = b.x + hw, cy = b.y + hh;
+
+  if (shape.type === 'circle') {
+    if (port === 'top') return { x: cx, y: cy - shape.r };
+    if (port === 'bottom') return { x: cx, y: cy + shape.r };
+    if (port === 'left') return { x: cx - shape.r, y: cy };
+    if (port === 'right') return { x: cx + shape.r, y: cy };
+  }
+
+  if (port === 'top') return { x: cx, y: b.y };
+  if (port === 'bottom') return { x: cx, y: b.y + b.h };
+  if (port === 'left') return { x: b.x, y: cy };
+  if (port === 'right') return { x: b.x + b.w, y: cy };
+  
+  return { x: cx, y: cy };
+}
+
 export function getArrowPoints(arrow: Arrow, shapes: Shape[]) {
   const fromShape = shapes.find(s => s.id === arrow.fromId);
   const toShape = shapes.find(s => s.id === arrow.toId);
   
   if (!fromShape || !toShape) return [];
   
-  const fromC = getShapeCenter(fromShape);
-  const toC = getShapeCenter(toShape);
-  
   const hasPoints = arrow.points && arrow.points.length > 0;
   
-  const firstTarget = hasPoints ? arrow.points[0] : toC;
-  const lastTarget = hasPoints ? arrow.points[arrow.points.length - 1] : fromC;
-  
-  const fromBorder = getShapeBorderPoint(fromShape, firstTarget.x, firstTarget.y);
-  const toBorder = getShapeBorderPoint(toShape, lastTarget.x, lastTarget.y);
-  
-  const pts = [{ x: fromBorder.x, y: fromBorder.y }];
-  
-  if (arrow.routing === 'orthogonal') {
-    if (hasPoints) {
-      // If manual points exist, make each segment orthogonal
-      let curr = fromBorder;
-      for (const p of arrow.points) {
-        // Add a midpoint to make it orthogonal
-        if (Math.abs(p.x - curr.x) > Math.abs(p.y - curr.y)) {
-          pts.push({ x: p.x, y: curr.y });
-        } else {
-          pts.push({ x: curr.x, y: p.y });
-        }
-        pts.push(p);
-        curr = p;
-      }
-      // Final segment to toBorder
-      if (Math.abs(toBorder.x - curr.x) > Math.abs(toBorder.y - curr.y)) {
-        pts.push({ x: toBorder.x, y: curr.y });
-      } else {
-        pts.push({ x: curr.x, y: toBorder.y });
-      }
-    } else {
-      // Auto orthogonal (3-segments usually looks best)
-      const midX = (fromBorder.x + toBorder.x) / 2;
-      const midY = (fromBorder.y + toBorder.y) / 2;
-      
-      // Decide based on whether shapes are more horizontal or vertical to each other
-      if (Math.abs(fromBorder.x - toBorder.x) > Math.abs(fromBorder.y - toBorder.y)) {
-        pts.push({ x: midX, y: fromBorder.y });
-        pts.push({ x: midX, y: toBorder.y });
-      } else {
-        pts.push({ x: fromBorder.x, y: midY });
-        pts.push({ x: toBorder.x, y: midY });
-      }
+  // Smart Ports selection
+  let fromPort: 'top' | 'bottom' | 'left' | 'right' = 'bottom';
+  let toPort: 'top' | 'bottom' | 'left' | 'right' = 'top';
+
+  if (hasPoints) {
+    const pStart = arrow.points[0];
+    const outputPorts: ('bottom' | 'left' | 'right')[] = ['bottom', 'left', 'right'];
+    let minDist = Infinity;
+    for(const prt of outputPorts) {
+      const pt = getShapePort(fromShape, prt);
+      const d = distance(pStart.x, pStart.y, pt.x, pt.y);
+      if (d < minDist) { minDist = d; fromPort = prt; }
     }
-  } else {
-    if (hasPoints) {
-      pts.push(...arrow.points);
+    const pEnd = arrow.points[arrow.points.length - 1];
+    const inputPorts: ('top' | 'left' | 'right')[] = ['top', 'left', 'right'];
+    minDist = Infinity;
+    for(const prt of inputPorts) {
+      const pt = getShapePort(toShape, prt);
+      const d = distance(pEnd.x, pEnd.y, pt.x, pt.y);
+      if (d < minDist) { minDist = d; toPort = prt; }
+    }
+  } else if (fromShape.type === 'diamond') {
+    const label = (arrow.label || '').toLowerCase();
+    if (label.includes('tidak') || label.includes('no') || label.includes('false')) {
+      fromPort = (toShape.x < fromShape.x) ? 'left' : 'right';
+    } else if (Math.abs(toShape.x - fromShape.x) > Math.abs(toShape.y - fromShape.y)) {
+      fromPort = (toShape.x < fromShape.x) ? 'left' : 'right';
+    }
+  }
+
+  const p1 = getShapePort(fromShape, fromPort);
+  const p2 = getShapePort(toShape, toPort);
+  const pts = [p1];
+
+  if (hasPoints) {
+    pts.push(...arrow.points);
+  } else if (arrow.routing === 'orthogonal') {
+    const midY = (p1.y + p2.y) / 2;
+
+    if (fromPort === 'bottom' && p1.y < p2.y - 40) {
+      pts.push({ x: p1.x, y: midY });
+      pts.push({ x: p2.x, y: midY });
+    } else if (fromPort === 'bottom' && p1.y >= p2.y - 40) {
+      let minX = p1.x - 50;
+      let maxX = p1.x + 50;
+      shapes.forEach(s => {
+        const b = getShapeBounds(s);
+        if (b.x < minX) minX = b.x;
+        if (b.x + b.w > maxX) maxX = b.x + b.w;
+      });
+      const bypassX = minX - 60; // Route outside the leftmost node
+      pts.push({ x: p1.x, y: p1.y + 20 });
+      pts.push({ x: bypassX, y: p1.y + 20 });
+      pts.push({ x: bypassX, y: p2.y - 20 });
+      pts.push({ x: p2.x, y: p2.y - 20 });
+    } else if (fromPort === 'right' || fromPort === 'left') {
+      const exitDist = 40;
+      const exitX = fromPort === 'right' ? p1.x + exitDist : p1.x - exitDist;
+      pts.push({ x: exitX, y: p1.y });
+      pts.push({ x: exitX, y: p2.y - 20 });
+      pts.push({ x: p2.x, y: p2.y - 20 });
+    } else {
+      pts.push({ x: p1.x, y: midY });
+      pts.push({ x: p2.x, y: midY });
     }
   }
   
-  pts.push({ x: toBorder.x, y: toBorder.y });
+  pts.push(p2);
   return pts;
 }
 
