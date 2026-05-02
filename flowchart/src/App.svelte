@@ -18,6 +18,9 @@
     if (params.get('iframe') === 'true') {
       fcState.isIframeMode = true;
     }
+    if (params.get('readonly') === 'true') {
+      fcState.isReadonly = true;
+    }
     
     // Listen to messages from parent window
     window.addEventListener('message', (event) => {
@@ -72,9 +75,14 @@
 
 <main>
   <Icons />
+  {#if !fcState.isReadonly}
   <Topbar />
   <Toolbar />
+  {/if}
+  
   <Canvas />
+  
+  {#if !fcState.isReadonly}
   <Properties />
   
   <div id="zoom-controls">
@@ -89,6 +97,7 @@
       <svg><use href="#icon-fit"/></svg>
     </button>
   </div>
+  {/if}
 </main>
 
 <style>

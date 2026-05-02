@@ -34,6 +34,7 @@ export class FlowchartState {
   panY = $state<number>(0);
   
   isIframeMode = $state<boolean>(false);
+  isReadonly = $state<boolean>(false);
   initialData = $state<any>(null);
   
   isDragging = $state<boolean>(false);

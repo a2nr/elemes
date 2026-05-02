@@ -241,6 +241,42 @@ def _process_circuit_embeds(text):
     return pattern.sub(_replacer, text)
 
 
+def _process_flowchart_embeds(text):
+    """Replace ```flowchart[,width][,height] code fences with embeddable HTML divs.
+
+    Supported formats:
+        ```flowchart          -> width=100%, height=400px
+        ```flowchart,500px    -> width=100%, height=500px
+        ```flowchart,80%,500px -> width=80%, height=500px
+    """
+    pattern = re.compile(
+        r'```flowchart(?:,([^\s,`]+))?(?:,([^\s,`]+))?\s*\n(.*?)```',
+        re.DOTALL,
+    )
+
+    def _replacer(match):
+        param1 = match.group(1)
+        param2 = match.group(2)
+        # One param = height only; two params = width, height
+        if param1 and param2:
+            width, height = param1, param2
+        elif param1:
+            width, height = '100%', param1
+        else:
+            width, height = '100%', '400px'
+        data = html_module.escape(match.group(3).strip())
+        return (
+            f'<div class="flowchart-embed" '
+            f'data-width="{html_module.escape(width)}" '
+            f'data-height="{html_module.escape(height)}">'
+            f'<pre class="flowchart-data" style="display:none">{data}</pre>'
+            f'<div class="flowchart-embed-loading">Memuat flowchart...</div>'
+            f'</div>'
+        )
+
+    return pattern.sub(_replacer, text)
+
+
 def _extract_section(content, start_marker, end_marker):
     """Extract text between markers and return (extracted, remaining_content)."""
     if start_marker not in content or end_marker not in content:
@@ -379,12 +415,15 @@ def render_markdown_content(file_path):
     lesson_content = parts[0] if parts else lesson_content
     exercise_content = parts[1] if len(parts) > 1 else ""
 
-    # Convert ```circuit fences to embed divs before markdown rendering
+    # Convert ```circuit and ```flowchart fences to embed divs before markdown rendering
     lesson_content = _process_circuit_embeds(lesson_content)
+    lesson_content = _process_flowchart_embeds(lesson_content)
     if exercise_content:
         exercise_content = _process_circuit_embeds(exercise_content)
+        exercise_content = _process_flowchart_embeds(exercise_content)
     if lesson_info:
         lesson_info = _process_circuit_embeds(lesson_info)
+        lesson_info = _process_flowchart_embeds(lesson_info)
 
     lesson_html = md.markdown(lesson_content, extensions=MD_EXTENSIONS)
     exercise_html = md.markdown(exercise_content, extensions=MD_EXTENSIONS) if exercise_content else ""

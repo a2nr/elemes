@@ -26,6 +26,7 @@
 	import { highlightAllCode } from '$actions/highlightCode';
 	import { setupTryButtons } from '$actions/setupTryButtons';
 	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
+	import { renderFlowchartEmbeds } from '$actions/renderFlowchartEmbeds';
 	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
 	import { tick, untrack } from 'svelte';
 	import type { LessonContent } from '$types/lesson';
@@ -295,12 +296,14 @@
 					setupTryButtons(contentEl, handleTryCode);
 					highlightAllCode(contentEl);
 					renderCircuitEmbeds(contentEl);
+					renderFlowchartEmbeds(contentEl);
 					autoRenderMath(contentEl);
 				}
 				if (tabsEl) {
 					setupTryButtons(tabsEl, handleTryCode);
 					highlightAllCode(tabsEl);
 					renderCircuitEmbeds(tabsEl);
+					renderFlowchartEmbeds(tabsEl);
 					autoRenderMath(tabsEl);
 				}
 			});
