@@ -53,6 +53,9 @@ def track_progress():
 def api_progress_report():
     """Return progress report data as JSON."""
     token = request.args.get('token', '').strip()
+    if not token:
+        token = request.cookies.get('student_token', '').strip()
+
     if not token or not validate_token(token):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 
@@ -70,6 +73,9 @@ def api_progress_report():
 def export_progress_csv():
     """Export the progress report as CSV."""
     token = request.args.get('token', '').strip()
+    if not token:
+        token = request.cookies.get('student_token', '').strip()
+
     if not token or not validate_token(token):
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
 

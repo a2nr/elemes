@@ -25,7 +25,6 @@ def login():
         token = (data.get('token') or '').strip()
 
         if not token:
-            time.sleep(1.5)  # Tarpitting for empty tokens
             return jsonify({'success': False, 'message': 'Token is required'})
 
         student_info = validate_token(token)
@@ -42,7 +41,6 @@ def login():
             )
             return response
         else:
-            time.sleep(1.5)  # Tarpitting for invalid tokens
             return jsonify({'success': False, 'message': 'Invalid token'})
 
     except Exception as e:
