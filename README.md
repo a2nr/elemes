@@ -159,19 +159,30 @@ printf
 |------|--------|
 | `---LESSON_INFO---` | Info pelajaran: tujuan & prasyarat |
 | `---EXERCISE---` | Deskripsi latihan soal |
-| `---INITIAL_CODE---` | Kode awal yang muncul di editor siswa |
-| `---EXPECTED_OUTPUT---` | Output yang diharapkan untuk validasi jawaban |
+| `---INITIAL_CODE---` | Kode awal C yang muncul di editor siswa |
+| `---INITIAL_PYTHON---` | Kode awal Python yang muncul di editor siswa |
+| `---INITIAL_CIRCUIT---` | Rangkaian awal Falstad CircuitJS |
+| `---INITIAL_QUIZ---` | Data quiz (format JSON) |
+| `---EXPECTED_OUTPUT---` | Output yang diharapkan untuk C (stdout) |
+| `---EXPECTED_OUTPUT_PYTHON---` | Output yang diharapkan untuk Python (stdout) |
 | `---KEY_TEXT---` | Kata kunci yang harus ada di kode siswa |
+
+#### Fitur Tombol "Coba" (Code Try-out)
+
+LMS menyediakan fitur tombol **"Coba ▶"** pada blok kode di dalam materi pelajaran.
+
+- Tombol **hanya muncul** jika instruktur memberikan label bahasa pada *code fence* (contoh: ` ```c `, ` ```python `, ` ```arduino `).
+- Klik tombol akan menyalin kode ke editor dan beralih ke tab yang relevan.
 
 #### Blok Khusus Circuit (Opsional)
 
-Untuk materi yang melibatkan simulator rangkaian elektronika:
+Untuk materi yang melibatkan simulator rangkaian elektronika Falstad:
 
 | Blok | Fungsi |
 |------|--------|
-| `` ```circuit `` | Rangkaian yang ditampilkan di materi |
+| `` ```circuit `` | Rangkaian yang ditampilkan di materi (embed) |
 | `---INITIAL_CIRCUIT---` | Rangkaian awal untuk latihan |
-| `---EXPECTED_CIRCUIT_OUTPUT---` | Validasi rangkaian (format JSON) |
+| `---EXPECTED_CIRCUIT_OUTPUT---` | Validasi rangkaian (format JSON: node voltage) |
 | `---KEY_TEXT_CIRCUIT---` | Kata kunci rangkaian |
 
 #### Blok Khusus Arduino/Velxio
@@ -256,7 +267,26 @@ Sistem mengevaluasi 3 aspek (semua harus lulus):
 2. **Serial Output** — baris yang diharapkan harus muncul dalam urutan (subsequence match)
 3. **Wiring** — koneksi yang diharapkan harus ada (lenient: extra wires OK, GND.1/GND.2 dinormalisasi)
 
-### 5. Generate Token Siswa
+#### Blok Khusus Flowchart (Opsional)
+
+Untuk materi logika pemrograman menggunakan flowchart:
+
+| Blok | Fungsi |
+|------|--------|
+| `` ```flowchart `` | Flowchart yang ditampilkan di materi (embed) |
+| `---INITIAL_FLOWCHART---` | Struktur flowchart awal untuk latihan |
+| `---EXPECTED_FLOWCHART---` | Validasi struktur flowchart (JSON) |
+
+### 5. Keamanan & Akses Anonim
+
+Sistem dilengkapi fitur keamanan untuk menjaga stabilitas:
+
+- **Akses Anonim**: Siswa tanpa token tetap bisa mencoba materi, namun dibatasi **1 kali kompilasi setiap 2 menit**.
+- **Login Token**: Siswa yang login dengan token **bebas** dari batasan rate limit kompilasi.
+- **Proteksi Login**: Percobaan login salah akan ditahan (**tarpitting**) selama 1.5 detik untuk mencegah brute-force.
+- **Anti Copy-Paste**: Mencegah siswa menyalin konten materi atau menempel kode dari luar (bisa dikonfigurasi).
+
+### 6. Generate Token Siswa
 
 Setelah materi siap, generate file `tokens_siswa.csv`:
 
@@ -282,7 +312,7 @@ TOKEN_SISWA_002;Siti Aminah;not_started;not_started;not_started
 > - File ini bisa diedit menggunakan spreadsheet (LibreOffice Calc, Excel).
 >   Saat membuka di Excel/Calc, pilih delimiter **titik koma**.
 
-### 6. (Opsional) Tambahkan Gambar
+### 7. (Opsional) Tambahkan Gambar
 
 Letakkan gambar di folder `assets/` di parent folder.
 Referensi di materi menggunakan:
@@ -291,7 +321,7 @@ Referensi di materi menggunakan:
 ![deskripsi](assets/nama_gambar.png)
 ```
 
-### 7. Jalankan LMS
+### 8. Jalankan LMS
 
 ```bash
 cd elemes

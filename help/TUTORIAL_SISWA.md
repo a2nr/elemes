@@ -55,7 +55,16 @@ Di tab **C** atau **Python**, kamu bisa langsung menulis kode.
 
 ---
 
-## 5. Simulasi CircuitJS
+## 5. Fitur "Coba ▶" (Code Try-out)
+Di dalam materi pelajaran, kamu mungkin melihat blok kode dengan tombol **"Coba ▶"** di pojok kanan atasnya.
+- Klik tombol tersebut untuk menyalin kode contoh langsung ke editor Workspace.
+- Kamu bisa langsung meninjau kode tersebut dan menekan **"Run"** untuk melihat hasilnya tanpa harus mengetik ulang.
+
+![Fitur Coba Kode](/api/help/asset/tutorial_5_coba.png)
+
+---
+
+## 6. Simulasi CircuitJS
 Untuk materi elektronika, kamu bisa menggunakan simulator **CircuitJS**.
 - Pilih tab **"Circuit"**.
 - Kamu bisa melihat simulasi aliran arus secara *real-time*.
@@ -65,23 +74,36 @@ Untuk materi elektronika, kamu bisa menggunakan simulator **CircuitJS**.
 
 ---
 
-## 6. Simulasi Velxio (Arduino)
+## 7. Simulasi Velxio (Arduino)
 Untuk materi Arduino, platform ini menyediakan simulator **Velxio**.
 - Pilih tab **"Arduino"**.
 - Tulis kode `.ino` kamu di sisi kiri editor.
 - Klik tombol **"Run"** (ikon petir/play) untuk mengunggah kode ke Arduino virtual.
 - Perhatikan komponen di sisi kanan (seperti LED) yang akan bereaksi sesuai kodemu.
 
+### Undo & Redo Wiring
+Jika kamu melakukan kesalahan saat memasang kabel (wiring):
+- Gunakan tombol **Panah Melengkung Ke Kiri** (Undo) untuk membatalkan langkah terakhir.
+- Gunakan tombol **Panah Melengkung Ke Kanan** (Redo) untuk mengembalikan langkah yang dibatalkan.
+- Kamu juga bisa menggunakan shortcut keyboard `Ctrl+Z` (Undo) dan `Ctrl+Shift+Z` (Redo).
+
 ![Simulator Velxio](/api/help/asset/tutorial_8_velxio_workspace.png)
 
 ---
 
-## 7. Memantau Keberhasilan Exercise
+## 8. Memantau Keberhasilan Exercise
 Platform ini akan otomatis mendeteksi jika kamu telah berhasil menyelesaikan tugas.
 - Jika tugas selesai, akan muncul tanda centang hijau (**✓ Selesai**) di samping judul materi.
 - Kamu juga bisa melihat status penyelesaian di halaman Home (Dashboard) pada setiap kartu materi.
 
 ![Status Selesai](/api/help/asset/tutorial_9_progress.png)
+
+---
+
+## 9. Penting: Gunakan Token Kamu
+Jika kamu belum masuk menggunakan token (akses anonim):
+- Kamu hanya bisa menjalankan kode (**Run**) sekali setiap **2 menit**.
+- Jika kamu masuk menggunakan token, kamu bisa menjalankan kode sepuasnya tanpa batasan waktu.
 
 ---
 *Selamat belajar dan selamat bereksperimen!*
