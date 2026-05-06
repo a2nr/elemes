@@ -398,36 +398,35 @@ class ElemesStudent(HttpUser):
             )  
             time.sleep(0.5)
 
-        # 3. Track progress
-        with self.client.post(
-            f'{API}/track-progress',
-            json={
-                'token': self.token,
-                'lesson_name': slug,
-                'status': 'completed'
-            },
-            name='/track-progress',
-            catch_response=True
-        ) as resp:
-            data = safe_json(resp)
-            if not data.get('success'):
-                # Include exact error message from server to help debugging
-                error_msg = data.get('message', f'HTTP {resp.status_code}')
-                resp.failure(f"Track progress failed for '{slug}': {error_msg}")
+        # 3. Track progress (Removed Teacher-POST work-around per user request)
+        # We will let the API progress test handle the data reporting instead.
+        pass
 
-    # ── Task 7: Progress Report (weight=1) ─────────────────────────────
+    # ── Task 7: View Progress Page (UI) (weight=1) ─────────────────────
 
     @task(1)
-    def view_progress_report(self):
-        """Fetch progress report (teacher perspective)."""
+    def view_progress_page(self):
+        """Simulate teacher landing on the progress report page (HTML)."""
         if not TEACHER_TOKEN:
             return
 
-        # Login as teacher
+        with self.client.get('/progress', name='Progress Page (UI)', catch_response=True) as resp:
+            if resp.status_code != 200:
+                resp.failure(f"Failed to load Progress Page: HTTP {resp.status_code}")
+
+    # ── Task 8: Progress API Report (JSON) (weight=2) ──────────────────
+
+    @task(2)
+    def view_progress_api(self):
+        """Fetch actual progress data JSON (Teacher perspective)."""
+        if not TEACHER_TOKEN:
+            return
+
+        # Login as teacher to get the JSON
         self.client.post(
             f'{API}/login',
             json={'token': TEACHER_TOKEN},
-            name='/login [teacher]'
+            name='/login [teacher-api]'
         )
 
         with self.client.get(
@@ -436,17 +435,16 @@ class ElemesStudent(HttpUser):
             catch_response=True
         ) as resp:
             data = safe_json(resp)
-            students = data.get('students', [])
-            lessons = data.get('lessons', [])
+            if resp.status_code != 200:
+                resp.failure(f"Progress API failed: {data.get('message', f'HTTP {resp.status_code}')}")
+            elif not data.get('students'):
+                resp.failure("Progress API returned empty student list")
 
-            if not lessons:
-                resp.failure("No lessons in progress report")
-
-        # Re-login as student for subsequent tasks
+        # Re-login as student
         self.client.post(
             f'{API}/login',
             json={'token': self.token},
-            name='/login [re-auth]'
+            name='/login [re-auth-api]'
         )
 
 
