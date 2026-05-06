@@ -139,7 +139,7 @@ def get_ordered_slugs(content_dir: str) -> list[str]:
     if len(parts) <= 1:
         return []
 
-    links = re.findall(r'\[([^\]]+)\]\((?:lesson/)?([^\)]+)\)', parts[1])
+    links = re.findall(r'\[([^\]]+)\]\((?:\/?lesson\/)?([^\)]+)\)', parts[1])
     return [fn.replace('.md', '') for _, fn in links]
 
 

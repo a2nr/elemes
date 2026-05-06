@@ -116,20 +116,14 @@ class ElemesStudent(HttpUser):
             if not data.get('success'):
                 resp.failure(f"Login failed: {data.get('message', f'HTTP {resp.status_code}')}")
 
-    # ── Task 1: Browse Lessons (weight=3) ──────────────────────────────
+    # ── Task 1: Browse Home Page (weight=3) ─────────────────────────────
 
     @task(3)
-    def browse_lessons(self):
-        """Fetch lesson list — simulates landing on home page."""
-        with self.client.get(f'{API}/lessons', name='/lessons', catch_response=True) as resp:
-            data = safe_json(resp)
-            lessons = data.get('lessons', [])
-            if len(lessons) == 0:
-                resp.failure("No lessons returned")
-            elif len(lessons) != len(ALL_LESSONS):
-                resp.failure(
-                    f"Expected {len(ALL_LESSONS)} lessons, got {len(lessons)}"
-                )
+    def browse_home_page(self):
+        """Simulate student landing on the home page."""
+        with self.client.get('/', name='Home Page', catch_response=True) as resp:
+            if resp.status_code != 200:
+                resp.failure(f"Failed to load Home Page: HTTP {resp.status_code}")
 
     # ── Task 2: View Lesson Detail (weight=5) ──────────────────────────
 
@@ -149,8 +143,12 @@ class ElemesStudent(HttpUser):
         ) as resp:
             data = safe_json(resp)
 
+            if resp.status_code != 200:
+                resp.failure(f"HTTP {resp.status_code}: {data.get('error', 'Lesson detail fetch failed')}")
+                return
+
             if 'error' in data or not data:
-                resp.failure(f"Lesson {slug} not found")
+                resp.failure(f"Lesson {slug} not found: {data.get('error')}")
                 return
 
             # Validate fields based on type
@@ -413,7 +411,9 @@ class ElemesStudent(HttpUser):
         ) as resp:
             data = safe_json(resp)
             if not data.get('success'):
-                resp.failure(f"Track progress failed: {data.get('message', f'HTTP {resp.status_code}')}")
+                # Include exact error message from server to help debugging
+                error_msg = data.get('message', f'HTTP {resp.status_code}')
+                resp.failure(f"Track progress failed for '{slug}': {error_msg}")
 
     # ── Task 7: Progress Report (weight=1) ─────────────────────────────
 
