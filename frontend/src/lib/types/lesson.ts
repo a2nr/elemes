@@ -3,6 +3,8 @@ export interface Lesson {
 	title: string;
 	description: string;
 	completed: boolean;
+	prerequisites?: string[];
+	locked?: boolean;
 }
 
 export interface LessonContent {
@@ -29,6 +31,9 @@ export interface LessonContent {
 	key_text: string;
 	lesson_title: string;
 	lesson_completed: boolean;
+	locked?: boolean;
+	error?: string;
+	missing_prerequisites?: string[];
 	prev_lesson: Lesson | null;
 	next_lesson: Lesson | null;
 	ordered_lessons: Lesson[];

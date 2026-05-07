@@ -29,6 +29,18 @@ def api_lessons():
         progress = get_student_progress(token)
 
     lessons = get_ordered_lessons_with_learning_objectives(progress)
+    
+    # Calculate locked status
+    for lesson in lessons:
+        prereqs = lesson.get('prerequisites', [])
+        is_locked = False
+        if prereqs:
+            for p_slug in prereqs:
+                if not progress or progress.get(p_slug) != 'completed':
+                    is_locked = True
+                    break
+        lesson['locked'] = is_locked
+
     home_content = render_home_content()
 
     return jsonify({
@@ -103,10 +115,22 @@ def api_lesson(filename):
     all_lessons = get_ordered_lessons_with_learning_objectives(progress)
 
     current_idx = -1
+    current_lesson_meta = None
     for i, les in enumerate(all_lessons):
         if les['filename'] == full_filename:
             current_idx = i
+            current_lesson_meta = les
             break
+
+    # Prerequisite check
+    is_locked = False
+    missing_prereqs = []
+    if current_lesson_meta:
+        prereqs = current_lesson_meta.get('prerequisites', [])
+        for p_slug in prereqs:
+            if not progress or progress.get(p_slug) != 'completed':
+                is_locked = True
+                missing_prereqs.append(p_slug)
 
     prev_lesson = all_lessons[current_idx - 1] if current_idx > 0 else None
     next_lesson = all_lessons[current_idx + 1] if 0 <= current_idx < len(all_lessons) - 1 else None
@@ -117,6 +141,30 @@ def api_lesson(filename):
     else:
         programming_language = 'c'
     language_display_name = compiler_factory.get_language_display_name(programming_language)
+
+    if is_locked:
+        # Strip sensitive data to prevent inspection bypass
+        exercise_html = ""
+        expected_output = ""
+        expected_output_python = ""
+        expected_circuit_output = ""
+        initial_code = "// Konten terkunci. Selesaikan prasyarat untuk melihat."
+        initial_circuit = ""
+        initial_code_c = ""
+        initial_python = ""
+        initial_flowchart = None
+        initial_quiz = ""
+        initial_code_arduino = ""
+        velxio_circuit = ""
+        expected_serial_output = ""
+        expected_wiring = ""
+        expected_flowchart = ""
+        solution_code = ""
+        solution_circuit = ""
+        solution_python = ""
+        key_text = ""
+        key_text_circuit = ""
+        # Keep lesson_html, lesson_info, etc. for reading
 
     return jsonify({
         'lesson_content': lesson_html,
@@ -145,6 +193,8 @@ def api_lesson(filename):
         'active_tabs': active_tabs,
         'lesson_title': full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,
+        'locked': is_locked,
+        'missing_prerequisites': missing_prereqs,
         'prev_lesson': prev_lesson,
         'next_lesson': next_lesson,
         'ordered_lessons': all_lessons,

@@ -4,11 +4,13 @@
 	let { lesson }: { lesson: Lesson } = $props();
 </script>
 
-<a href="/lesson/{lesson.filename}" class="card lesson-card">
+<a href="/lesson/{lesson.filename}" class="card lesson-card" class:is-locked={lesson.locked}>
 	<div class="card-body">
 		<h3 class="card-title">
 			{#if lesson.completed}
 				<span class="badge-done" title="Selesai">&#10003;</span>
+			{:else if lesson.locked}
+				<span class="badge-locked" title="Terkunci">&#128274;</span>
 			{/if}
 			{lesson.title}
 		</h3>
@@ -27,6 +29,12 @@
 		transform: translateY(-2px);
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 		text-decoration: none;
+	}
+	.lesson-card.is-locked {
+		background-color: var(--color-bg-muted);
+	}
+	.lesson-card.is-locked .card-title {
+		color: var(--color-text-muted);
 	}
 	.card-body {
 		padding: 1.25rem;
@@ -55,5 +63,18 @@
 		border-radius: 50%;
 		font-size: 0.75rem;
 		flex-shrink: 0;
+	}
+	.badge-locked {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		background: var(--color-border);
+		color: var(--color-text-muted);
+		border-radius: 50%;
+		font-size: 0.7rem;
+		flex-shrink: 0;
+		line-height: 1;
 	}
 </style>

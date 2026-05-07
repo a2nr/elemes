@@ -118,10 +118,12 @@ def get_lessons_with_learning_objectives():
 
         lesson_info_start = content.find('---LESSON_INFO---')
         lesson_info_end = content.find('---END_LESSON_INFO---')
+        prerequisite_titles = []
 
         if lesson_info_start != -1 and lesson_info_end != -1:
             lesson_info_section = content[lesson_info_start + len('---LESSON_INFO---'):lesson_info_end]
 
+            # Extract Learning Objectives
             objectives_start = lesson_info_section.find('**Learning Objectives:**')
             if objectives_start != -1:
                 objectives_section = lesson_info_section[objectives_start:]
@@ -131,6 +133,23 @@ def get_lessons_with_learning_objectives():
                 else:
                     lines_after = lesson_info_section[objectives_start:].split('\n')[1:4]
                     description = ' '.join(line.strip() for line in lines_after if line.strip())
+
+            # Extract Prerequisites
+            prereq_start = lesson_info_section.find('**Prerequisites:**')
+            if prereq_start != -1:
+                prereq_section = lesson_info_section[prereq_start + len('**Prerequisites:**'):]
+                # Look for bullet points
+                prerequisite_titles = re.findall(r'- ([^\n]+)', prereq_section)
+                if not prerequisite_titles:
+                    # Fallback to lines until next bold or end
+                    next_bold = prereq_section.find('**')
+                    if next_bold != -1:
+                        prereq_section = prereq_section[:next_bold]
+                    prerequisite_titles = [l.strip() for l in prereq_section.split('\n') if l.strip()]
+                
+                # Filter out "None" or "Tidak ada"
+                prerequisite_titles = [t.strip() for t in prerequisite_titles 
+                                      if t.strip().lower() not in ('tidak ada', 'none', '-', '')]
 
             content_after_info = content[lesson_info_end + len('---END_LESSON_INFO---'):].strip()
             for line in content_after_info.split('\n'):
@@ -150,6 +169,7 @@ def get_lessons_with_learning_objectives():
             'title': title,
             'description': description,
             'path': file_path,
+            'prerequisite_titles': prerequisite_titles,
         })
 
     return lessons
@@ -162,12 +182,22 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
 
     all_lessons = get_lessons_with_learning_objectives()
 
-    def _add_completion(lesson, progress):
+    # Build title -> slug mapping for prerequisite resolution
+    title_to_slug = {lesson['title']: lesson['filename'].replace('.md', '') for lesson in all_lessons}
+    # Also map link text from home.md
+    for link_text, filename in lesson_links:
+        title_to_slug[link_text] = filename.replace('.md', '')
+
+    def _add_completion_and_prereqs(lesson, progress):
+        slug = lesson['filename'].replace('.md', '')
         if progress:
-            lesson_key = lesson['filename'].replace('.md', '')
-            lesson['completed'] = progress.get(lesson_key) == 'completed'
+            lesson['completed'] = progress.get(slug) == 'completed'
         else:
             lesson['completed'] = False
+        
+        # Resolve prerequisite titles to slugs
+        titles = lesson.get('prerequisite_titles', [])
+        lesson['prerequisites'] = [title_to_slug[t] for t in titles if t in title_to_slug]
         return lesson
 
     if lesson_links:
@@ -177,7 +207,7 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
                 if lesson['filename'] == filename:
                     copy = lesson.copy()
                     copy['title'] = link_text
-                    _add_completion(copy, progress)
+                    _add_completion_and_prereqs(copy, progress)
                     ordered.append(copy)
                     break
 
@@ -185,7 +215,7 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
         for lesson in all_lessons:
             if lesson['filename'] not in seen:
                 copy = lesson.copy()
-                _add_completion(copy, progress)
+                _add_completion_and_prereqs(copy, progress)
                 ordered.append(copy)
 
         return ordered
@@ -193,7 +223,7 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
     ordered_fallback = []
     for lesson in all_lessons:
         copy = lesson.copy()
-        _add_completion(copy, progress)
+        _add_completion_and_prereqs(copy, progress)
         ordered_fallback.append(copy)
     return ordered_fallback
 

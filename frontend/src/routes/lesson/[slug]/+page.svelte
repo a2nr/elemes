@@ -113,6 +113,20 @@
 		}
 	});
 
+	// Force docked mode if lesson is locked
+	$effect(() => {
+		if (data?.locked && float.floating) {
+			float.floating = false;
+			float.minimized = false;
+		}
+	});
+
+	// Helper to find lesson title by slug
+	function getLessonTitle(slug: string) {
+		const lesson = data?.ordered_lessons?.find(l => l.filename.replace('.md', '') === slug);
+		return lesson?.title || slug.replace(/_/g, ' ').toUpperCase();
+	}
+
 	// Derived: is this a hybrid lesson (has both code and circuit)?
 	let isHybrid = $derived(
 		(data?.active_tabs?.includes('c') || data?.active_tabs?.includes('python')) &&
@@ -634,6 +648,24 @@
 			oncopy={(e) => e.preventDefault()}
 			oncut={(e) => e.preventDefault()}
 			oncontextmenu={(e) => e.preventDefault()}>
+			
+			{#if data.locked}
+				<div class="locked-banner">
+					<span class="locked-banner-icon">&#128274;</span>
+					<div>
+						<strong>Pelajaran ini terkunci.</strong> Kamu dapat membaca materinya, namun workspace (editor) dinonaktifkan hingga prasyarat selesai.
+						{#if data.missing_prerequisites && data.missing_prerequisites.length > 0}
+							<div class="missing-list">
+								Belum selesai: 
+								{#each data.missing_prerequisites as p, i}
+									<a href="/lesson/{p}" class="prereq-link">{getLessonTitle(p)}</a>{i < data.missing_prerequisites.length - 1 ? ', ' : ''}
+								{/each}
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
 			<div class="prose">{@html data.lesson_content}</div>
 
 			<LessonList lessons={data.ordered_lessons ?? []} currentSlug={slug} />
@@ -656,6 +688,7 @@
 			class:mobile-hidden={isMobile && mobileMode === 'hidden'}
 			class:mobile-half={isMobile && mobileMode === 'half'}
 			class:mobile-full={isMobile && mobileMode === 'full'}
+			class:editor-locked={data.locked}
 			style={float.style}>
 
 			<WorkspaceHeader
@@ -672,10 +705,20 @@
 				onResizeStart={float.onResizeStart}
 				onFloatToggle={float.toggle}
 				onMinimize={float.minimize}
+				locked={data.locked}
 			/>
 
 			<!-- Editor body -->
-			<div class="editor-body" bind:this={tabsEl} use:renderMath>
+			<div class="editor-body" bind:this={tabsEl} use:renderMath style="position: relative;">
+				{#if data.locked}
+					<div class="workspace-lock-overlay">
+						<div class="lock-overlay-content">
+							<div class="lock-overlay-icon">&#128274;</div>
+							<h3>Workspace Terkunci</h3>
+							<p>Selesaikan materi sebelumnya untuk mulai mengerjakan latihan ini.</p>
+						</div>
+					</div>
+				{/if}
 
 				<!-- Info tab panel -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -784,6 +827,91 @@
 			<CelebrationOverlay visible={showCelebration} />
 		</div>
 	</div>
-
 {/if}
+
+<style>
+	.locked-banner {
+		background: #fff9db;
+		border: 1px solid #fab005;
+		color: #862e00;
+		padding: 1rem;
+		border-radius: 8px;
+		margin-bottom: 2rem;
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		font-size: 0.95rem;
+		line-height: 1.4;
+	}
+	.locked-banner-icon {
+		font-size: 1.25rem;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2rem;
+		height: 2rem;
+		background: rgba(134, 46, 0, 0.1);
+		border-radius: 50%;
+	}
+	.missing-list {
+		font-size: 0.8rem;
+		margin-top: 0.25rem;
+		font-weight: 600;
+	}
+	.prereq-link {
+		color: #862e00;
+		text-decoration: underline;
+		font-weight: 700;
+	}
+	.prereq-link:hover {
+		color: #5c1e00;
+	}
+	.workspace-lock-overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: rgba(255, 255, 255, 0.9);
+		backdrop-filter: blur(4px);
+		z-index: 100;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1.5rem;
+		text-align: center;
+		border-radius: inherit;
+	}
+	.lock-overlay-content {
+		max-width: 280px;
+	}
+	.lock-overlay-content h3 {
+		margin: 0.75rem 0 0.5rem;
+		font-size: 1.1rem;
+		color: var(--color-text);
+	}
+	.lock-overlay-content p {
+		color: var(--color-text-muted);
+		font-size: 0.85rem;
+		line-height: 1.4;
+	}
+	.lock-overlay-icon {
+		font-size: 2.5rem;
+		line-height: 1;
+		margin-bottom: 0.5rem;
+		display: inline-block;
+	}
+	@media (max-width: 600px) {
+		.lock-overlay-icon {
+			font-size: 2rem;
+		}
+		.lock-overlay-content h3 {
+			font-size: 1rem;
+		}
+	}
+	.editor-locked {
+		overflow: hidden;
+	}
+</style>
 

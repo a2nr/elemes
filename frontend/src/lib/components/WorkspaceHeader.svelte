@@ -15,6 +15,7 @@
 		onResizeStart: (e: MouseEvent) => void;
 		onFloatToggle: () => void;
 		onMinimize: () => void;
+		locked?: boolean;
 	}
 
 	let {
@@ -31,6 +32,7 @@
 		onResizeStart,
 		onFloatToggle,
 		onMinimize,
+		locked = false,
 	}: Props = $props();
 
 	let touchStartY = 0;
@@ -130,7 +132,9 @@
 			{@render chromeTabs()}
 		</div>
 		<div class="panel-actions">
-			<button type="button" class="btn-float-toggle" onclick={onFloatToggle} title="Float editor">&#x229E;</button>
+			{#if !locked}
+				<button type="button" class="btn-float-toggle" onclick={onFloatToggle} title="Float editor">&#x229E;</button>
+			{/if}
 		</div>
 	</div>
 {/if}
