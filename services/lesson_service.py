@@ -307,6 +307,78 @@ def _process_flowchart_embeds(text):
     return pattern.sub(_replacer, text)
 
 
+def _parse_flashcards(text):
+    """Parse a string of markdown with headings and options into a list of dicts.
+    
+    Supports two formats:
+    1. Simple Flashcard: '### Question\nAnswer'
+    2. Multiple Choice (MCQ): 
+       '### Question
+        - [] option 1
+        - [x] option 2 (Correct)
+        - [] option 3
+        > Explanation'
+    """
+    if not text.strip():
+        return []
+        
+    # Split by headings starting with #, ##, or ###
+    parts = re.split(r'^#{1,3}\s+', text, flags=re.MULTILINE)
+    flashcards = []
+    
+    for part in parts:
+        if not part.strip():
+            continue
+            
+        # First line is the question (Front)
+        subparts = part.split('\n', 1)
+        question = subparts[0].strip()
+        body = subparts[1].strip() if len(subparts) > 1 else ""
+        
+        if not question:
+            continue
+
+        # Check for MCQ options: - [ ] or - [x]
+        option_pattern = re.compile(r'^\s*-\s*\[([ xX]?)\]\s*(.*)$', re.MULTILINE)
+        options = option_pattern.findall(body)
+        
+        # Check for explanation (blockquote starting with >)
+        explanation_match = re.search(r'^\s*>\s*(.*)$', body, re.MULTILINE | re.DOTALL)
+        explanation = explanation_match.group(1).strip() if explanation_match else ""
+        
+        # If MCQ options exist, it's an MCQ. We also remove the options from the body to find clean explanation.
+        if options:
+            parsed_options = []
+            for mark, content in options:
+                is_correct = mark.lower() == 'x'
+                parsed_options.append({
+                    'text': md.markdown(content.strip(), extensions=MD_EXTENSIONS),
+                    'is_correct': is_correct
+                })
+            
+            flashcards.append({
+                'type': 'mcq',
+                'question': md.markdown(question, extensions=MD_EXTENSIONS),
+                'options': parsed_options,
+                'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else ""
+            })
+        else:
+            # It's a simple Flashcard
+            # Remove explanation from body if it's there to keep 'back' clean
+            clean_back = body
+            if explanation_match:
+                clean_back = body[:explanation_match.start()].strip()
+                
+            flashcards.append({
+                'type': 'flashcard',
+                'front': md.markdown(question, extensions=MD_EXTENSIONS),
+                'back': md.markdown(clean_back, extensions=MD_EXTENSIONS),
+                'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else ""
+            })
+            
+    return flashcards
+
+
 def _extract_section(content, start_marker, end_marker):
     """Extract text between markers and return (extracted, remaining_content)."""
     if start_marker not in content or end_marker not in content:
@@ -346,12 +418,14 @@ def render_markdown_content(file_path):
         active_tabs.append('flowchart')
     if '---INITIAL_QUIZ---' in lesson_content:
         active_tabs.append('quiz')
+    if '---QUIZ_FLASHCARD---' in lesson_content:
+        active_tabs.append('quiz')
     # Velxio circuit-only: has VELXIO_CIRCUIT but no INITIAL_CODE_ARDUINO
     if '---VELXIO_CIRCUIT---' in lesson_content and 'velxio' not in active_tabs:
         active_tabs.append('velxio')
 
     # Default to 'c' if nothing specified (for backwards compatibility)
-    if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_FLOWCHART---' not in lesson_content and '---INITIAL_QUIZ---' not in lesson_content:
+    if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_FLOWCHART---' not in lesson_content and '---INITIAL_QUIZ---' not in lesson_content and '---QUIZ_FLASHCARD---' not in lesson_content:
         # If it's a completely plain old file, assume it has a code editor available
         if '---EXERCISE---' in lesson_content:
             active_tabs.append('c')
@@ -415,6 +489,10 @@ def render_markdown_content(file_path):
 
     initial_quiz, lesson_content = _extract_section(
         lesson_content, '---INITIAL_QUIZ---', '---END_INITIAL_QUIZ---')
+
+    quiz_flashcard_raw, lesson_content = _extract_section(
+        lesson_content, '---QUIZ_FLASHCARD---', '---END_QUIZ_FLASHCARD---')
+    quiz_data = _parse_flashcards(quiz_flashcard_raw)
 
     # Arduino/Velxio sections
     initial_code_arduino, lesson_content = _extract_section(
@@ -483,6 +561,7 @@ def render_markdown_content(file_path):
         'expected_serial_output': expected_serial_output,
         'expected_wiring': expected_wiring,
         'evaluation_config': evaluation_config,
+        'quiz_data': quiz_data,
         'active_tabs': active_tabs
     }
 

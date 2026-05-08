@@ -72,6 +72,7 @@ def api_lesson(filename):
     solution_python = parsed_data.get('solution_python', '')
     key_text = parsed_data['key_text']
     active_tabs = parsed_data['active_tabs']
+    quiz_data = parsed_data.get('quiz_data', [])
 
     # New specific fields for hybrid lessons
     initial_circuit = parsed_data.get('initial_circuit', '')
@@ -164,6 +165,7 @@ def api_lesson(filename):
         solution_python = ""
         key_text = ""
         key_text_circuit = ""
+        quiz_data = []
         # Keep lesson_html, lesson_info, etc. for reading
 
     return jsonify({
@@ -191,6 +193,7 @@ def api_lesson(filename):
         'key_text': key_text,
         'key_text_circuit': key_text_circuit,
         'active_tabs': active_tabs,
+        'quiz_data': quiz_data,
         'lesson_title': full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,
         'locked': is_locked,

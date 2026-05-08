@@ -41,4 +41,5 @@ export interface LessonContent {
 	language_display_name: string;
 	active_tabs: string[];
 	evaluation_config: Record<string, any>;
+	quiz_data?: Array<{ front: string; back: string }>;
 }

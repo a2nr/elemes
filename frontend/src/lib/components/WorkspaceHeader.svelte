@@ -1,5 +1,5 @@
 <script lang="ts">
-	type TabType = 'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart';
+	type TabType = 'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart' | 'quiz';
 
 	interface Props {
 		isMobile: boolean;
@@ -46,6 +46,7 @@
 	);
 	const hasMultiLang = $derived(hasC && hasPython);
 	const hasCircuit = $derived(activeTabs?.includes('circuit') ?? false);
+	const hasQuiz = $derived(activeTabs?.includes('quiz') ?? false);
 
 	function onSheetTouchStart(e: TouchEvent) {
 		touchStartY = e.touches[0].clientY;
@@ -96,6 +97,9 @@
 	{/if}
 	{#if hasFlowchart}
 		<button class="chrome-tab" class:active={activeTab === 'flowchart'} onclick={() => handleTabClick('flowchart')}>Flowchart</button>
+	{/if}
+	{#if hasQuiz}
+		<button class="chrome-tab" class:active={activeTab === 'quiz'} onclick={() => handleTabClick('quiz')}>Quiz</button>
 	{/if}
 	<button class="chrome-tab" class:active={activeTab === 'output'} onclick={() => handleTabClick('output')}>Output</button>
 {/snippet}
