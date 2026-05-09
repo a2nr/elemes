@@ -191,7 +191,8 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
     def _add_completion_and_prereqs(lesson, progress):
         slug = lesson['filename'].replace('.md', '')
         if progress:
-            lesson['completed'] = progress.get(slug) == 'completed'
+            status = progress.get(slug, '')
+            lesson['completed'] = status not in (None, '', 'not_started')
         else:
             lesson['completed'] = False
         

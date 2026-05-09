@@ -49,6 +49,35 @@ def track_progress():
         return jsonify({'success': False, 'message': f'Error tracking progress: {e}'})
 
 
+@progress_bp.route('/reset-progress', methods=['POST'])
+def reset_progress():
+    """Reset student progress for a lesson (Teacher only)."""
+    try:
+        data = request.get_json()
+        teacher_token = data.get('teacher_token', '').strip()
+        student_token = data.get('student_token', '').strip()
+        lesson_name = data.get('lesson_name', '').strip()
+
+        if not teacher_token or not student_token or not lesson_name:
+            return jsonify({'success': False, 'message': 'All fields are required'}), 400
+
+        # Validate teacher token
+        teacher_info = validate_token(teacher_token)
+        if not teacher_info or not teacher_info.get('is_teacher'):
+            return jsonify({'success': False, 'message': 'Unauthorized (Teacher only)'}), 401
+
+        # Perform reset (set to not_started)
+        updated = update_student_progress(student_token, lesson_name, 'not_started')
+        if updated:
+            return jsonify({'success': True, 'message': 'Progress reset successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to reset progress'})
+
+    except Exception as e:
+        logging.error(f"Error in reset-progress: {e}")
+        return jsonify({'success': False, 'message': f'Error resetting progress: {e}'})
+
+
 @progress_bp.route('/progress-report.json')
 def api_progress_report():
     """Return progress report data as JSON."""

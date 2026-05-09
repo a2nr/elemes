@@ -172,7 +172,8 @@ def calculate_student_completion(student_data, all_lessons):
         else:
             lesson_key = lesson.replace('.md', '')
 
-        if lesson_key in student_data and student_data[lesson_key] == 'completed':
+        status = student_data.get(lesson_key, '')
+        if status and status not in ('not_started', ''):
             completed_count += 1
     return completed_count
 
@@ -204,11 +205,7 @@ def get_all_students_progress(all_lessons_func):
             })
 
     for row in tokens.values():
-        student_data = dict(row)
-        # Don't delete 'token' from the original dict in cache!
-        student_data_copy = student_data.copy()
-        if 'token' in student_data_copy:
-            del student_data_copy['token']
+        student_data_copy = dict(row)
         student_data_copy['completed_count'] = calculate_student_completion(student_data_copy, ordered_lessons)
         all_students_progress.append(student_data_copy)
 

@@ -41,5 +41,6 @@ export interface LessonContent {
 	language_display_name: string;
 	active_tabs: string[];
 	evaluation_config: Record<string, any>;
-	quiz_data?: Array<{ front: string; back: string }>;
+	quiz_data?: Array<{ type: 'flashcard' | 'mcq', front?: string; back?: string; question?: string; options?: any[]; explanation?: string }>;
+	lesson_progress_status?: string;
 }

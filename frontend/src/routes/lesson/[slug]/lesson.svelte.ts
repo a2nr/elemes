@@ -199,12 +199,13 @@ export class LessonManager {
 		});
 	}
 
-	async completeLesson() {
-		if (this.lessonCompleted) return;
+	async completeLesson(status = 'completed') {
+		if (this.lessonCompleted && status === 'completed') return;
 		this.showCelebration = true;
+
 		if (get(authLoggedIn)) {
 			const lessonName = this.slug.replace('.md', '');
-			await trackProgress(get(auth).token, lessonName);
+			await trackProgress(auth.token, lessonName, status);
 			this.lessonCompleted = true;
 			lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
 		}
@@ -298,7 +299,7 @@ export class LessonManager {
 		this.activeTab = 'output';
 		try {
 			const code = (this.currentLanguage === lang) ? (this.editor?.getCode() ?? this.currentCode) : (lang === 'c' ? this.cCode : this.pythonCode);
-			const res = await compileCode({ code, language: lang, token: get(auth).token });
+			const res = await compileCode({ code, language: lang, token: auth.token });
 			if (!res.success) {
 				Object.assign(out, { error: res.error || 'Compilation failed', success: false });
 				return;

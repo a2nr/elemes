@@ -108,10 +108,13 @@ def api_lesson(filename):
     token = request.args.get('token', '') or request.cookies.get('student_token', '')
     progress = None
     lesson_completed = False
+    lesson_progress_status = ''
     if token:
         progress = get_student_progress(token)
-        if progress and full_filename.replace('.md', '') in progress:
-            lesson_completed = progress[full_filename.replace('.md', '')] == 'completed'
+        if progress:
+            status = progress.get(full_filename.replace('.md', ''), '')
+            lesson_progress_status = status
+            lesson_completed = status not in (None, '', 'not_started')
 
     all_lessons = get_ordered_lessons_with_learning_objectives(progress)
 
@@ -194,6 +197,7 @@ def api_lesson(filename):
         'key_text_circuit': key_text_circuit,
         'active_tabs': active_tabs,
         'quiz_data': quiz_data,
+        'lesson_progress_status': lesson_progress_status,
         'lesson_title': full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,
         'locked': is_locked,

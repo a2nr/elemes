@@ -77,3 +77,16 @@ export function trackProgress(
 		customFetch
 	);
 }
+
+export function resetProgress(
+	teacherToken: string,
+	studentToken: string,
+	lessonName: string,
+	customFetch = fetch
+) {
+	return post<{ success: boolean; message: string }>(
+		'/reset-progress',
+		{ teacher_token: teacherToken, student_token: studentToken, lesson_name: lessonName },
+		customFetch
+	);
+}

@@ -18,6 +18,10 @@
 	let loading = $state(true);
 
 	onMount(async () => {
+		await loadData();
+	});
+
+	async function loadData() {
 		if (!$authIsTeacher) {
 			loading = false;
 			return;
@@ -33,7 +37,33 @@
 		} finally {
 			loading = false;
 		}
-	});
+	}
+
+	async function handleReset(studentToken: string, lessonName: string, studentName: string) {
+		if (!window.confirm(`Apakah Anda yakin ingin me-reset progres kuis "${lessonName}" untuk siswa "${studentName}"?`)) {
+			return;
+		}
+
+		try {
+			const res = await fetch('/api/reset-progress', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					teacher_token: auth.token,
+					student_token: studentToken,
+					lesson_name: lessonName
+				})
+			});
+			const data = await res.json();
+			if (data.success) {
+				await loadData();
+			} else {
+				alert('Gagal me-reset: ' + data.message);
+			}
+		} catch (err) {
+			alert('Terjadi kesalahan saat menghubungi server.');
+		}
+	}
 
 	const totalLessons = $derived(lessons.length);
 </script>
@@ -78,11 +108,25 @@
 							{@const key = lesson.filename.replace('.md', '')}
 							{@const status = student[key]}
 							<td class="status-cell">
-								{#if status === 'completed'}
-									<span class="badge done">&#10003;</span>
-								{:else}
-									<span class="badge empty">&mdash;</span>
-								{/if}
+								<div class="cell-content">
+									{#if status === 'completed'}
+										<span class="badge done">&#10003;</span>
+									{:else if status && status !== 'not_started'}
+										<span class="badge score">{status}</span>
+									{:else}
+										<span class="badge empty">&mdash;</span>
+									{/if}
+
+									{#if status && status !== 'not_started'}
+										<button 
+											class="btn-reset-mini" 
+											onclick={() => handleReset(student.token as string, key, student.nama_siswa)}
+											title="Reset Progres"
+										>
+											↻
+										</button>
+									{/if}
+								</div>
 							</td>
 						{/each}
 						<td class="completion-count">
@@ -172,8 +216,35 @@
 		color: var(--color-success);
 		font-weight: bold;
 	}
+	.badge.score {
+		color: var(--color-primary);
+		font-weight: 600;
+		font-size: 0.75rem;
+	}
 	.badge.empty {
 		color: var(--color-text-muted);
+	}
+	.cell-content {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.4rem;
+	}
+	.btn-reset-mini {
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 0.7rem;
+		padding: 0 0.15rem;
+		line-height: 1.1;
+		transition: all 0.2s;
+	}
+	.btn-reset-mini:hover {
+		border-color: #fa5252;
+		color: #fa5252;
+		background: #fff5f5;
 	}
 	.completion-count {
 		font-weight: 600;

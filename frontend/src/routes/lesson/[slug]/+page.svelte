@@ -246,7 +246,8 @@
 						<QuizTab
 							quizData={mgr.data.quiz_data ?? []}
 							bind:isQuizMode={mgr.isQuizMode}
-							onComplete={mgr.completeLesson.bind(mgr)}
+							completedStatus={mgr.data.lesson_progress_status}
+							onComplete={(status) => mgr.completeLesson(status)}
 						/>
 					</div>
 				{/if}
@@ -262,7 +263,7 @@
 				</div>
 			</div>
 
-			<CelebrationOverlay visible={mgr.showCelebration} />
+			<CelebrationOverlay bind:visible={mgr.showCelebration} />
 		</div>
 	</div>
 {/if}
