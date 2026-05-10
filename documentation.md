@@ -473,7 +473,10 @@ Untuk memudahkan pengajar, Elemes menyediakan parser Markdown khusus di `lesson_
    - Jika ditemukan pola `- []` atau `- [x]`, elemen diparse sebagai `type: 'mcq'`.
    - Jika tidak, diparse sebagai `type: 'flashcard'`.
 4. **Explanation**: Menangkap blok kutipan `>` sebagai penjelasan yang muncul setelah kuis dijawab.
-5. **Rendering**: Pertanyaan dan jawaban di-render menggunakan filter Markdown standar (mendukung formatting, code snippets, dll).
+5. **Images**: Mendukung penambahan gambar melalui:
+   - Keyword `image: URL` tepat di bawah heading pertanyaan (akan tampil sebagai gambar utama).
+   - Syntax Markdown standar `![alt](url)` di dalam teks pertanyaan, opsi, atau penjelasan.
+6. **Rendering**: Pertanyaan dan jawaban di-render menggunakan filter Markdown standar (mendukung formatting, code snippets, dll).
 
 ### Quiz State Management
 

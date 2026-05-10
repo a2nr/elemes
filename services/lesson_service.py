@@ -343,6 +343,12 @@ def _parse_flashcards(text):
         option_pattern = re.compile(r'^\s*-\s*\[([ xX]?)\]\s*(.*)$', re.MULTILINE)
         options = option_pattern.findall(body)
         
+        # Check for image: URL
+        image_match = re.search(r'^\s*image:\s*(.*)$', body, re.MULTILINE)
+        image_url = image_match.group(1).strip() if image_match else ""
+        if image_match:
+            body = re.sub(r'^\s*image:\s*.*$', '', body, flags=re.MULTILINE).strip()
+        
         # Check for explanation (blockquote starting with >)
         explanation_match = re.search(r'^\s*>\s*(.*)$', body, re.MULTILINE | re.DOTALL)
         explanation = explanation_match.group(1).strip() if explanation_match else ""
@@ -361,7 +367,8 @@ def _parse_flashcards(text):
                 'type': 'mcq',
                 'question': md.markdown(question, extensions=MD_EXTENSIONS),
                 'options': parsed_options,
-                'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else ""
+                'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
+                'image': image_url
             })
         else:
             # It's a simple Flashcard
@@ -374,7 +381,8 @@ def _parse_flashcards(text):
                 'type': 'flashcard',
                 'front': md.markdown(question, extensions=MD_EXTENSIONS),
                 'back': md.markdown(clean_back, extensions=MD_EXTENSIONS),
-                'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else ""
+                'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
+                'image': image_url
             })
             
     return flashcards

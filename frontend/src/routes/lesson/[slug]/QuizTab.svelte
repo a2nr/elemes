@@ -11,6 +11,7 @@
 		question?: string;
 		options?: Option[];
 		explanation?: string;
+		image?: string;
 	}
 
 	interface Props {
@@ -203,6 +204,9 @@
 					<div class="question-box">
 						<div class="side-label">Pertanyaan</div>
 						<div class="card-content">
+							{#if currentCard.image}
+								<img src={currentCard.image} alt="Pertanyaan" class="quiz-image" />
+							{/if}
 							{@html currentCard.question}
 						</div>
 					</div>
@@ -245,7 +249,12 @@
 					<div class="flashcard" class:flipped={isFlipped}>
 						<div class="flashcard-front">
 							<div class="side-label">Pertanyaan</div>
-							<div class="card-content">{@html currentCard.front}</div>
+							<div class="card-content">
+								{#if currentCard.image}
+									<img src={currentCard.image} alt="Pertanyaan" class="quiz-image" />
+								{/if}
+								{@html currentCard.front}
+							</div>
 							<div class="flip-hint">Klik untuk melihat jawaban</div>
 						</div>
 						<div class="flashcard-back">
@@ -349,7 +358,17 @@
 	.flashcard-back { transform: rotateY(180deg); background: var(--color-bg); }
 	.side-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin-bottom: 1rem; font-weight: 700; border-bottom: 1px solid var(--color-border); padding-bottom: 0.5rem; }
 	.card-content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; font-size: 1.25rem; color: var(--color-text); line-height: 1.5; }
-	:global(.card-content code) { background: var(--color-bg); border: 1px solid var(--color-border); padding: 0.2rem 0.4rem; border-radius: 4px; font-family: var(--font-mono); }
+	.quiz-image { 
+		max-width: 100%; 
+		max-height: 300px; 
+		object-fit: contain; 
+		border-radius: 8px; 
+		margin-bottom: 1rem;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+	}
+
+	:global(.card-content img) { max-width: 100%; height: auto; border-radius: 8px; margin: 1rem 0; }
+	:global(.option-text img) { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 0.5rem 0; }
 	:global(.card-content p) { margin: 0; }
 	.flip-hint { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 1rem; font-style: italic; }
 
