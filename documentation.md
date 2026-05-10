@@ -1,7 +1,7 @@
 # Elemes LMS — Dokumentasi Teknis
 
 **Project:** LMS-C (Learning Management System untuk Pemrograman C & Arduino)
-**Terakhir diupdate:** 22 April 2026
+**Terakhir diupdate:** 10 Mei 2026
 
 ---
 
@@ -286,6 +286,7 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 | **Circuit** | `---INITIAL_CIRCUIT---` | Circuit + Output | node voltage + key_text |
 | **Arduino/Velxio** | `---INITIAL_CODE_ARDUINO---` | Velxio (iframe) + Output | serial + wiring + key_text |
 | **Velxio circuit-only** | `---VELXIO_CIRCUIT---` (tanpa code) | Velxio (no editor) + Output | wiring + key_text |
+| **Quiz** | `---QUIZ_FLASHCARD---` atau `---INITIAL_QUIZ---` | Quiz | Completion status |
 | **Hybrid** | C/Python + Circuit | Editor + Circuit + Output | AND-logic: kedua harus pass |
 
 ### Markdown Sections yang Dikenali
@@ -297,7 +298,8 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 | `---INITIAL_CODE---` / `---END_INITIAL_CODE---` | Kode awal C |
 | `---INITIAL_PYTHON---` / `---END_INITIAL_PYTHON---` | Kode awal Python |
 | `---INITIAL_CIRCUIT---` / `---END_INITIAL_CIRCUIT---` | Circuit text awal (CircuitJS format) |
-| `---INITIAL_QUIZ---` / `---END_INITIAL_QUIZ---` | Quiz data |
+| `---INITIAL_QUIZ---` / `---END_INITIAL_QUIZ---` | Quiz data (JSON) |
+| `---QUIZ_FLASHCARD---` / `---END_QUIZ_FLASHCARD---` | Quiz data (Markdown/Flashcard format) |
 | `---INITIAL_CODE_ARDUINO---` / `---END_INITIAL_CODE_ARDUINO---` | Kode awal Arduino |
 | `---VELXIO_CIRCUIT---` / `---END_VELXIO_CIRCUIT---` | Circuit JSON untuk Velxio (komponen + wires) |
 | `---EXPECTED_OUTPUT---` / `---END_EXPECTED_OUTPUT---` | Expected stdout (C/Python) atau node voltage JSON (Circuit) |
@@ -454,6 +456,32 @@ Saat siswa klik "Cek Rangkaian", fungsi `evaluateCircuit()` menjalankan:
 `CircuitEditor` mendukung auto-save ke `sessionStorage` (polling setiap 5 detik):
 - **Key:** `elemes_circuit_{slug}` (hanya saat user login & bukan mode solusi)
 - **Restore:** Cek sessionStorage dulu, fallback ke `initialCircuit` prop
+
+---
+
+## Quiz Integration
+
+Elemes mendukung kuis interaktif yang terintegrasi langsung dengan sistem progres. Kuis dapat berupa Flashcard (Tanya-Jawab) atau Pilihan Ganda (MCQ).
+
+### Arsitektur Parsing (`QUIZ_FLASHCARD`)
+
+Untuk memudahkan pengajar, Elemes menyediakan parser Markdown khusus di `lesson_service.py` (`_parse_flashcards`):
+
+1. **Detection**: Mencari blok `---QUIZ_FLASHCARD---`.
+2. **Splitting**: Membagi konten berdasarkan heading `###`.
+3. **MCQ vs Flashcard**:
+   - Jika ditemukan pola `- []` atau `- [x]`, elemen diparse sebagai `type: 'mcq'`.
+   - Jika tidak, diparse sebagai `type: 'flashcard'`.
+4. **Explanation**: Menangkap blok kutipan `>` sebagai penjelasan yang muncul setelah kuis dijawab.
+5. **Rendering**: Pertanyaan dan jawaban di-render menggunakan filter Markdown standar (mendukung formatting, code snippets, dll).
+
+### Quiz State Management
+
+**File:** `frontend/src/lib/components/QuizTab.svelte`
+
+1. **Shuffle**: Pertanyaan diacak setiap kali kuis dimulai (opsional).
+2. **Tracking**: Menggunakan state lokal untuk melacak jawaban benar/salah.
+3. **Completion**: Setelah semua pertanyaan dijawab, memicu `completeLesson('completed')` yang mengirimkan progres ke backend.
 
 ---
 

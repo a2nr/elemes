@@ -277,6 +277,39 @@ Untuk materi logika pemrograman menggunakan flowchart:
 | `---INITIAL_FLOWCHART---` | Struktur flowchart awal untuk latihan |
 | `---EXPECTED_FLOWCHART---` | Validasi struktur flowchart (JSON) |
 
+#### Blok Khusus Quiz (Opsional)
+
+LMS mendukung pembuatan kuis interaktif (Flashcard dan Pilihan Ganda) dalam dua format:
+
+| Blok | Fungsi |
+|------|--------|
+| `---QUIZ_FLASHCARD---` | Kuis format Markdown (Flashcard & Pilihan Ganda) |
+| `---INITIAL_QUIZ---` | Kuis format JSON |
+
+##### Format Markdown (`QUIZ_FLASHCARD`)
+
+Format ini sangat mudah digunakan untuk membuat kuis cepat.
+
+```markdown
+---QUIZ_FLASHCARD---
+### Pertanyaan Flashcard
+Ini adalah jawaban yang akan muncul di balik kartu.
+> Penjelasan: Muncul setelah kartu dibalik.
+
+### Apa output dari printf("%d", 10 + 5)?
+- [] 105
+- [x] 15
+- [] 10
+> Penjelasan: Operasi aritmatika dikerjakan dulu sebelum dicetak.
+---END_QUIZ_FLASHCARD---
+```
+
+**Aturan Penulisan:**
+1. Pertanyaan harus diawali dengan `###`.
+2. Untuk **Pilihan Ganda**, gunakan `- []` untuk pilihan salah dan `- [x]` untuk pilihan benar.
+3. Untuk **Flashcard**, cukup tulis jawaban langsung di bawah pertanyaan (tanpa `- []`).
+4. Penjelasan opsional bisa ditambahkan di akhir pertanyaan dengan awalan `>`.
+
 ### 5. Keamanan & Akses Anonim
 
 Sistem dilengkapi fitur keamanan untuk menjaga stabilitas:
