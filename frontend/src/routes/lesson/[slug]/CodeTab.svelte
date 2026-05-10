@@ -36,7 +36,7 @@
 		{compiling ? 'Compiling...' : '▶ Run'}
 	</button>
 	<button type="button" class="btn btn-secondary" onclick={onReset}>Reset</button>
-	{#if data.solution_code && authLoggedIn && lessonCompleted}
+	{#if data?.solution_code && authLoggedIn && lessonCompleted}
 		<button type="button" class="btn btn-secondary" onclick={onShowSolution}>
 			{showSolution ? 'Sembunyikan Solusi' : 'Lihat Solusi'}
 		</button>
@@ -57,9 +57,9 @@
 	{/key}
 </div>
 
-{#if (currentLanguage === 'python' ? (data.expected_output_python || data.expected_output) : data.expected_output)}
+{#if (currentLanguage === 'python' ? (data?.expected_output_python || data?.expected_output) : data?.expected_output)}
 	<details class="expected-output">
 		<summary>Expected Output</summary>
-		<pre>{currentLanguage === 'python' ? (data.expected_output_python || data.expected_output) : data.expected_output}</pre>
+		<pre>{currentLanguage === 'python' ? (data?.expected_output_python || data?.expected_output) : data?.expected_output}</pre>
 	</details>
 {/if}

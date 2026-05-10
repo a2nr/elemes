@@ -26,9 +26,11 @@
 	const mgr = new LessonManager();
 	const float = createFloatingPanel();
 
-	// Sync lesson data when navigating
+	// Initialize manager with lesson data whenever it changes.
 	$effect(() => {
-		if (pageData.lesson) mgr.init(pageData.lesson);
+		if (pageData.lesson) {
+			mgr.init(pageData.lesson);
+		}
 	});
 
 	// Mobile behavior for floating panel
@@ -79,191 +81,193 @@
 	<title>{mgr.data?.lesson_title ?? 'Pelajaran'} - Elemes LMS</title>
 </svelte:head>
 
-{#if mgr.data}
-	<div class="lesson-layout" class:single-col={float.floating || mgr.isMobile}>
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="lesson-content" bind:this={contentEl} use:noSelect use:renderMath
-			role="region" aria-label="Konten pelajaran"
-			class:full-width={float.floating || mgr.isMobile}
-			onselectstart={(e) => e.preventDefault()}
-			oncopy={(e) => e.preventDefault()}
-			oncut={(e) => e.preventDefault()}
-			oncontextmenu={(e) => e.preventDefault()}>
-			
-			{#if mgr.data.locked}
-				<div class="locked-banner">
-					<span class="locked-banner-icon">&#128274;</span>
-					<div>
-						<strong>Pelajaran ini terkunci.</strong> Kamu dapat membaca materinya, namun workspace (editor) dinonaktifkan hingga prasyarat selesai.
-						{#if mgr.data.missing_prerequisites?.length}
-							<div class="missing-list">
-								Belum selesai: 
-								{#each mgr.data.missing_prerequisites as p, i}
-									<a href="/lesson/{p}" class="prereq-link">{mgr.getLessonTitle(p)}</a>{i < mgr.data.missing_prerequisites.length - 1 ? ', ' : ''}
-								{/each}
+{#if pageData.lesson}
+	{#key pageData.lesson.filename}
+		<div class="lesson-layout" class:single-col={float.floating || mgr.isMobile}>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="lesson-content" bind:this={contentEl} use:noSelect use:renderMath
+				role="region" aria-label="Konten pelajaran"
+				class:full-width={float.floating || mgr.isMobile}
+				onselectstart={(e) => e.preventDefault()}
+				oncopy={(e) => e.preventDefault()}
+				oncut={(e) => e.preventDefault()}
+				oncontextmenu={(e) => e.preventDefault()}>
+				
+				{#if mgr.data?.locked}
+					<div class="locked-banner">
+						<span class="locked-banner-icon">&#128274;</span>
+						<div>
+							<strong>Pelajaran ini terkunci.</strong> Kamu dapat membaca materinya, namun workspace (editor) dinonaktifkan hingga prasyarat selesai.
+							{#if mgr.data.missing_prerequisites?.length}
+								<div class="missing-list">
+									Belum selesai: 
+									{#each mgr.data.missing_prerequisites as p, i}
+										<a href="/lesson/{p}" class="prereq-link">{mgr.getLessonTitle(p)}</a>{i < mgr.data.missing_prerequisites.length - 1 ? ', ' : ''}
+									{/each}
+								</div>
+							{/if}
+						</div>
+					</div>
+				{/if}
+
+				{#if mgr.isQuizMode}
+					<div class="quiz-blur-container">
+						<div class="quiz-blur-content">
+							<div class="quiz-blur-icon">🫣</div>
+							<h3>Materi Disembunyikan</h3>
+							<p>Selesaikan atau batalkan kuis untuk melihat materi kembali.</p>
+							<button class="btn btn-outline" onclick={() => mgr.isQuizMode = false}>Batal Kuis</button>
+						</div>
+					</div>
+				{:else}
+					<div class="prose">{@html mgr.data?.lesson_content ?? ''}</div>
+					<LessonList lessons={mgr.data?.ordered_lessons ?? []} currentSlug={mgr.slug} />
+				{/if}
+				</div>
+
+				{#if float.floating && float.minimized && !mgr.isMobile}
+				<button type="button" class="float-restore-btn" onclick={float.restore}>&#9654; Editor</button>
+				{/if}
+
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="editor-area"
+				class:floating={float.floating && !mgr.isMobile && !float.minimized}
+				class:floating-hidden={float.floating && float.minimized && !mgr.isMobile}
+				class:mobile-sheet={mgr.isMobile}
+				class:mobile-hidden={mgr.isMobile && mgr.mobileMode === 'hidden'}
+				class:mobile-half={mgr.isMobile && mgr.mobileMode === 'half'}
+				class:mobile-full={mgr.isMobile && mgr.mobileMode === 'full'}
+				class:editor-locked={mgr.data?.locked}
+				style={float.style}>
+
+				<WorkspaceHeader
+					isMobile={mgr.isMobile}
+					bind:mobileMode={mgr.mobileMode}
+					bind:activeTab={mgr.activeTab}
+					bind:currentLanguage={mgr.currentLanguage}
+					hasInfo={!!mgr.data?.lesson_info}
+					hasExercise={!!mgr.data?.exercise_content}
+					activeTabs={mgr.data?.active_tabs ?? []}
+					floating={float.floating}
+					minimized={float.minimized}
+					onDragStart={float.onDragStart}
+					onResizeStart={float.onResizeStart}
+					onFloatToggle={float.toggle}
+					onMinimize={float.minimize}
+					locked={mgr.data?.locked}
+				/>
+
+				<div class="editor-body" bind:this={tabsEl} use:renderMath style="position: relative;">
+					{#if mgr.data?.locked}
+						<div class="workspace-lock-overlay">
+							<div class="lock-overlay-content">
+								<div class="lock-overlay-icon">&#128274;</div>
+								<h3>Workspace Terkunci</h3>
+								<p>Selesaikan materi sebelumnya untuk mulai mengerjakan latihan ini.</p>
+							</div>
+						</div>
+					{/if}
+
+					<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'info'} use:noSelect>
+						{#if mgr.data?.lesson_info}
+							<div class="tab-content">{@html mgr.data.lesson_info}</div>
+						{/if}
+					</div>
+
+					<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'exercise'} use:noSelect>
+						{#if mgr.data?.exercise_content}
+							<div class="tab-content">
+								<h2 class="tab-heading">Latihan</h2>
+								{@html mgr.data.exercise_content}
 							</div>
 						{/if}
 					</div>
-				</div>
-			{/if}
 
-			{#if mgr.isQuizMode}
-				<div class="quiz-blur-container">
-					<div class="quiz-blur-content">
-						<div class="quiz-blur-icon">🫣</div>
-						<h3>Materi Disembunyikan</h3>
-						<p>Selesaikan atau batalkan kuis untuk melihat materi kembali.</p>
-						<button class="btn btn-outline" onclick={() => mgr.isQuizMode = false}>Batal Kuis</button>
-					</div>
-				</div>
-			{:else}
-				<div class="prose">{@html mgr.data.lesson_content}</div>
-				<LessonList lessons={mgr.data.ordered_lessons ?? []} currentSlug={mgr.slug} />
-			{/if}
-		</div>
-
-		{#if float.floating && float.minimized && !mgr.isMobile}
-			<button type="button" class="float-restore-btn" onclick={float.restore}>&#9654; Editor</button>
-		{/if}
-
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="editor-area"
-			class:floating={float.floating && !mgr.isMobile && !float.minimized}
-			class:floating-hidden={float.floating && float.minimized && !mgr.isMobile}
-			class:mobile-sheet={mgr.isMobile}
-			class:mobile-hidden={mgr.isMobile && mgr.mobileMode === 'hidden'}
-			class:mobile-half={mgr.isMobile && mgr.mobileMode === 'half'}
-			class:mobile-full={mgr.isMobile && mgr.mobileMode === 'full'}
-			class:editor-locked={mgr.data.locked}
-			style={float.style}>
-
-			<WorkspaceHeader
-				isMobile={mgr.isMobile}
-				bind:mobileMode={mgr.mobileMode}
-				bind:activeTab={mgr.activeTab}
-				bind:currentLanguage={mgr.currentLanguage}
-				hasInfo={!!mgr.data.lesson_info}
-				hasExercise={!!mgr.data.exercise_content}
-				activeTabs={mgr.data.active_tabs ?? []}
-				floating={float.floating}
-				minimized={float.minimized}
-				onDragStart={float.onDragStart}
-				onResizeStart={float.onResizeStart}
-				onFloatToggle={float.toggle}
-				onMinimize={float.minimize}
-				locked={mgr.data.locked}
-			/>
-
-			<div class="editor-body" bind:this={tabsEl} use:renderMath style="position: relative;">
-				{#if mgr.data.locked}
-					<div class="workspace-lock-overlay">
-						<div class="lock-overlay-content">
-							<div class="lock-overlay-icon">&#128274;</div>
-							<h3>Workspace Terkunci</h3>
-							<p>Selesaikan materi sebelumnya untuk mulai mengerjakan latihan ini.</p>
-						</div>
-					</div>
-				{/if}
-
-				<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'info'} use:noSelect>
-					{#if mgr.data.lesson_info}
-						<div class="tab-content">{@html mgr.data.lesson_info}</div>
-					{/if}
-				</div>
-
-				<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'exercise'} use:noSelect>
-					{#if mgr.data.exercise_content}
-						<div class="tab-content">
-							<h2 class="tab-heading">Latihan</h2>
-							{@html mgr.data.exercise_content}
+					{#if mgr.data?.active_tabs?.includes('circuit')}
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'circuit'}>
+							<CircuitTab
+								data={mgr.data}
+								bind:circuitEditor={mgr.circuitEditor}
+								compiling={mgr.compiling}
+								authLoggedIn={$authLoggedIn}
+								lessonCompleted={mgr.lessonCompleted}
+								showSolution={mgr.showSolution}
+								slug={mgr.slug}
+								onRun={mgr.handleRun.bind(mgr)}
+								onReset={mgr.handleReset.bind(mgr)}
+								onShowSolution={mgr.handleShowSolution.bind(mgr)}
+							/>
 						</div>
 					{/if}
+
+					{#if mgr.isVelxio}
+						<div class="tab-panel velxio-panel" class:tab-hidden={mgr.activeTab !== 'velxio'}>
+							<VelxioTab
+								hasArduinoCode={!!mgr.data?.initial_code_arduino}
+								velxioError={mgr.velxioError}
+								authLoggedIn={$authLoggedIn}
+								velxioSaving={mgr.velxioSaving}
+								onSetupBridge={mgr.setupVelxioBridge.bind(mgr)}
+							/>
+						</div>
+					{/if}
+
+					{#if mgr.isFlowchart}
+						<div class="tab-panel flowchart-panel" class:tab-hidden={mgr.activeTab !== 'flowchart'}>
+							<FlowchartTab
+								bind:this={mgr.flowchartTab}
+								storageKey={mgr.flowchartStorageKey}
+								initialData={mgr.data?.initial_flowchart}
+								onRun={mgr.handleRun.bind(mgr)}
+								onReset={mgr.handleReset.bind(mgr)}
+								compiling={mgr.compiling}
+							/>
+						</div>
+					{/if}
+
+					{#if !mgr.data?.active_tabs?.length || mgr.data.active_tabs.includes('c') || mgr.data.active_tabs.includes('python')}
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'editor'}>
+							<CodeTab
+								data={mgr.data}
+								bind:currentLanguage={mgr.currentLanguage}
+								bind:currentCode={mgr.currentCode}
+								bind:editor={mgr.editor}
+								compiling={mgr.compiling}
+								authLoggedIn={$authLoggedIn}
+								lessonCompleted={mgr.lessonCompleted}
+								showSolution={mgr.showSolution}
+								slug={mgr.slug}
+								onRun={mgr.handleRun.bind(mgr)}
+								onReset={mgr.handleReset.bind(mgr)}
+								onShowSolution={mgr.handleShowSolution.bind(mgr)}
+							/>
+						</div>
+					{/if}
+
+					{#if mgr.data?.active_tabs?.includes('quiz')}
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'quiz'}>
+							<QuizTab
+								quizData={mgr.data.quiz_data ?? []}
+								bind:isQuizMode={mgr.isQuizMode}
+								completedStatus={mgr.data.lesson_progress_status}
+								onComplete={(status) => mgr.completeLesson(status)}
+							/>
+						</div>
+					{/if}
+
+					<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'output'}>
+						<OutputPanel sections={mgr.outputSections}>
+							{#snippet actions()}
+								<button class="btn btn-success btn-sm btn-run-all" onclick={() => mgr.handleRunAll()} disabled={mgr.compiling}>
+									{mgr.compiling ? 'Mengevaluasi...' : '▶ Run Keseluruhan'}
+								</button>
+							{/snippet}
+						</OutputPanel>
+					</div>
 				</div>
 
-				{#if mgr.data.active_tabs?.includes('circuit')}
-					<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'circuit'}>
-						<CircuitTab
-							data={mgr.data}
-							bind:circuitEditor={mgr.circuitEditor}
-							compiling={mgr.compiling}
-							authLoggedIn={$authLoggedIn}
-							lessonCompleted={mgr.lessonCompleted}
-							showSolution={mgr.showSolution}
-							slug={mgr.slug}
-							onRun={mgr.handleRun.bind(mgr)}
-							onReset={mgr.handleReset.bind(mgr)}
-							onShowSolution={mgr.handleShowSolution.bind(mgr)}
-						/>
-					</div>
-				{/if}
-
-				{#if mgr.isVelxio}
-					<div class="tab-panel velxio-panel" class:tab-hidden={mgr.activeTab !== 'velxio'}>
-						<VelxioTab
-							hasArduinoCode={!!mgr.data.initial_code_arduino}
-							velxioError={mgr.velxioError}
-							authLoggedIn={$authLoggedIn}
-							velxioSaving={mgr.velxioSaving}
-							onSetupBridge={mgr.setupVelxioBridge.bind(mgr)}
-						/>
-					</div>
-				{/if}
-
-				{#if mgr.isFlowchart}
-					<div class="tab-panel flowchart-panel" class:tab-hidden={mgr.activeTab !== 'flowchart'}>
-						<FlowchartTab
-							bind:this={mgr.flowchartTab}
-							storageKey={mgr.flowchartStorageKey}
-							initialData={mgr.data.initial_flowchart}
-							onRun={mgr.handleRun.bind(mgr)}
-							onReset={mgr.handleReset.bind(mgr)}
-							compiling={mgr.compiling}
-						/>
-					</div>
-				{/if}
-
-				{#if !mgr.data.active_tabs?.length || mgr.data.active_tabs.includes('c') || mgr.data.active_tabs.includes('python')}
-					<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'editor'}>
-						<CodeTab
-							data={mgr.data}
-							bind:currentLanguage={mgr.currentLanguage}
-							bind:currentCode={mgr.currentCode}
-							bind:editor={mgr.editor}
-							compiling={mgr.compiling}
-							authLoggedIn={$authLoggedIn}
-							lessonCompleted={mgr.lessonCompleted}
-							showSolution={mgr.showSolution}
-							slug={mgr.slug}
-							onRun={mgr.handleRun.bind(mgr)}
-							onReset={mgr.handleReset.bind(mgr)}
-							onShowSolution={mgr.handleShowSolution.bind(mgr)}
-						/>
-					</div>
-				{/if}
-
-				{#if mgr.data.active_tabs?.includes('quiz')}
-					<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'quiz'}>
-						<QuizTab
-							quizData={mgr.data.quiz_data ?? []}
-							bind:isQuizMode={mgr.isQuizMode}
-							completedStatus={mgr.data.lesson_progress_status}
-							onComplete={(status) => mgr.completeLesson(status)}
-						/>
-					</div>
-				{/if}
-
-				<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'output'}>
-					<OutputPanel sections={mgr.outputSections}>
-						{#snippet actions()}
-							<button class="btn btn-success btn-sm btn-run-all" onclick={() => mgr.handleRunAll()} disabled={mgr.compiling}>
-								{mgr.compiling ? 'Mengevaluasi...' : '▶ Run Keseluruhan'}
-							</button>
-						{/snippet}
-					</OutputPanel>
-				</div>
+				<CelebrationOverlay bind:visible={mgr.showCelebration} />
 			</div>
-
-			<CelebrationOverlay bind:visible={mgr.showCelebration} />
 		</div>
-	</div>
+	{/key}
 {/if}

@@ -252,6 +252,7 @@
 	onDestroy(() => {
 		cleanupNoPaste?.();
 		view?.destroy();
+		clearTimeout(saveTimeout);
 	});
 
 	// Recreate editor ONLY when theme actually changes (not on ready/container changes)

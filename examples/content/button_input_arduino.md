@@ -150,32 +150,20 @@ void loop() {
     {
       "type": "led",
       "id": "led-builtin",
-      "x": 956.2066448009604,
-      "y": -15.285273464964305,
+      "x": 188,
+      "y": -158,
       "rotation": 0,
       "props": {
         "color": "red",
         "pin": 13,
-        "state": false,
-        "value": false
-      }
-    },
-    {
-      "type": "resistor",
-      "id": "resistor-1776299815587-z0q0jzny8",
-      "x": 808.6031046903261,
-      "y": 44.96592399354325,
-      "rotation": 0,
-      "props": {
-        "value": false,
         "state": false
       }
     },
     {
       "type": "pushbutton",
-      "id": "pushbutton-1776299852057-07xh6qh7g",
-      "x": 829.2414304859469,
-      "y": 230.19576790585754,
+      "id": "pushbutton-1778378142489-v899irppo",
+      "x": 300,
+      "y": 59,
       "rotation": 0,
       "props": {
         "color": "red",
@@ -183,10 +171,33 @@ void loop() {
         "label": "",
         "xray": false
       }
+    },
+    {
+      "type": "resistor",
+      "id": "resistor-1778378159414-9y3d8f1uk",
+      "x": 409,
+      "y": 68,
+      "rotation": 0,
+      "props": {
+        "value": "1000"
+      }
+    },
+    {
+      "type": "resistor",
+      "id": "resistor-1778378205248-h9g1m1wml",
+      "x": 114,
+      "y": -89,
+      "rotation": 0,
+      "props": {
+        "value": "1000"
+      }
     }
   ],
-  "wires": []
+  "wires": [
+ 
+  ]
 }
+
 ---END_VELXIO_CIRCUIT---
 
 ---EXPECTED_SERIAL_OUTPUT---
@@ -196,14 +207,24 @@ PRESSED
 ---EXPECTED_WIRING---
 {
   "wires": [
-    {
+   {
       "start": {
-        "componentId": "resistor-1776299815587-z0q0jzny8",
+        "componentId": "resistor-1778378205248-h9g1m1wml",
         "pinName": "2"
       },
       "end": {
         "componentId": "led-builtin",
         "pinName": "A"
+      }
+    },
+    {
+      "start": {
+        "componentId": "resistor-1778378205248-h9g1m1wml",
+        "pinName": "1"
+      },
+      "end": {
+        "componentId": "arduino-uno",
+        "pinName": "13"
       }
     },
     {
@@ -218,22 +239,22 @@ PRESSED
     },
     {
       "start": {
-        "componentId": "resistor-1776299815587-z0q0jzny8",
-        "pinName": "1"
+        "componentId": "arduino-uno",
+        "pinName": "5V"
       },
       "end": {
-        "componentId": "arduino-uno",
-        "pinName": "13"
+        "componentId": "resistor-1778378159414-9y3d8f1uk",
+        "pinName": "2"
       }
     },
     {
       "start": {
-        "componentId": "pushbutton-1776299852057-07xh6qh7g",
-        "pinName": "1.l"
+        "componentId": "resistor-1778378159414-9y3d8f1uk",
+        "pinName": "1"
       },
       "end": {
-        "componentId": "arduino-uno",
-        "pinName": "2"
+        "componentId": "pushbutton-1778378142489-v899irppo",
+        "pinName": "1.r"
       }
     },
     {
@@ -242,8 +263,18 @@ PRESSED
         "pinName": "GND.3"
       },
       "end": {
-        "componentId": "pushbutton-1776299852057-07xh6qh7g",
-        "pinName": "2.l"
+        "componentId": "pushbutton-1778378142489-v899irppo",
+        "pinName": "2.r"
+      }
+    },
+    {
+      "start": {
+        "componentId": "arduino-uno",
+        "pinName": "2"
+      },
+      "end": {
+        "componentId": "pushbutton-1778378142489-v899irppo",
+        "pinName": "1.r"
       }
     }
   ]

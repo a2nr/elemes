@@ -54,7 +54,7 @@ export class LessonManager {
 	circuitEditor = $state<CircuitEditor | null>(null);
 	flowchartTab = $state<any>(null);
 
-	slug = $derived(get(page).params.slug);
+	get slug() { return get(page).params.slug; }
 	
 	isVelxio = $derived(this.data?.active_tabs?.includes('velxio') ?? false);
 	isFlowchart = $derived(this.data?.active_tabs?.includes('flowchart') ?? false);
