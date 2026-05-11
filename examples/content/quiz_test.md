@@ -4,6 +4,7 @@ Pelajaran ini berisi berbagai tipe kuis untuk menguji fitur Pilihan Ganda, Flash
 
 ---QUIZ_FLASHCARD---
 ### Bahasa C adalah bahasa pemrograman tingkat rendah.
+image: https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg
 - [] Benar
 - [x] Salah
 > Penjelasan: Bahasa C sebenarnya dikategorikan sebagai bahasa tingkat menengah (*middle-level language*) karena memiliki fitur bahasa tingkat rendah (seperti manipulasi memori) sekaligus fitur bahasa tingkat tinggi (seperti struktur kontrol yang manusiawi).
@@ -21,6 +22,10 @@ Cukup gunakan dua garis miring di awal baris, contoh: `// ini komentar`.
 
 ### Apa fungsi dari `return 0;` di dalam fungsi `main()`?
 Menandakan bahwa program telah selesai berjalan dengan sukses tanpa ada error.
+
+### Pilih gambar yang melambangkan bahasa C:
+- [x] ![C Logo](https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg)
+- [] ![Wrong Logo](https://upload.wikimedia.org/wikipedia/commons/c/c3/Python-logo-notext.svg)
 ---END_QUIZ_FLASHCARD---
 
 ---EXERCISE---

@@ -101,7 +101,9 @@
 	{#if hasQuiz}
 		<button class="chrome-tab" class:active={activeTab === 'quiz'} onclick={() => handleTabClick('quiz')}>Quiz</button>
 	{/if}
-	<button class="chrome-tab" class:active={activeTab === 'output'} onclick={() => handleTabClick('output')}>Output</button>
+	{#if hasExercise}
+		<button class="chrome-tab" class:active={activeTab === 'output'} onclick={() => handleTabClick('output')}>Output</button>
+	{/if}
 {/snippet}
 
 {#if isMobile}
