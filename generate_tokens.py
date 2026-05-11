@@ -27,15 +27,17 @@ def get_lesson_names():
         with open(home_file_path, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        parts = content.split('---Available_Lessons---')
+        # Use robust regex to split Available_Lessons
+        parts = re.split(r'-{3,}Available_Lessons-{3,}', content)
         if len(parts) > 1:
             lesson_list_content = parts[1]
+            # Allow optional leading slash in /lesson/ prefix
             lesson_links = re.findall(
-                r'\[([^\]]+)\]\(lesson/([^\)]+)\)', lesson_list_content
+                r'\[([^\]]+)\]\((?:/?lesson/)?([^\)]+)\)', lesson_list_content
             )
             if lesson_links:
-                for _link_text, filename in lesson_links:
-                    lesson_names.append(filename.replace('.md', ''))
+                for _link_text, slug in lesson_links:
+                    lesson_names.append(slug.replace('.md', ''))
                 return lesson_names
 
     # Fallback: alphabetical order

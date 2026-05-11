@@ -29,7 +29,8 @@ def _parse_lesson_links(home_content):
         return []
     lesson_list_content = parts[-1]
     
-    links = re.findall(r'\[([^\]]+)\]\((?:/lesson/)?([^\)]+)\)', lesson_list_content)
+    # Allow optional leading slash in /lesson/ prefix
+    links = re.findall(r'\[([^\]]+)\]\((?:/?lesson/)?([^\)]+)\)', lesson_list_content)
     
     processed_links = []
     for title, slug in links:
@@ -582,6 +583,7 @@ def render_home_content():
     if not home_content:
         return ""
 
-    parts = home_content.split('---Available_Lessons---')
+    # Use robust regex to split Available_Lessons
+    parts = re.split(r'-{3,}Available_Lessons-{3,}', home_content)
     main_content = parts[0] if parts else home_content
     return md.markdown(main_content, extensions=['fenced_code', 'tables', 'mdx_math'])
