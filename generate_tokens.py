@@ -83,16 +83,18 @@ def generate_tokens_csv():
         merged_rows = []
         for i, row in enumerate(rows):
             new_row = {}
-            for h in new_headers:
-                if h in ('token', 'nama_siswa'):
-                    # Ambil apa adanya dari baris yang sudah ada
-                    new_row[h] = row.get(h, '')
+            # PROTEKSI: Kolom 1 dan 2 diambil apa adanya dari data yang sudah Anda isi
+            new_row['token'] = row.get('token', '')
+            new_row['nama_siswa'] = row.get('nama_siswa', '')
+
+            # Update status materi
+            for h in lesson_names:
+                if i == 0:
+                    # Baris pertama selalu dipaksa completed (untuk Guru)
+                    new_row[h] = 'completed'
                 else:
-                    # Baris pertama (index 0) selalu dipaksa completed
-                    if i == 0:
-                        new_row[h] = 'completed'
-                    else:
-                        new_row[h] = row.get(h, 'not_started')
+                    # Baris lainnya mempertahankan status lama atau default 'not_started'
+                    new_row[h] = row.get(h, 'not_started')
             merged_rows.append(new_row)
 
         with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as f:
@@ -111,14 +113,8 @@ def generate_tokens_csv():
         with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f, delimiter=';')
             writer.writerow(new_headers)
-            # Add a Guru user by default
-            guru_row = ['guru_123', 'Guru'] + ['completed'] * len(lesson_names)
-            writer.writerow(guru_row)
-            dummy_row = ['dummy_token_12345', 'Example Student'] + \
-                        ['not_started'] * len(lesson_names)
-            writer.writerow(dummy_row)
         print(f"Created tokens file: {TOKENS_FILE}")
-        print("Tambahkan siswa dengan format: token;nama_siswa;status;...")
+        print("Tambahkan baris guru di baris pertama, lalu siswa di baris berikutnya.")
 
     _set_permissions(TOKENS_FILE)
     print(f"Headers: {new_headers}")
