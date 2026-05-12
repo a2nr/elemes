@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { auth, authIsTeacher } from '$stores/auth';
+	import { auth, authIsTeacher, authToken } from '$stores/auth';
 
 	interface LessonHeader {
 		filename: string;
@@ -17,18 +17,22 @@
 	let lessons = $state<LessonHeader[]>([]);
 	let loading = $state(true);
 
-	onMount(async () => {
-		await loadData();
+	// Reactively load data when auth is ready
+	$effect(() => {
+		if ($authIsTeacher && $authToken) {
+			loadData();
+		} else if (!$authIsTeacher) {
+			// If not a teacher, we can stop loading (will show "no access" message)
+			loading = false;
+		}
 	});
 
 	async function loadData() {
-		if (!$authIsTeacher) {
-			loading = false;
-			return;
-		}
+		if (!$authIsTeacher || !$authToken) return;
 
+		loading = true;
 		try {
-			const res = await fetch(`/api/progress-report.json?token=${encodeURIComponent(auth.token)}`);
+			const res = await fetch(`/api/progress-report.json?token=${encodeURIComponent($authToken)}`);
 			const data = await res.json();
 			students = data.students ?? [];
 			lessons = data.lessons ?? [];
@@ -49,7 +53,7 @@
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					teacher_token: auth.token,
+					teacher_token: $authToken,
 					student_token: studentToken,
 					lesson_name: lessonName
 				})
@@ -74,17 +78,17 @@
 
 <h1>Laporan Progress Siswa</h1>
 
-{#if !$authIsTeacher}
-	<p class="empty">Anda tidak memiliki akses ke halaman ini.</p>
-{:else if loading}
+{#if loading}
 	<p class="loading">Memuat data...</p>
+{:else if !$authIsTeacher}
+	<p class="empty">Anda tidak memiliki akses ke halaman ini.</p>
 {:else if students.length === 0}
 	<p class="empty">Belum ada data siswa.</p>
 {:else}
 	<div class="summary-bar">
 		<span><strong>{students.length}</strong> siswa</span>
 		<span><strong>{totalLessons}</strong> pelajaran</span>
-		<a href="/api/progress-report/export-csv?token={encodeURIComponent(auth.token)}" class="btn btn-secondary btn-sm">
+		<a href="/api/progress-report/export-csv?token={encodeURIComponent($authToken)}" class="btn btn-secondary btn-sm">
 			Export CSV
 		</a>
 	</div>

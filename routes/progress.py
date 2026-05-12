@@ -85,8 +85,19 @@ def api_progress_report():
     if not token:
         token = request.cookies.get('student_token', '').strip()
 
-    if not token or not validate_token(token):
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    if not token:
+        logging.warning("Unauthorized access attempt to progress-report.json: No token provided")
+        return jsonify({'success': False, 'message': 'Unauthorized: Token is required'}), 401
+
+    student_info = validate_token(token)
+    if not student_info:
+        logging.warning(f"Unauthorized access attempt to progress-report.json: Invalid token '{token[:6]}...'")
+        return jsonify({'success': False, 'message': 'Unauthorized: Invalid token'}), 401
+
+    # Security: Only teacher can see the full progress report
+    if not student_info.get('is_teacher'):
+        logging.warning(f"Unauthorized access attempt to progress-report.json: Student '{student_info.get('student_name')}' is not a teacher")
+        return jsonify({'success': False, 'message': 'Forbidden: Teacher access only'}), 403
 
     all_students_progress, ordered_lessons = get_all_students_progress(
         get_lessons_with_learning_objectives,
@@ -105,8 +116,12 @@ def export_progress_csv():
     if not token:
         token = request.cookies.get('student_token', '').strip()
 
-    if not token or not validate_token(token):
+    if not token:
         return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+
+    student_info = validate_token(token)
+    if not student_info or not student_info.get('is_teacher'):
+        return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
     all_students_progress, _ordered_lessons = get_all_students_progress(
         get_lessons_with_learning_objectives,
