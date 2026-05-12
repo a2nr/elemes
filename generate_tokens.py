@@ -80,38 +80,20 @@ def generate_tokens_csv():
                         and h not in ('token', 'nama_siswa')]
 
         # Rebuild each row with the new header order
-        other_rows = []
-        guru_row = None
-        TEACHER_TOKEN = 'guru_123'
-
-        for row in rows:
+        merged_rows = []
+        for i, row in enumerate(rows):
             new_row = {}
-            # Check if this is the teacher row (by token)
-            is_teacher = row.get('token', '').strip() == TEACHER_TOKEN
-
             for h in new_headers:
                 if h in ('token', 'nama_siswa'):
-                    new_row[h] = row.get(h)
+                    # Ambil apa adanya dari baris yang sudah ada
+                    new_row[h] = row.get(h, '')
                 else:
-                    if is_teacher:
+                    # Baris pertama (index 0) selalu dipaksa completed
+                    if i == 0:
                         new_row[h] = 'completed'
                     else:
                         new_row[h] = row.get(h, 'not_started')
-
-            if is_teacher:
-                guru_row = new_row
-            else:
-                other_rows.append(new_row)
-
-        # Ensure at least one Teacher exists
-        if not guru_row:
-            guru_row = {'token': TEACHER_TOKEN, 'nama_siswa': 'Pengajar'}
-            for h in lesson_names:
-                guru_row[h] = 'completed'
-            print(f"Teacher user with token '{TEACHER_TOKEN}' automatically added.")
-
-        # Always put Guru at the top
-        merged_rows = [guru_row] + other_rows
+            merged_rows.append(new_row)
 
         with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=new_headers, delimiter=';')
