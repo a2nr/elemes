@@ -80,12 +80,38 @@ def generate_tokens_csv():
                         and h not in ('token', 'nama_siswa')]
 
         # Rebuild each row with the new header order
-        merged_rows = []
+        other_rows = []
+        guru_row = None
+        TEACHER_TOKEN = 'guru_123'
+
         for row in rows:
             new_row = {}
+            # Check if this is the teacher row (by token)
+            is_teacher = row.get('token', '').strip() == TEACHER_TOKEN
+
             for h in new_headers:
-                new_row[h] = row.get(h, 'not_started')
-            merged_rows.append(new_row)
+                if h in ('token', 'nama_siswa'):
+                    new_row[h] = row.get(h)
+                else:
+                    if is_teacher:
+                        new_row[h] = 'completed'
+                    else:
+                        new_row[h] = row.get(h, 'not_started')
+
+            if is_teacher:
+                guru_row = new_row
+            else:
+                other_rows.append(new_row)
+
+        # Ensure at least one Teacher exists
+        if not guru_row:
+            guru_row = {'token': TEACHER_TOKEN, 'nama_siswa': 'Pengajar'}
+            for h in lesson_names:
+                guru_row[h] = 'completed'
+            print(f"Teacher user with token '{TEACHER_TOKEN}' automatically added.")
+
+        # Always put Guru at the top
+        merged_rows = [guru_row] + other_rows
 
         with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as f:
             writer = csv.DictWriter(f, fieldnames=new_headers, delimiter=';')
@@ -103,6 +129,9 @@ def generate_tokens_csv():
         with open(TOKENS_FILE, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f, delimiter=';')
             writer.writerow(new_headers)
+            # Add a Guru user by default
+            guru_row = ['guru_123', 'Guru'] + ['completed'] * len(lesson_names)
+            writer.writerow(guru_row)
             dummy_row = ['dummy_token_12345', 'Example Student'] + \
                         ['not_started'] * len(lesson_names)
             writer.writerow(dummy_row)
