@@ -351,7 +351,7 @@ def _parse_flashcards(text):
             body = re.sub(r'^\s*image:\s*.*$', '', body, flags=re.MULTILINE).strip()
         
         # Check for explanation (blockquote starting with >)
-        explanation_match = re.search(r'^\s*>\s*(.*)$', body, re.MULTILINE | re.DOTALL)
+        explanation_match = re.search(r'^\s*(>.*)$', body, re.MULTILINE | re.DOTALL)
         explanation = explanation_match.group(1).strip() if explanation_match else ""
         
         # If MCQ options exist, it's an MCQ. We also remove the options from the body to find clean explanation.

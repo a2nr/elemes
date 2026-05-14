@@ -1,14 +1,40 @@
 /* ── Shared rich-text styles (.prose + .tab-content) ──── */
+.prose,
 .tab-content {
-	font-size: 0.85rem;
-	padding: 0.75rem 0.5rem;
-	line-height: 1.65;
+	font-size: 1rem; /* 16px */
+	line-height: 1.5;
+	text-align: left;
+	max-width: 70ch; /* Limit line length for readability */
 }
+
+.tab-content {
+	padding: 1rem 0.5rem;
+}
+
 .tab-heading {
 	color: var(--color-primary);
-	font-size: 1.1rem;
+	font-size: 1.5rem; /* 24px */
 	margin-top: 0;
+	margin-bottom: 1rem;
 }
+
+.prose h2, .tab-content h2 {
+	font-size: 1.5rem; /* 24px */
+	margin-top: 3rem;
+	margin-bottom: 1.5rem;
+}
+
+.prose h3, .tab-content h3 {
+	font-size: 1.25rem; /* 20px */
+	margin-top: 2rem;
+	margin-bottom: 1rem;
+}
+
+.prose p,
+.tab-content p {
+	margin-bottom: 1.5rem;
+}
+
 .prose pre,
 .tab-content pre {
 	background: var(--color-bg-secondary);
@@ -16,48 +42,6 @@
 	border-radius: var(--radius);
 	overflow-x: auto;
 	position: relative;
-}
-
-.btn-try {
-	position: absolute;
-	top: 0.5rem;
-	right: 0.5rem;
-	opacity: 0;
-	transition: opacity 0.2s ease-in-out;
-	font-size: 0.7rem;
-	padding: 0.2rem 0.5rem;
-	border-radius: var(--radius);
-	background-color: var(--color-primary);
-	color: #fff;
-	border: none;
-	cursor: pointer;
-	z-index: 10;
-}
-
-.prose pre:hover .btn-try,
-.tab-content pre:hover .btn-try {
-	opacity: 1;
-}
-
-@media (max-width: 768px) {
-	.btn-try {
-		opacity: 1;
-	}
-}
-.prose code,
-.tab-content code {
-	font-family: var(--font-mono);
-	font-size: 0.85rem;
-}
-.prose p,
-.tab-content p {
-	margin-bottom: 0.75rem;
-}
-
-.prose h2, .prose h3,
-.tab-content h2, .tab-content h3 {
-	margin-top: 1.25rem;
-	margin-bottom: 0.5rem;
 }
 .tab-content ul,
 .tab-content ol {
