@@ -163,6 +163,8 @@ printf
 | `---INITIAL_PYTHON---` | Kode awal Python yang muncul di editor siswa |
 | `---INITIAL_CIRCUIT---` | Rangkaian awal Falstad CircuitJS |
 | `---INITIAL_QUIZ---` | Data quiz (format JSON) |
+| `---QUIZ_FLASHCARD---` | Kuis format Markdown (Flashcard & Pilihan Ganda) |
+| `---slide-start---` | Blok slide presentasi interaktif |
 | `---EXPECTED_OUTPUT---` | Output yang diharapkan untuk C (stdout) |
 | `---EXPECTED_OUTPUT_PYTHON---` | Output yang diharapkan untuk Python (stdout) |
 | `---KEY_TEXT---` | Kata kunci yang harus ada di kode siswa |

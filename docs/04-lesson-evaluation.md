@@ -10,6 +10,7 @@ The LMS determines the type of lesson and how to evaluate it based on specific m
 | **Circuit** | `---INITIAL_CIRCUIT---` | Node voltage matching against `---EXPECTED_CIRCUIT_OUTPUT---` and `---KEY_TEXT_CIRCUIT---`. |
 | **Arduino (Velxio)** | `---INITIAL_CODE_ARDUINO---` | Serial output sequence matching, lenient graph wiring comparison, and `---KEY_TEXT---`. |
 | **Quiz** | `---QUIZ_FLASHCARD---` | State completion tracking (all questions answered correctly). |
+| **Slide** | `---slide-start---` | Tidak ada (hanya presentasi konten). |
 
 ## Evaluators (`lib/services/`)
 

@@ -287,6 +287,7 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 | **Arduino/Velxio** | `---INITIAL_CODE_ARDUINO---` | Velxio (iframe) + Output | serial + wiring + key_text |
 | **Velxio circuit-only** | `---VELXIO_CIRCUIT---` (tanpa code) | Velxio (no editor) + Output | wiring + key_text |
 | **Quiz** | `---QUIZ_FLASHCARD---` atau `---INITIAL_QUIZ---` | Quiz | Completion status |
+| **Slide** | `---slide-start---` | — | Tampilan Carousel (Presentasi) |
 | **Hybrid** | C/Python + Circuit | Editor + Circuit + Output | AND-logic: kedua harus pass |
 
 ### Markdown Sections yang Dikenali
@@ -295,6 +296,7 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 |---------|--------|
 | `---LESSON_INFO---` / `---END_LESSON_INFO---` | Info tab (learning objectives) |
 | `---EXERCISE---` | Instruksi latihan (separator) |
+| `---slide-start---` / `---slide-end---` | Konten slide presentasi (dipisah dengan `---`) |
 | `---INITIAL_CODE---` / `---END_INITIAL_CODE---` | Kode awal C |
 | `---INITIAL_PYTHON---` / `---END_INITIAL_PYTHON---` | Kode awal Python |
 | `---INITIAL_CIRCUIT---` / `---END_INITIAL_CIRCUIT---` | Circuit text awal (CircuitJS format) |
