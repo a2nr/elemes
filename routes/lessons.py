@@ -169,6 +169,7 @@ def api_lesson(filename):
         key_text = ""
         key_text_circuit = ""
         quiz_data = []
+        parsed_data['slides'] = []
         # Keep lesson_html, lesson_info, etc. for reading
 
     return jsonify({
@@ -197,6 +198,7 @@ def api_lesson(filename):
         'key_text_circuit': key_text_circuit,
         'active_tabs': active_tabs,
         'quiz_data': quiz_data,
+        'slides': parsed_data.get('slides', []),
         'lesson_progress_status': lesson_progress_status,
         'lesson_title': full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,

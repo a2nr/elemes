@@ -18,19 +18,50 @@
 	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
 	import { renderFlowchartEmbeds } from '$actions/renderFlowchartEmbeds';
 	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
-	import { tick } from 'svelte';
+	import { tick, mount, unmount } from 'svelte';
 	import { LessonManager } from './lesson.svelte';
 	import { authLoggedIn } from '$stores/auth';
+	import SlideCarousel from '$components/SlideCarousel.svelte';
 
 	let { data: pageData } = $props();
 	const mgr = new LessonManager();
 	const float = createFloatingPanel();
+
+	let slideComponent = $state<any>(null);
 
 	// Initialize manager with lesson data whenever it changes.
 	$effect(() => {
 		if (pageData.lesson) {
 			mgr.init(pageData.lesson);
 		}
+	});
+
+	// Handle Slide Carousel mounting
+	$effect(() => {
+		const slides = mgr.data?.slides;
+		if (slides && slides.length > 0) {
+			tick().then(() => {
+				const mountPoint = document.getElementById('slide-mount-point');
+				if (mountPoint) {
+					// Clean up previous if exists
+					if (slideComponent) {
+						unmount(slideComponent);
+						slideComponent = null;
+					}
+					// Mount new carousel
+					slideComponent = mount(SlideCarousel, {
+						target: mountPoint,
+						props: { slides }
+					});
+				}
+			});
+		}
+		return () => {
+			if (slideComponent) {
+				unmount(slideComponent);
+				slideComponent = null;
+			}
+		};
 	});
 
 	// Mobile behavior for floating panel

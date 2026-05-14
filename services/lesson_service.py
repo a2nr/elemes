@@ -523,6 +523,32 @@ def render_markdown_content(file_path):
     evaluation_config, lesson_content = _extract_section(
         lesson_content, '---EVALUATION_CONFIG---', '---END_EVALUATION_CONFIG---')
 
+    # Extract Slides
+    slides_raw, _ = _extract_section(lesson_content, '---slide-start---', '---slide-end---')
+    slides_html = []
+    if slides_raw:
+        # Replace the entire slide block with a mount point in the lesson_content
+        # We need to find the exact indices to replace it surgically
+        start_marker = '---slide-start---'
+        end_marker = '---slide-end---'
+        s_idx = lesson_content.find(start_marker)
+        e_idx = lesson_content.find(end_marker)
+        if s_idx != -1 and e_idx != -1 and e_idx > s_idx:
+            lesson_content = (
+                lesson_content[:s_idx] + 
+                '<div id="slide-mount-point"></div>' + 
+                lesson_content[e_idx + len(end_marker):]
+            )
+        
+        # Parse slides
+        slide_parts = re.split(r'^\s*---\s*$', slides_raw, flags=re.MULTILINE)
+        for s in slide_parts:
+            if s.strip():
+                # Process embeds in slides too
+                s = _process_circuit_embeds(s)
+                s = _process_flowchart_embeds(s)
+                slides_html.append(md.markdown(s.strip(), extensions=MD_EXTENSIONS))
+
     # Just use whichever initial code matched as the generic 'initial_code' for simplicity 
     # if only one type exists, but return all as dictionary values.
     # Typically frontend uses 'initial_code' for legacy. 
@@ -572,7 +598,8 @@ def render_markdown_content(file_path):
         'expected_wiring': expected_wiring,
         'evaluation_config': evaluation_config,
         'quiz_data': quiz_data,
-        'active_tabs': active_tabs
+        'active_tabs': active_tabs,
+        'slides': slides_html
     }
 
 
