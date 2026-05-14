@@ -43,6 +43,19 @@ def _parse_lesson_links(home_content):
 # Lesson listing
 # ---------------------------------------------------------------------------
 
+@lru_cache(maxsize=128)
+def find_lesson_file(filename):
+    """Recursively search for filename in CONTENT_DIR and return its full path."""
+    # Security: Prevent directory traversal
+    if '/' in filename or '\\' in filename:
+        return None
+        
+    for root, _, files in os.walk(CONTENT_DIR):
+        if filename in files:
+            return os.path.join(root, filename)
+    return None
+
+
 @lru_cache(maxsize=32)
 def get_lessons():
     """Get lessons from the Available_Lessons section in home.md."""
@@ -52,8 +65,8 @@ def get_lessons():
         return lessons
 
     for link_text, filename in _parse_lesson_links(home_content):
-        file_path = os.path.join(CONTENT_DIR, filename)
-        if not os.path.exists(file_path):
+        file_path = find_lesson_file(filename)
+        if not file_path:
             continue
 
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -92,8 +105,8 @@ def get_lesson_names():
 
     names = []
     for _link_text, filename in _parse_lesson_links(home_content):
-        file_path = os.path.join(CONTENT_DIR, filename)
-        if os.path.exists(file_path):
+        file_path = find_lesson_file(filename)
+        if file_path:
             names.append(filename.replace('.md', ''))
     return names
 
@@ -107,8 +120,8 @@ def get_lessons_with_learning_objectives():
         return lessons
 
     for link_text, filename in _parse_lesson_links(home_content):
-        file_path = os.path.join(CONTENT_DIR, filename)
-        if not os.path.exists(file_path):
+        file_path = find_lesson_file(filename)
+        if not file_path:
             continue
 
         with open(file_path, 'r', encoding='utf-8') as f:

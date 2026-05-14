@@ -13,6 +13,7 @@ from services.lesson_service import (
     get_ordered_lessons_with_learning_objectives,
     render_markdown_content,
     render_home_content,
+    find_lesson_file,
 )
 from services.token_service import get_student_progress
 
@@ -52,10 +53,9 @@ def api_lessons():
 @lessons_bp.route('/lesson/<filename>.json')
 def api_lesson(filename):
     """Return single lesson data as JSON."""
-    safe_filename = secure_filename(filename)
-    full_filename = safe_filename if safe_filename.endswith('.md') else f'{safe_filename}.md'
-    file_path = os.path.join(CONTENT_DIR, full_filename)
-    if not os.path.exists(file_path):
+    full_filename = filename if filename.endswith('.md') else f'{filename}.md'
+    file_path = find_lesson_file(full_filename)
+    if not file_path:
         return jsonify({'error': 'Lesson not found'}), 404
 
     parsed_data = render_markdown_content(file_path)
@@ -215,9 +215,8 @@ def api_lesson(filename):
 @lessons_bp.route('/get-key-text/<filename>')
 def get_key_text(filename):
     """Get the key text for a specific lesson."""
-    safe_filename = secure_filename(filename)
-    file_path = os.path.join(CONTENT_DIR, safe_filename)
-    if not os.path.exists(file_path):
+    file_path = find_lesson_file(filename)
+    if not file_path:
         return jsonify({'success': False, 'error': 'Lesson not found'}), 404
 
     parsed_data = render_markdown_content(file_path)

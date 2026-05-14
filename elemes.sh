@@ -43,8 +43,8 @@ init)
     echo "✅ [Skip] Folder content/ sudah ada"
   else
     mkdir -p "$PARENT_DIR/content"
-    cp -n "$EXAMPLES_DIR/content/"*.md "$PARENT_DIR/content/"
-    echo "📁 [Buat] Folder content/  ($(ls "$PARENT_DIR/content/"*.md 2>/dev/null | wc -l) materi contoh ditambahkan)"
+    cp -rn "$EXAMPLES_DIR/content/"* "$PARENT_DIR/content/"
+    echo "📁 [Buat] Folder content/  ($(find "$PARENT_DIR/content/" -name "*.md" 2>/dev/null | wc -l) materi contoh ditambahkan)"
   fi
 
   # assets/
