@@ -44,9 +44,12 @@ export function initVelxioBridge(
 	arduinoCircuitKey: string,
 	arduinoCodeKey: string,
 	onReady: (bridge: VelxioBridge) => void,
-	onSubmit: () => void
-) {
+	onSubmit: () => void,
+	onCountdown?: (msRemaining: number) => void
+): () => void {
 	let settled = false;
+	let countdownInterval: ReturnType<typeof setInterval> | null = null;
+
 	const onMessage = (e: MessageEvent) => {
 		const type = e.data?.type;
 		if (!type) return;
@@ -83,8 +86,30 @@ export function initVelxioBridge(
 		}
 
 		if (type === 'velxio:compile_result' && e.data.success) {
-			const timeout = data?.evaluation_config?.timeout_ms ?? 5000;
-			setTimeout(() => onSubmit(), timeout);
+			const timeout = data?.evaluation_config?.timeout_ms ?? 8000;
+			if (countdownInterval) clearInterval(countdownInterval);
+			let remaining = timeout;
+			if (onCountdown) {
+				onCountdown(remaining);
+				countdownInterval = setInterval(() => {
+					remaining -= 1000;
+					if (remaining <= 0) {
+						if (countdownInterval) {
+							clearInterval(countdownInterval);
+							countdownInterval = null;
+						}
+					} else {
+						onCountdown(remaining);
+					}
+				}, 1000);
+			}
+			setTimeout(() => {
+				if (countdownInterval) {
+					clearInterval(countdownInterval);
+					countdownInterval = null;
+				}
+				onSubmit();
+			}, timeout);
 		}
 	};
 	window.addEventListener('message', onMessage);
@@ -136,10 +161,18 @@ export function initVelxioBridge(
 		} catch { /* cross-origin or not ready yet */ }
 	}, 1000);
 
-	setTimeout(() => {
-		clearInterval(pollReady);
-		if (settled) return;
-		settled = true;
+	const cleanup = () => {
 		window.removeEventListener('message', onMessage);
+		clearInterval(pollReady);
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+			countdownInterval = null;
+		}
+	};
+
+	setTimeout(() => {
+		cleanup();
 	}, 30_000);
+
+	return cleanup;
 }

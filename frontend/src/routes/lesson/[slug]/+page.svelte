@@ -101,7 +101,14 @@
 
 	beforeNavigate(() => {
 		lessonContext.set(null);
-		if (mgr.velxioBridge) { mgr.velxioBridge.destroy(); mgr.velxioBridge = null; }
+		if (mgr.velxioCleanup) {
+			mgr.velxioCleanup();
+			mgr.velxioCleanup = null;
+		}
+		if (mgr.velxioBridge) {
+			mgr.velxioBridge.destroy();
+			mgr.velxioBridge = null;
+		}
 	});
 
 	let contentEl = $state<HTMLElement | null>(null);

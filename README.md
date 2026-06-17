@@ -198,6 +198,7 @@ Untuk materi yang menggunakan simulator Arduino (Velxio):
 | `---EXPECTED_SERIAL_OUTPUT---` | Output serial yang diharapkan (subsequence match) |
 | `---EXPECTED_WIRING---` | Wiring yang harus dibuat siswa (JSON, lenient) |
 | `---KEY_TEXT---` | Kata kunci yang harus ada di kode siswa |
+| `---EVALUATION_CONFIG---` | Konfigurasi tambahan evaluasi Arduino (JSON: e.g. `timeout_ms` dalam milidetik) |
 
 Contoh materi Arduino:
 
@@ -246,6 +247,12 @@ LED OFF
 pinMode
 digitalWrite
 ---END_KEY_TEXT---
+
+---EVALUATION_CONFIG---
+{
+  "timeout_ms": 8000
+}
+---END_EVALUATION_CONFIG---
 ```
 
 ##### Referensi Nama Pin Komponen Velxio

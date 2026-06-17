@@ -15,18 +15,21 @@
 	let ready = $state(false);
 	let simApi = $state<CircuitJSApi | null>(null);
 	let saving = $state(false);
-	let saveTimeout: ReturnType<typeof setTimeout>;
-	let autoSaveInterval: ReturnType<typeof setInterval>;
+	let saveTimeout = $state<ReturnType<typeof setTimeout> | null>(null);
+	let isDestroyed = false;
 	let lastLoadedCircuit = $state('');
 	let lastStorageKey = $state<string | undefined>(undefined);
 
 	function saveToStorage(text: string) {
-		if (!storageKey) return;
+		if (!storageKey || isDestroyed) return;
 		saving = true;
-		clearTimeout(saveTimeout);
+		if (saveTimeout) clearTimeout(saveTimeout);
 		saveTimeout = setTimeout(() => {
-			localStorage.setItem(storageKey, text);
+			if (!isDestroyed && storageKey) {
+				localStorage.setItem(storageKey, text);
+			}
 			saving = false;
+			saveTimeout = null;
 		}, 1000);
 	}
 
@@ -137,8 +140,11 @@
 	// Cleanup timers on destroy
 	$effect(() => {
 		return () => {
-			clearInterval(autoSaveInterval);
-			clearTimeout(saveTimeout);
+			isDestroyed = true;
+			if (saveTimeout) {
+				clearTimeout(saveTimeout);
+				saveTimeout = null;
+			}
 		};
 	});
 

@@ -42,6 +42,7 @@ export class LessonManager {
 	velxioSaving = $state(false);
 	velxioError = $state(false);
 	velxioIframe = $state<HTMLIFrameElement | null>(null);
+	velxioCleanup = $state<(() => void) | null>(null);
 
 	showSolution = $state(false);
 	activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart'>('info');
@@ -177,6 +178,7 @@ export class LessonManager {
 			this.circuitPassed = false;
 			this.showSolution = false;
 
+			if (this.velxioCleanup) { this.velxioCleanup(); this.velxioCleanup = null; }
 			if (this.velxioBridge) { this.velxioBridge.destroy(); this.velxioBridge = null; }
 			this.velxioReady = false;
 			this.velxioError = false;
@@ -411,7 +413,11 @@ export class LessonManager {
 
 	setupVelxioBridge(iframe: HTMLIFrameElement) {
 		this.velxioIframe = iframe;
-		initVelxioBridge(
+		if (this.velxioCleanup) {
+			this.velxioCleanup();
+			this.velxioCleanup = null;
+		}
+		this.velxioCleanup = initVelxioBridge(
 			iframe,
 			this.data,
 			this.arduinoCircuitKey,
@@ -420,7 +426,16 @@ export class LessonManager {
 				this.velxioBridge = bridge;
 				this.velxioReady = true;
 			},
-			() => this.handleVelxioSubmit()
+			() => this.handleVelxioSubmit(),
+			(msRemaining) => {
+				this.activeTab = 'output';
+				Object.assign(this.velxioOut, {
+					loading: true,
+					output: `Kompilasi sukses. Menjalankan simulasi & merekam log serial (${Math.round(msRemaining / 1000)} detik)...`,
+					error: '',
+					success: null
+				});
+			}
 		);
 	}
 

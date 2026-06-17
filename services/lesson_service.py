@@ -6,20 +6,42 @@ import os
 import re
 import html as html_module
 from functools import lru_cache
+from threading import Lock
 
 import markdown as md
 
 from config import CONTENT_DIR
 
+_home_cache = {'content': None, 'mtime': -1.0}
+_home_lock = Lock()
 
-@lru_cache(maxsize=1)
+_markdown_cache = {}
+_markdown_lock = Lock()
+
+
 def _read_home_md():
     """Read home.md and return its content, or empty string if missing."""
     path = os.path.join(CONTENT_DIR, "home.md")
     if not os.path.exists(path):
         return ""
-    with open(path, 'r', encoding='utf-8') as f:
-        return f.read()
+    try:
+        current_mtime = os.path.getmtime(path)
+    except OSError:
+        return _home_cache.get('content') or ""
+        
+    with _home_lock:
+        if current_mtime != _home_cache['mtime']:
+            with open(path, 'r', encoding='utf-8') as f:
+                _home_cache['content'] = f.read()
+            _home_cache['mtime'] = current_mtime
+            # Invalidate all downstream caches
+            find_lesson_file.cache_clear()
+            get_lessons.cache_clear()
+            get_lesson_names.cache_clear()
+            get_lessons_with_learning_objectives.cache_clear()
+            with _markdown_lock:
+                _markdown_cache.clear()
+        return _home_cache['content']
 
 
 def _parse_lesson_links(home_content):
@@ -417,9 +439,18 @@ def _extract_section(content, start_marker, end_marker):
     return extracted, remaining
 
 
-@lru_cache(maxsize=32)
 def render_markdown_content(file_path):
     """Parse a lesson markdown file and return structured HTML parts as a dictionary."""
+    try:
+        current_mtime = os.path.getmtime(file_path)
+    except OSError:
+        current_mtime = 0.0
+
+    with _markdown_lock:
+        cached = _markdown_cache.get(file_path)
+        if cached and cached['mtime'] == current_mtime:
+            return cached['data']
+
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
@@ -586,7 +617,7 @@ def render_markdown_content(file_path):
     exercise_html = md.markdown(exercise_content, extensions=MD_EXTENSIONS) if exercise_content else ""
     lesson_info_html = md.markdown(lesson_info, extensions=MD_EXTENSIONS) if lesson_info else ""
 
-    return {
+    parsed_data = {
         'lesson_html': lesson_html,
         'exercise_html': exercise_html,
         'expected_output': expected_output,
@@ -615,10 +646,21 @@ def render_markdown_content(file_path):
         'slides': slides_html
     }
 
+    with _markdown_lock:
+        if len(_markdown_cache) >= 128:
+            _markdown_cache.clear()
+        _markdown_cache[file_path] = {'data': parsed_data, 'mtime': current_mtime}
 
-@lru_cache(maxsize=1)
+    return parsed_data
+
+
 def render_home_content():
-    """Render the home.md intro section (before Available_Lessons) as HTML."""
+    """Render the home.md intro section (before Available_Lessons) as HTML.
+    
+    Not cached separately — relies on _read_home_md() mtime-based cache,
+    which is already fast (1 syscall per request). This avoids the lru_cache
+    multi-worker stale data problem.
+    """
     home_content = _read_home_md()
     if not home_content:
         return ""

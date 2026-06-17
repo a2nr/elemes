@@ -312,6 +312,7 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 | `---KEY_TEXT_CIRCUIT---` / `---END_KEY_TEXT_CIRCUIT---` | Keyword wajib di circuit (hybrid) |
 | `---SOLUTION_CODE---` / `---END_SOLUTION_CODE---` | Solusi kode (ditampilkan setelah selesai) |
 | `---SOLUTION_CIRCUIT---` / `---END_SOLUTION_CIRCUIT---` | Solusi circuit |
+| `---EVALUATION_CONFIG---` / `---END_EVALUATION_CONFIG---` | Konfigurasi tambahan evaluasi Arduino (JSON: e.g. `timeout_ms`) |
 
 ### Fitur Tombol "Coba" (Code Try-out)
 
