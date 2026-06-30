@@ -347,8 +347,67 @@ export class BLEHardwareDeployer {
 			return;
 		}
 
-		await ackPromise;
-		console.log(`[BLE-CMD] ${cmdName} idx=${index}: ackPromise resolved OK`);
+		/* INIT/DATA: Same Android notify idle-drop bug affects these too.
+		 * Race ackPromise against readValue() state poll as fallback.
+		 * INIT success: firmware state >= RECEIVING(1) (not IDLE/ERROR).
+		 * DATA success: firmware state == RECEIVING(1). */
+		if (cmd === CMD_INIT || cmd === CMD_DATA) {
+			const readPoll = (async () => {
+				const deadline = Date.now() + ackTimeout;
+				while (Date.now() < deadline) {
+					try {
+						const dv = await this.withTimeout(
+							this.flashingChar!.readValue(),
+							3000,
+							'readValue(state)'
+						);
+						const state = dv.getUint8(0);
+						console.log(`[BLE-CMD] ${cmdName}: readValue state=${state}`);
+
+						/* INIT: any non-IDLE(0), non-ERROR(5/6) state means command was processed.
+						 * DATA: state must stay RECEIVING(1) — error if >=5. */
+						if (cmd === CMD_INIT) {
+							if (state >= 1 && state <= 4) {
+								console.log(`[BLE-CMD] ${cmdName}: state=${state} — INIT confirmed via read poll`);
+								return 'ok' as const;
+							}
+						} else { /* DATA */
+							if (state === 1) {
+								console.log(`[BLE-CMD] ${cmdName}: state=1 (RECEIVING) — DATA confirmed via read poll`);
+								return 'ok' as const;
+							}
+						}
+						if (state >= 5) {
+							throw new Error(`Firmware error (state=${state})`);
+						}
+					} catch (e) {
+						if (!this.isConnected) {
+							throw new Error('Koneksi BLE terputus');
+						}
+						console.log(`[BLE-CMD] ${cmdName}: readValue retry...`, e);
+					}
+					await new Promise<void>(r => setTimeout(r, 200));
+				}
+				console.log(`[BLE-CMD] ${cmdName}: readPoll deadline passed (${ackTimeout}ms)`);
+				return 'timeout' as const;
+			})();
+
+			const ackWithLabel = ackPromise.then(() => 'ack' as const);
+			const result = await Promise.race([ackWithLabel, readPoll]);
+			console.log(`[BLE-CMD] ${cmdName} idx=${index}: resolved via ${result}`);
+
+			if (result !== 'ack') {
+				const entry = this.ackResolvers.get(index);
+				if (entry) {
+					clearTimeout(entry.timer);
+					this.ackResolvers.delete(index);
+				}
+			}
+			if (result === 'timeout') {
+				throw new Error(`Timeout menunggu ACK untuk chunk ${index}`);
+			}
+			return;
+		}
 	}
 
 	private async sendCommandWithRetry(cmd: number, index: number, data: Uint8Array, chunkCRC: number): Promise<void> {
