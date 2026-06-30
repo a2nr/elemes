@@ -168,6 +168,7 @@ void state_machine_process_event(sm_event_t event, void *data)
     case STATE_SERIAL_BRIDGE:
         if (event == EVENT_BLE_INIT) {
             serial_bridge_stop();
+            binary_parser_reset();
             current_state = STATE_RECEIVING;
             led_set_pattern(LED_BLUE_BLINK);
             ESP_LOGI(TAG, "Transition: SERIAL_BRIDGE -> RECEIVING (re-deploy)");
