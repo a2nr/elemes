@@ -3,7 +3,7 @@ import {
 	BLE_CHAR_FLASHING_UUID,
 	BLE_CHAR_SERIAL_UUID,
 	CMD_INIT, CMD_DATA, CMD_END, CMD_ACK, CMD_ERR,
-	CHUNK_SIZE, BLE_TIMEOUT_MS, END_TIMEOUT_MS, END_ACK_INDEX, MAX_RETRIES,
+	CHUNK_SIZE, BLE_TIMEOUT_MS, END_TIMEOUT_MS, END_ACK_INDEX, INIT_ACK_INDEX, MAX_RETRIES,
 	type DeployProgress, type BLEACKResponse
 } from '$types/deployer';
 
@@ -155,11 +155,13 @@ export class BLEHardwareDeployer {
 				this.ackResolvers.delete(index);
 				clearTimeout(pending.timer);
 				pending.resolve(ack);
-			} else if (this.ackResolvers.has(0xFFFF) && index !== 0xFFFF) {
+			} else if ((this.ackResolvers.has(0xFFFF) || this.ackResolvers.has(INIT_ACK_INDEX)) && index !== 0xFFFF && index !== INIT_ACK_INDEX) {
 				// No one waiting for this specific index right now,
-				// but someone IS waiting for END (0xFFFF) — don't
-				// let a stale chunk ACK resolve it.
-				logAck(cmdName, `index=${index} no resolver, END waitForAck(0xFFFF) active — dropping stale ACK`);
+				// but someone IS waiting for END (0xFFFF) or INIT
+				// (INIT_ACK_INDEX) — don't let a stale chunk ACK
+				// resolve them. Only END/INIT sentinel ACKs are
+				// relevant while these waits are active.
+				logAck(cmdName, `index=${index} no resolver, waitForAck(0xFFFF/0xFFFE) active — dropping stale ACK`);
 			} else {
 				// Cache for a future waitForAck call
 				logAck(cmdName, `index=${index} no resolver — caching as pendingAck`);
@@ -193,9 +195,13 @@ export class BLEHardwareDeployer {
 
 		console.log(`[BLE] deployHex: ${binaryData.length} bytes, ${totalChunks} chunks, CRC=0x${totalCRC.toString(16)}`);
 
+		/* Clear stale ACKs from a previous deploy (prevents cross-deploy
+		 * poisoning where a late ACK from deploy N resolves deploy N+1). */
+		this.pendingAcks.clear();
+
 		onProgress({ state: 'transferring', message: 'Mengirim INIT...', totalChunks, completedChunks: 0 });
 		console.log('[BLE] D: sending INIT...');
-		await this.sendCommand(CMD_INIT, 0, this.uint32ToBytes(totalCRC));
+		await this.sendCommand(CMD_INIT, INIT_ACK_INDEX, this.uint32ToBytes(totalCRC));
 		console.log('[BLE] D: INIT done');
 
 		for (let i = 0; i < totalChunks; i++) {
@@ -246,6 +252,7 @@ export class BLEHardwareDeployer {
 		], 4 + data.length);
 
 		const ackTimeout = timeoutMs ?? BLE_TIMEOUT_MS;
+		let writeSucceeded = false;
 		console.log(`[BLE-CMD] ${cmdName} idx=${index}: waitForAck timeout=${ackTimeout}ms start`);
 		const ackPromise = this.waitForAck(index, ackTimeout);
 		try {
@@ -255,6 +262,7 @@ export class BLEHardwareDeployer {
 				3000,
 				'writeValueWithResponse'
 			);
+			writeSucceeded = true;
 			console.log(`[BLE-CMD] ${cmdName} idx=${index}: write done, now waiting for ACK...`);
 		} catch (e) {
 			console.log(`[BLE-CMD] ${cmdName} idx=${index}: write failed, still waiting for ACK`, e);
@@ -347,10 +355,12 @@ export class BLEHardwareDeployer {
 			return;
 		}
 
-		/* INIT/DATA: Same Android notify idle-drop bug affects these too.
-		 * Race ackPromise against readValue() state poll as fallback.
-		 * INIT success: firmware state >= RECEIVING(1) (not IDLE/ERROR).
-		 * DATA success: firmware state == RECEIVING(1). */
+		/* INIT: Firmware sets state to RECEIVING(1) on success — poll for it.
+		 * DATA: ACK notify confirms per-chunk CRC. Since state=1 is always
+		 * true during DATA phase, readPoll cannot confirm a specific chunk.
+		 * Instead, readPoll fast-fails on ERROR state (>=5). At deadline, if
+		 * write succeeded (writeValueWithResponse confirms firmware processed
+		 * the chunk), return ok. Otherwise return timeout for retry. */
 		if (cmd === CMD_INIT || cmd === CMD_DATA) {
 			const readPoll = (async () => {
 				const deadline = Date.now() + ackTimeout;
@@ -364,24 +374,15 @@ export class BLEHardwareDeployer {
 						const state = dv.getUint8(0);
 						console.log(`[BLE-CMD] ${cmdName}: readValue state=${state}`);
 
-						/* INIT: any non-IDLE(0), non-ERROR(5/6) state means command was processed.
-						 * DATA: state must stay RECEIVING(1) — error if >=5. */
-						if (cmd === CMD_INIT) {
-							/* Only RECEIVING(1) means INIT was processed.
-							 * Don't accept FLASHING(3) or SERIAL_BRIDGE(4) —
-							 * those are stale states from a previous deploy. */
-							if (state === 1) {
-								console.log(`[BLE-CMD] ${cmdName}: state=1 (RECEIVING) — INIT confirmed via read poll`);
-								return 'ok' as const;
-							}
-						} else { /* DATA */
-							if (state === 1) {
-								console.log(`[BLE-CMD] ${cmdName}: state=1 (RECEIVING) — DATA confirmed via read poll`);
-								return 'ok' as const;
-							}
-						}
 						if (state >= 5) {
 							throw new Error(`Firmware error (state=${state})`);
+						}
+						/* INIT: Only RECEIVING(1) means command was processed.
+						 * Don't accept FLASHING(3) or SERIAL_BRIDGE(4) —
+						 * those are stale states from a previous deploy. */
+						if (cmd === CMD_INIT && state === 1) {
+							console.log(`[BLE-CMD] ${cmdName}: state=1 (RECEIVING) — INIT confirmed via read poll`);
+							return 'ok' as const;
 						}
 					} catch (e) {
 						if (!this.isConnected) {
@@ -390,6 +391,12 @@ export class BLEHardwareDeployer {
 						console.log(`[BLE-CMD] ${cmdName}: readValue retry...`, e);
 					}
 					await new Promise<void>(r => setTimeout(r, 200));
+				}
+				/* Deadline reached. For DATA: writeValueWithResponse confirms
+				 * the firmware processed the chunk (GATT write response). */
+				if (cmd === CMD_DATA && writeSucceeded) {
+					console.log(`[BLE-CMD] ${cmdName}: deadline, write succeeded — treating as ok`);
+					return 'ok' as const;
 				}
 				console.log(`[BLE-CMD] ${cmdName}: readPoll deadline passed (${ackTimeout}ms)`);
 				return 'timeout' as const;

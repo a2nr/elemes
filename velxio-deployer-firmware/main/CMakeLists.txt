@@ -1,0 +1,14 @@
+idf_component_register(
+    SRCS
+        main.c
+        ble_service.c
+        binary_parser.c
+        checksum.c
+        usb_host.c
+        stk500v1.c
+        state_machine.c
+        serial_bridge.c
+        led_button.c
+    INCLUDE_DIRS
+        .
+)
