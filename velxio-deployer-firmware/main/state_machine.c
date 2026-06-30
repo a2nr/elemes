@@ -168,7 +168,11 @@ void state_machine_process_event(sm_event_t event, void *data)
     case STATE_SERIAL_BRIDGE:
         if (event == EVENT_BLE_INIT) {
             serial_bridge_stop();
-            binary_parser_reset();
+            /* Don't call binary_parser_reset() here — the parser's INIT
+             * handler (binary_parser.c:51-68) already resets buffer_offset,
+             * buffer_size, memset, and state. Calling reset here wipes
+             * expected_total_crc to 0 AFTER the parser already set it
+             * from the INIT payload, causing END CRC verification to fail. */
             current_state = STATE_RECEIVING;
             led_set_pattern(LED_BLUE_BLINK);
             ESP_LOGI(TAG, "Transition: SERIAL_BRIDGE -> RECEIVING (re-deploy)");
@@ -185,7 +189,7 @@ void state_machine_process_event(sm_event_t event, void *data)
         if (event == EVENT_BLE_INIT) {
             ESP_LOGI(TAG, "Re-deploy from ERROR state — transition to RECEIVING");
             serial_bridge_stop();
-            binary_parser_reset();
+            /* Parser resets itself on INIT — see note in SERIAL_BRIDGE handler. */
             current_state = STATE_RECEIVING;
             led_set_pattern(LED_BLUE_BLINK);
         } else if (event == EVENT_BUTTON_RETRY) {

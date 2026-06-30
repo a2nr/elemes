@@ -367,8 +367,11 @@ export class BLEHardwareDeployer {
 						/* INIT: any non-IDLE(0), non-ERROR(5/6) state means command was processed.
 						 * DATA: state must stay RECEIVING(1) — error if >=5. */
 						if (cmd === CMD_INIT) {
-							if (state >= 1 && state <= 4) {
-								console.log(`[BLE-CMD] ${cmdName}: state=${state} — INIT confirmed via read poll`);
+							/* Only RECEIVING(1) means INIT was processed.
+							 * Don't accept FLASHING(3) or SERIAL_BRIDGE(4) —
+							 * those are stale states from a previous deploy. */
+							if (state === 1) {
+								console.log(`[BLE-CMD] ${cmdName}: state=1 (RECEIVING) — INIT confirmed via read poll`);
 								return 'ok' as const;
 							}
 						} else { /* DATA */
