@@ -5,7 +5,7 @@
 
 <footer class="footer">
 	<div class="container">
-		<p>&copy; {env.PUBLIC_COPYRIGHT_TEXT || `${new Date().getFullYear()} Elemes LMS`} <span class="version-badge">v10</span></p>
+		<p>&copy; {env.PUBLIC_COPYRIGHT_TEXT || `${new Date().getFullYear()} Elemes LMS`} <span class="version-badge">v11</span></p>
 		{#if $authIsTeacher}
 			<p><a href="/progress" class="teacher-link">Laporan Progress Siswa</a></p>
 		{/if}
