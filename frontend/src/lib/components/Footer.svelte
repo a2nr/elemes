@@ -5,7 +5,7 @@
 
 <footer class="footer">
 	<div class="container">
-		<p>&copy; {env.PUBLIC_COPYRIGHT_TEXT || `${new Date().getFullYear()} Elemes LMS`}</p>
+		<p>&copy; {env.PUBLIC_COPYRIGHT_TEXT || `${new Date().getFullYear()} Elemes LMS`} <span class="version-badge">v10</span></p>
 		{#if $authIsTeacher}
 			<p><a href="/progress" class="teacher-link">Laporan Progress Siswa</a></p>
 		{/if}
@@ -29,5 +29,16 @@
 	}
 	.teacher-link:hover {
 		text-decoration: underline;
+	}
+	.version-badge {
+		display: inline-block;
+		font-size: 0.65rem;
+		background: var(--color-primary, #3b82f6);
+		color: white;
+		padding: 1px 5px;
+		border-radius: 3px;
+		margin-left: 6px;
+		vertical-align: middle;
+		opacity: 0.7;
 	}
 </style>
