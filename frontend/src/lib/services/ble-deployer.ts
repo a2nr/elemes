@@ -410,25 +410,17 @@ export class BLEHardwareDeployer {
 		}
 	}
 
-	private async sendCommandWithRetry(cmd: number, index: number, data: Uint8Array, chunkCRC: number): Promise<void> {
-		const payload = new Uint8Array(4 + data.length + 4);
-		payload[0] = cmd;
-		payload[1] = index & 0xFF;
-		payload[2] = (index >> 8) & 0xFF;
-		payload[3] = data.length;
-		payload.set(data, 4);
-		payload.set([
-			chunkCRC & 0xFF, (chunkCRC >> 8) & 0xFF, (chunkCRC >> 16) & 0xFF, (chunkCRC >> 24) & 0xFF
-		], 4 + data.length);
-
+	private async sendCommandWithRetry(cmd: number, index: number, data: Uint8Array, _chunkCRC: number): Promise<void> {
+		/* Route through sendCommand() which has readValue() state poll
+		 * fallback for DATA (same as INIT/END). The _chunkCRC is kept
+		 * for API compatibility — sendCommand computes CRC internally. */
 		for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
 			try {
-				const ackPromise = this.waitForAck(index);
-				await this.flashingChar!.writeValueWithResponse(payload);
-				await ackPromise;
+				await this.sendCommand(cmd, index, data);
 				return;
 			} catch (err) {
 				if (attempt === MAX_RETRIES - 1) throw err;
+				console.log(`[BLE-CMD] DATA idx=${index}: retry ${attempt + 1}/${MAX_RETRIES}`, err);
 				await new Promise(r => setTimeout(r, 500));
 			}
 		}
