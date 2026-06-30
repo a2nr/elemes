@@ -252,7 +252,6 @@ export class BLEHardwareDeployer {
 		], 4 + data.length);
 
 		const ackTimeout = timeoutMs ?? BLE_TIMEOUT_MS;
-		let writeSucceeded = false;
 		console.log(`[BLE-CMD] ${cmdName} idx=${index}: waitForAck timeout=${ackTimeout}ms start`);
 		const ackPromise = this.waitForAck(index, ackTimeout);
 		try {
@@ -262,7 +261,6 @@ export class BLEHardwareDeployer {
 				3000,
 				'writeValueWithResponse'
 			);
-			writeSucceeded = true;
 			console.log(`[BLE-CMD] ${cmdName} idx=${index}: write done, now waiting for ACK...`);
 		} catch (e) {
 			console.log(`[BLE-CMD] ${cmdName} idx=${index}: write failed, still waiting for ACK`, e);
@@ -356,12 +354,9 @@ export class BLEHardwareDeployer {
 		}
 
 		/* INIT: Firmware sets state to RECEIVING(1) on success — poll for it.
-		 * DATA: ACK notify confirms per-chunk CRC. Since state=1 is always
-		 * true during DATA phase, readPoll cannot confirm a specific chunk.
-		 * Instead, readPoll fast-fails on ERROR state (>=5). At deadline, if
-		 * write succeeded (writeValueWithResponse confirms firmware processed
-		 * the chunk), return ok. Otherwise return timeout for retry. */
-		if (cmd === CMD_INIT || cmd === CMD_DATA) {
+		 * DATA does NOT go through sendCommand (uses sendCommandWithRetry
+		 * with direct write+waitForAck — no readPoll). */
+		if (cmd === CMD_INIT) {
 			const readPoll = (async () => {
 				const deadline = Date.now() + ackTimeout;
 				while (Date.now() < deadline) {
@@ -372,39 +367,33 @@ export class BLEHardwareDeployer {
 							'readValue(state)'
 						);
 						const state = dv.getUint8(0);
-						console.log(`[BLE-CMD] ${cmdName}: readValue state=${state}`);
+						console.log(`[BLE-CMD] INIT: readValue state=${state}`);
 
 						if (state >= 5) {
 							throw new Error(`Firmware error (state=${state})`);
 						}
-						/* INIT: Only RECEIVING(1) means command was processed.
+						/* Only RECEIVING(1) means INIT was processed.
 						 * Don't accept FLASHING(3) or SERIAL_BRIDGE(4) —
 						 * those are stale states from a previous deploy. */
-						if (cmd === CMD_INIT && state === 1) {
-							console.log(`[BLE-CMD] ${cmdName}: state=1 (RECEIVING) — INIT confirmed via read poll`);
+						if (state === 1) {
+							console.log(`[BLE-CMD] INIT: state=1 (RECEIVING) — INIT confirmed via read poll`);
 							return 'ok' as const;
 						}
 					} catch (e) {
 						if (!this.isConnected) {
 							throw new Error('Koneksi BLE terputus');
 						}
-						console.log(`[BLE-CMD] ${cmdName}: readValue retry...`, e);
+						console.log(`[BLE-CMD] INIT: readValue retry...`, e);
 					}
 					await new Promise<void>(r => setTimeout(r, 200));
 				}
-				/* Deadline reached. For DATA: writeValueWithResponse confirms
-				 * the firmware processed the chunk (GATT write response). */
-				if (cmd === CMD_DATA && writeSucceeded) {
-					console.log(`[BLE-CMD] ${cmdName}: deadline, write succeeded — treating as ok`);
-					return 'ok' as const;
-				}
-				console.log(`[BLE-CMD] ${cmdName}: readPoll deadline passed (${ackTimeout}ms)`);
+				console.log(`[BLE-CMD] INIT: readPoll deadline passed (${ackTimeout}ms)`);
 				return 'timeout' as const;
 			})();
 
 			const ackWithLabel = ackPromise.then(() => 'ack' as const);
 			const result = await Promise.race([ackWithLabel, readPoll]);
-			console.log(`[BLE-CMD] ${cmdName} idx=${index}: resolved via ${result}`);
+			console.log(`[BLE-CMD] INIT idx=${index}: resolved via ${result}`);
 
 			if (result !== 'ack') {
 				const entry = this.ackResolvers.get(index);
@@ -420,13 +409,31 @@ export class BLEHardwareDeployer {
 		}
 	}
 
-	private async sendCommandWithRetry(cmd: number, index: number, data: Uint8Array, _chunkCRC: number): Promise<void> {
-		/* Route through sendCommand() which has readValue() state poll
-		 * fallback for DATA (same as INIT/END). The _chunkCRC is kept
-		 * for API compatibility — sendCommand computes CRC internally. */
+	private async sendCommandWithRetry(cmd: number, index: number, data: Uint8Array, chunkCRC: number): Promise<void> {
+		/* Direct write + waitForAck (no readPoll) — reverts cad90eb.
+		 * writeValueWithResponse already confirms delivery via GATT
+		 * response; the ACK notify confirms per-chunk CRC. During
+		 * active data transfer there is no idle gap, so ACK notifies
+		 * are NOT subject to the Qualcomm idle-drop bug */
+		const payload = new Uint8Array(4 + data.length + 4);
+		payload[0] = cmd;
+		payload[1] = index & 0xFF;
+		payload[2] = (index >> 8) & 0xFF;
+		payload[3] = data.length;
+		payload.set(data, 4);
+		payload.set([
+			chunkCRC & 0xFF, (chunkCRC >> 8) & 0xFF, (chunkCRC >> 16) & 0xFF, (chunkCRC >> 24) & 0xFF
+		], 4 + data.length);
+
 		for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
 			try {
-				await this.sendCommand(cmd, index, data);
+				const ackPromise = this.waitForAck(index);
+				await this.withTimeout(
+					this.flashingChar!.writeValueWithResponse(payload),
+					3000,
+					'writeValueWithResponse'
+				);
+				await ackPromise;
 				return;
 			} catch (err) {
 				if (attempt === MAX_RETRIES - 1) throw err;
