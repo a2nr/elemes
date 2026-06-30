@@ -260,36 +260,90 @@ export class BLEHardwareDeployer {
 			console.log(`[BLE-CMD] ${cmdName} idx=${index}: write failed, still waiting for ACK`, e);
 		}
 
-		/* END (flash ~8s): Android BLE stack sometimes fails to deliver the
-		 * notification through the normal characteristicvaluechanged handler
-		 * while a writeValueWithResponse await is still in progress on some
-		 * Qualcomm chipsets.  Race the ackPromise against a poll loop that
-		 * yields to the event loop every 200ms and checks pendingAcks (which
-		 * the notification handler fills if the resolver path was missed). */
+		/* END (flash ~8s): Android BLE stack (Qualcomm) drops
+		 * characteristicvaluechanged events after ~8s idle, so ACK
+		 * notification is unreliable.  Use readValue() to poll the
+		 * firmware's state machine instead — GATT Read is client-
+		 * initiated and NOT affected by the notify idle-drop bug.
+		 *
+		 * CCCD refresh is fire-and-forget as a belt-and-suspenders:
+		 * it didn't solve the issue on Qualcomm, but may help on
+		 * other devices. */
 		if (cmd === CMD_END) {
-			const deadline = Date.now() + ackTimeout;
-			const pollPromise: Promise<void> = new Promise(resolve => {
-				(async () => {
-					while (Date.now() < deadline) {
-						if (this.pendingAcks.has(index)) {
-							this.pendingAcks.delete(index);
-							const entry = this.ackResolvers.get(index);
-							if (entry) {
-								clearTimeout(entry.timer);
-								this.ackResolvers.delete(index);
-							}
-							console.log(`[BLE-CMD] END idx=${index}: ACK received via poll (pendingAcks)`);
-							resolve();
-							return;
+			/* Fire-and-forget CCCD refresh (don't await — non-blocking). */
+			this.flashingChar!.stopNotifications().catch(() => {});
+			this.flashingChar!.startNotifications().then(
+				() => console.log('[BLE-CMD] END: CCCD re-subscribed (fire-and-forget)'),
+				(e) => console.log('[BLE-CMD] END: CCCD refresh failed (non-critical)', e)
+			);
+
+			/* Read-based state poll — the RELIABLE path.
+			 * State values from state_machine.h:
+			 *   0=IDLE, 1=RECEIVING, 2=VERIFYING, 3=FLASHING (keep polling),
+			 *   4=SERIAL_BRIDGE (success), 5=ERROR_TARGET, 6=ERROR_CHECKSUM */
+			const STATE_SERIAL_BRIDGE = 4;
+			const STATE_ERROR_TARGET = 5;
+			const STATE_ERROR_CHECKSUM = 6;
+
+			const readPoll = (async () => {
+				const deadline = Date.now() + ackTimeout;
+				let firstPoll = true;
+				while (Date.now() < deadline) {
+					try {
+						const dv = await this.withTimeout(
+							this.flashingChar!.readValue(),
+							3000,
+							'readValue(state)'
+						);
+						const state = dv.getUint8(0);
+						console.log(`[BLE-CMD] END: readValue state=${state}`);
+
+						if (state === STATE_SERIAL_BRIDGE) {
+							console.log('[BLE-CMD] END: state=SERIAL_BRIDGE — flash success via read poll');
+							return 'ok' as const;
 						}
-						await new Promise<void>(r => setTimeout(r, 200));
+						if (state === STATE_ERROR_TARGET || state === STATE_ERROR_CHECKSUM) {
+							console.log(`[BLE-CMD] END: state=ERROR(${state}) — flash failed via read poll`);
+							throw new Error('Flash gagal di sisi firmware (state=' + state + ')');
+						}
+						/* state=FLASHING or VERIFYING — keep polling */
+					} catch (e) {
+						/* readValue failed (GATT error or timeout) — keep
+						 * retrying unless the connection itself is dead. */
+						if (!this.isConnected) {
+							throw new Error('Koneksi BLE terputus saat menunggu flash');
+						}
+						console.log('[BLE-CMD] END: readValue retry...', e);
 					}
-					console.log(`[BLE-CMD] END idx=${index}: poll deadline passed — ackPromise must win`);
-					resolve();  // resolve poll so the race falls through to ackPromise
-				})();
-			});
-			await Promise.race([ackPromise, pollPromise]);
-			console.log(`[BLE-CMD] END idx=${index}: ackPromise or poll resolved`);
+					/* First poll at 200ms (fast check if flash already done),
+					 * then every 500ms. ~16 polls during 8s flash. */
+					await new Promise<void>(r => setTimeout(r, firstPoll ? 200 : 500));
+					firstPoll = false;
+				}
+				console.log('[BLE-CMD] END: readPoll deadline passed (30s)');
+				return 'timeout' as const;
+			})();
+
+			/* Race: ACK notify (fast path — works on some devices) vs
+			 * readValue poll (reliable path — works everywhere). */
+			const ackWithLabel = ackPromise.then(() => 'ack' as const);
+			const result = await Promise.race([ackWithLabel, readPoll]);
+			console.log(`[BLE-CMD] END idx=${index}: resolved via ${result}`);
+
+			/* Clean up the ackPromise resolver if readPoll won —
+			 * prevents a dangling 30s timer. */
+			if (result !== 'ack') {
+				const entry = this.ackResolvers.get(index);
+				if (entry) {
+					clearTimeout(entry.timer);
+					this.ackResolvers.delete(index);
+					console.log(`[BLE-CMD] END: cleaned up ackPromise resolver (won via ${result})`);
+				}
+			}
+
+			if (result === 'timeout') {
+				throw new Error(`Timeout menunggu ACK untuk chunk ${index}`);
+			}
 			return;
 		}
 
