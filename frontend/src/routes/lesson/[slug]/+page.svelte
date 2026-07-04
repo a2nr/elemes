@@ -6,6 +6,7 @@
 	import VelxioTab from './VelxioTab.svelte';
 	import FlowchartTab from './FlowchartTab.svelte';
 	import QuizTab from './QuizTab.svelte';
+	import DeployTab from './DeployTab.svelte';
 	import OutputPanel from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
 	import WorkspaceHeader from '$components/WorkspaceHeader.svelte';
@@ -259,6 +260,17 @@
 								onRun={mgr.handleRun.bind(mgr)}
 								onReset={mgr.handleReset.bind(mgr)}
 								compiling={mgr.compiling}
+							/>
+						</div>
+					{/if}
+
+					{#if mgr.isDeployable}
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'deploy'}>
+							<DeployTab
+								velxioIframe={mgr.velxioIframe}
+								arduinoCodeKey={mgr.arduinoCodeKey}
+								slug={mgr.slug}
+								authLoggedIn={$authLoggedIn}
 							/>
 						</div>
 					{/if}

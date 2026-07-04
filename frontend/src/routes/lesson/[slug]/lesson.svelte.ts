@@ -12,6 +12,7 @@ import { VelxioBridge } from '$services/velxio-bridge';
 import type { LessonContent } from '$types/lesson';
 import type { CodeEditor } from '$components/CodeEditor.svelte';
 import type { CircuitEditor } from '$components/CircuitEditor.svelte';
+import type { DeployState } from '$types/deployer';
 
 export class LessonManager {
 	data = $state<LessonContent | null>(null);
@@ -45,7 +46,7 @@ export class LessonManager {
 	velxioCleanup = $state<(() => void) | null>(null);
 
 	showSolution = $state(false);
-	activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart'>('info');
+	activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart' | 'deploy'>('info');
 	showCelebration = $state(false);
 	mobileMode = $state<'hidden' | 'half' | 'full'>('hidden');
 	isMobile = $state(false);
@@ -59,6 +60,9 @@ export class LessonManager {
 	
 	isVelxio = $derived(this.data?.active_tabs?.includes('velxio') ?? false);
 	isFlowchart = $derived(this.data?.active_tabs?.includes('flowchart') ?? false);
+	isDeployable = $derived(this.data?.active_tabs?.includes('velxio') ?? false);
+
+	deployState = $state<DeployState>('idle');
 	outputSections = $derived.by(() => {
 		const tabs = this.data?.active_tabs ?? [];
 		const secs: any[] = [];
@@ -189,6 +193,8 @@ export class LessonManager {
 			else if (lesson.active_tabs?.includes('flowchart')) this.activeTab = 'flowchart';
 			else if (lesson.active_tabs?.includes('circuit') && !hasC && !hasPython) this.activeTab = 'circuit';
 			else this.activeTab = 'editor';
+
+			this.deployState = 'idle';
 			
 			this.mobileMode = 'hidden';
 

@@ -26,6 +26,7 @@ static void on_ble_flashing_data(uint8_t *data, size_t len)
     switch (cmd) {
     case CMD_INIT: {
         ESP_LOGI(TAG, "Received INIT command");
+        serial_bridge_stop();
         binary_parser_process_packet(data, len);
         state_machine_process_event(EVENT_BLE_INIT, data);
         break;
@@ -79,7 +80,7 @@ void app_main(void)
     usb_host_init();
     usb_host_set_serial_callback(on_usb_serial_data);
 
-    led_set_pattern(LED_BLUE_BLINK);
+    led_set_pattern(LED_BLUE_BLINK_SLOW);
 
     state_machine_init();
 

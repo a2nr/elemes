@@ -2,7 +2,7 @@ import {
 	BLE_SERVICE_UUID,
 	BLE_CHAR_FLASHING_UUID,
 	BLE_CHAR_SERIAL_UUID,
-	CMD_INIT, CMD_DATA, CMD_END, CMD_ACK, CMD_ERR,
+	CMD_INIT, CMD_DATA, CMD_END, CMD_ACK, CMD_ERR, CMD_SET_BAUD,
 	CHUNK_SIZE, BLE_TIMEOUT_MS, END_TIMEOUT_MS, END_ACK_INDEX, INIT_ACK_INDEX, MAX_RETRIES,
 	type DeployProgress, type BLEACKResponse
 } from '$types/deployer';
@@ -189,6 +189,27 @@ export class BLEHardwareDeployer {
 	async deployHex(hexContent: string, onProgress: (p: DeployProgress) => void): Promise<void> {
 		if (!this.flashingChar) throw new Error('Belum terhubung ke perangkat');
 
+		/* Stop serial monitor before re-deploy — reduces BLE traffic and
+		 * frees the firmware's serial bridge (which consumes mbuf pool
+		 * that the INIT ACK needs). */
+		this.stopSerialMonitor();
+
+		/* Ensure flashing char CCCD is subscribed before sending INIT.
+		 * The END flow's startNotifications is fire-and-forget and may
+		 * not have completed; if CCCD was left at 0 (possible on some
+		 * Android BLE stacks), the INIT ACK notification is silently
+		 * dropped, causing the re-deploy to hang. */
+		try {
+			await this.withTimeout(
+				this.flashingChar.startNotifications(),
+				3000,
+				'startNotifications(re-subscribe)'
+			);
+			console.log('[BLE] D: flashing char re-subscribed (CCCD=1)');
+		} catch (e) {
+			console.log('[BLE] D: startNotifications failed (non-critical, read-poll fallback)', e);
+		}
+
 		const binaryData = this.hexToBinary(hexContent);
 		const totalChunks = Math.ceil(binaryData.length / CHUNK_SIZE);
 		const totalCRC = this.crc32(binaryData);
@@ -276,11 +297,13 @@ export class BLEHardwareDeployer {
 		 * it didn't solve the issue on Qualcomm, but may help on
 		 * other devices. */
 		if (cmd === CMD_END) {
-			/* Fire-and-forget CCCD refresh (don't await — non-blocking). */
-			this.flashingChar!.stopNotifications().catch(() => {});
+			/* Re-subscribe flashing char (fire-and-forget). Do NOT call
+			 * stopNotifications() — that writes CCCD=0 and if the subsequent
+			 * startNotifications fails (race with readValue poll), the
+			 * flashing char is left unsubscribed, breaking re-deploy INIT ACK. */
 			this.flashingChar!.startNotifications().then(
-				() => console.log('[BLE-CMD] END: CCCD re-subscribed (fire-and-forget)'),
-				(e) => console.log('[BLE-CMD] END: CCCD refresh failed (non-critical)', e)
+				() => console.log('[BLE-CMD] END: CCCD refreshed (fire-and-forget)'),
+				(e: unknown) => console.log('[BLE-CMD] END: CCCD refresh failed (non-critical)', e)
 			);
 
 			/* Read-based state poll — the RELIABLE path.
@@ -476,24 +499,42 @@ export class BLEHardwareDeployer {
 
 		this.onSerialData = onData;
 
+		console.log('[BLE-SERIAL] startSerialMonitor: requesting notifications...');
 		await this.serialChar.startNotifications();
+		console.log('[BLE-SERIAL] startNotifications OK');
 		this._onSerialNotification = (event: Event) => {
 			const target = event.target as BluetoothRemoteGATTCharacteristic;
 			const dv = target.value!;
 			const value = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
 			const text = new TextDecoder().decode(value);
+			console.log(`[BLE-SERIAL] RX: ${value.length}B "${text.substring(0, 60)}"`);
 			this.onSerialData?.(text);
 		};
 		this.serialChar.addEventListener('characteristicvaluechanged', this._onSerialNotification);
+		console.log('[BLE-SERIAL] listener attached');
 	}
 
 	async sendSerialInput(text: string): Promise<void> {
 		if (!this.serialChar) throw new Error('Belum terhubung ke perangkat');
+		console.log(`[BLE-SERIAL] TX: "${text.substring(0, 60)}"`);
 		const encoder = new TextEncoder();
 		await this.serialChar.writeValueWithoutResponse(encoder.encode(text));
 	}
 
+	async setBaudRate(baud: number): Promise<void> {
+		if (!this.serialChar) throw new Error('Belum terhubung ke perangkat');
+		console.log(`[BLE-SERIAL] setBaudRate: ${baud}`);
+		const payload = new Uint8Array(5);
+		payload[0] = CMD_SET_BAUD;
+		payload[1] = baud & 0xFF;
+		payload[2] = (baud >> 8) & 0xFF;
+		payload[3] = (baud >> 16) & 0xFF;
+		payload[4] = (baud >> 24) & 0xFF;
+		await this.serialChar.writeValueWithoutResponse(payload);
+	}
+
 	stopSerialMonitor(): void {
+		console.log('[BLE-SERIAL] stopSerialMonitor');
 		if (this.serialChar && this._onSerialNotification) {
 			this.serialChar.removeEventListener('characteristicvaluechanged', this._onSerialNotification);
 			this.serialChar.stopNotifications();

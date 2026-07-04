@@ -52,6 +52,8 @@ void led_set_pattern(led_pattern_t pattern)
     case LED_GREEN_BLINK:
     case LED_RED_BLINK:
     case LED_BLUE_BLINK:
+    case LED_BLUE_BLINK_SLOW:
+    case LED_BLUE_BLINK_FAST:
         /* Toggle handled by led_button_tick(). Start off. */
         blink_state = false;
         last_toggle_time = esp_timer_get_time() / 1000;
@@ -78,12 +80,25 @@ void led_button_tick(void)
 {
     if (current_pattern != LED_GREEN_BLINK &&
         current_pattern != LED_RED_BLINK &&
-        current_pattern != LED_BLUE_BLINK) {
+        current_pattern != LED_BLUE_BLINK &&
+        current_pattern != LED_BLUE_BLINK_SLOW &&
+        current_pattern != LED_BLUE_BLINK_FAST) {
         return;
     }
 
     int64_t now = esp_timer_get_time() / 1000;
-    int64_t interval = (current_pattern == LED_RED_BLINK) ? 100 : 200;
+    int64_t interval = 200;
+    switch (current_pattern) {
+    case LED_RED_BLINK:
+    case LED_BLUE_BLINK_FAST:
+        interval = 100;
+        break;
+    case LED_BLUE_BLINK_SLOW:
+        interval = 1000;
+        break;
+    default:
+        break;
+    }
 
     if (now - last_toggle_time >= interval) {
         last_toggle_time = now;
@@ -91,6 +106,8 @@ void led_button_tick(void)
 
         switch (current_pattern) {
         case LED_BLUE_BLINK:
+        case LED_BLUE_BLINK_SLOW:
+        case LED_BLUE_BLINK_FAST:
             set_led(false, false, blink_state);
             break;
         case LED_RED_BLINK:

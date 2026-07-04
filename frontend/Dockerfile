@@ -2,8 +2,8 @@
 FROM node:20-slim AS builder
 
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 RUN npx svelte-kit sync && npm run build
@@ -15,8 +15,8 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 # Only production deps for the adapter-node server
-COPY package.json ./
-RUN npm install --omit=dev 2>/dev/null || true
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev 2>/dev/null || true
 
 # Copy built output from builder
 COPY --from=builder /app/build ./build

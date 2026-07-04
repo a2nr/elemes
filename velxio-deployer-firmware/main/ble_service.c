@@ -1,5 +1,7 @@
 #include <string.h>
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_nimble_hci.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
@@ -13,10 +15,13 @@
 
 void ble_store_config_init(void);
 #include "services/gap/ble_svc_gap.h"
+#include "state_machine.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "ble_service.h"
 #include "serial_bridge.h"
 #include "state_machine.h"
+#include "binary_parser.h"
+#include "usb_host.h"
 
 static const char *TAG = "BLE_SVC";
 
@@ -85,7 +90,15 @@ static int serial_char_access_cb(uint16_t conn_handle, uint16_t attr_handle,
         if (data) {
             os_mbuf_copydata(ctxt->om, 0, len, data);
             ESP_LOGI(TAG, "Serial write: len=%d conn=%d", len, conn_handle);
-            serial_bridge_on_ble_write(data, len);
+
+            if (len == 5 && data[0] == CMD_SET_BAUD) {
+                uint32_t baud = (uint32_t)data[1] | ((uint32_t)data[2] << 8) |
+                                ((uint32_t)data[3] << 16) | ((uint32_t)data[4] << 24);
+                ESP_LOGI(TAG, "CMD_SET_BAUD: %lu", (unsigned long)baud);
+                usb_host_set_baud_rate(baud);
+            } else {
+                serial_bridge_on_ble_write(data, len);
+            }
             free(data);
         }
     }
@@ -173,6 +186,7 @@ static int ble_gap_event_cb(struct ble_gap_event *event, void *arg)
         conn_handle = 0;
         ble_connected = false;
         ESP_LOGI(TAG, "BLE disconnected");
+        state_machine_process_event(EVENT_BLE_DISCONNECT, NULL);
         ble_restart_adv();
         break;
 
@@ -272,13 +286,24 @@ void ble_service_set_serial_callback(ble_serial_cb_t cb)
 void ble_service_send_notify_flashing(uint8_t *data, size_t len)
 {
     if (!ble_connected) return;
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(data, len);
-    if (om) {
-        int rc = ble_gatts_notify_custom(conn_handle, flashing_attr_handle, om);
-        if (rc != 0) {
-            ESP_LOGW(TAG, "flashing notify failed: rc=%d handle=0x%04X conn=%d",
-                     rc, flashing_attr_handle, conn_handle);
-        }
+
+    struct os_mbuf *om = NULL;
+    for (int retry = 0; retry < 3; retry++) {
+        om = ble_hs_mbuf_from_flat(data, len);
+        if (om) break;
+        ESP_LOGW(TAG, "flashing mbuf alloc failed (retry %d/3)", retry + 1);
+        vTaskDelay(1);
+    }
+
+    if (!om) {
+        ESP_LOGE(TAG, "flashing ACK DROPPED: mbuf pool exhausted after 3 retries");
+        return;
+    }
+
+    int rc = ble_gatts_notify_custom(conn_handle, flashing_attr_handle, om);
+    if (rc != 0) {
+        ESP_LOGW(TAG, "flashing notify failed: rc=%d handle=0x%04X conn=%d",
+                 rc, flashing_attr_handle, conn_handle);
     }
 }
 

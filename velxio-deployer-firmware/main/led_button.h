@@ -22,13 +22,15 @@
 
 /** LED visual patterns. */
 typedef enum {
-    LED_OFF,           /**< All off */
-    LED_GREEN,         /**< Solid green — success */
-    LED_RED,           /**< Solid red — error */
-    LED_BLUE,          /**< Solid blue — busy */
-    LED_GREEN_BLINK,   /**< Blinking green */
-    LED_RED_BLINK,     /**< Blinking red — checksum error */
-    LED_BLUE_BLINK     /**< Blinking blue — advertising/receiving */
+    LED_OFF,               /**< All off */
+    LED_GREEN,             /**< Solid green — success / serial bridge */
+    LED_RED,               /**< Solid red — target error */
+    LED_BLUE,              /**< Solid blue — verification in progress */
+    LED_GREEN_BLINK,       /**< Blinking green */
+    LED_RED_BLINK,         /**< Fast blinking red — checksum error (100ms) */
+    LED_BLUE_BLINK,        /**< Medium blinking blue — receiving chunks (200ms) */
+    LED_BLUE_BLINK_SLOW,   /**< Slow blinking blue — idle / advertising (1000ms) */
+    LED_BLUE_BLINK_FAST    /**< Fast blinking blue — flashing in progress (100ms) */
 } led_pattern_t;
 
 void led_button_init(void);

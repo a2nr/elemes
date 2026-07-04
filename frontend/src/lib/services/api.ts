@@ -63,6 +63,27 @@ export function compileCode(req: CompileRequest, customFetch = fetch) {
 	return post<CompileResponse>('/compile', req, customFetch);
 }
 
+export interface VelxioCompileRequest {
+	code: string;
+	board_fqbn?: string;
+}
+
+export interface VelxioCompileResponse {
+	success: boolean;
+	hex_content: string | null;
+	binary_content: string | null;
+	binary_type: string | null;
+	has_wifi: boolean;
+	stdout: string;
+	stderr: string;
+	error: string | null;
+	core_install_log: string | null;
+}
+
+export function getHexContent(req: VelxioCompileRequest, customFetch = fetch) {
+	return post<VelxioCompileResponse>('/velxio-compile', req, customFetch);
+}
+
 // ── Progress ─────────────────────────────────────────────────────────
 
 export function trackProgress(

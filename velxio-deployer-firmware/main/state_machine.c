@@ -93,7 +93,7 @@ void state_machine_process_event(sm_event_t event, void *data)
     		ESP_LOGI(TAG, "BLE disconnect in RECEIVING, resetting to IDLE");
     		binary_parser_reset();
     		current_state = STATE_IDLE;
-    		led_set_pattern(LED_BLUE_BLINK);
+    		led_set_pattern(LED_BLUE_BLINK_SLOW);
     	}
     	break;
 
@@ -107,7 +107,7 @@ void state_machine_process_event(sm_event_t event, void *data)
     		if (actual_crc == expected_crc) {
     			ESP_LOGI(TAG, "CRC verification OK: 0x%08X", actual_crc);
     			current_state = STATE_FLASHING;
-    			led_set_pattern(LED_BLUE);
+    			led_set_pattern(LED_BLUE_BLINK_FAST);
 
     			/* Hand off to flasher task instead of blocking the BLE
     			 * thread. Snapshot buffer ptr/size — parser won't mutate
@@ -133,7 +133,7 @@ void state_machine_process_event(sm_event_t event, void *data)
     		ESP_LOGI(TAG, "BLE disconnect in VERIFYING, resetting to IDLE");
     		binary_parser_reset();
     		current_state = STATE_IDLE;
-    		led_set_pattern(LED_BLUE_BLINK);
+    		led_set_pattern(LED_BLUE_BLINK_SLOW);
     	}
     	break;
 
@@ -161,7 +161,7 @@ void state_machine_process_event(sm_event_t event, void *data)
     	} else if (event == EVENT_BLE_DISCONNECT) {
     		ESP_LOGW(TAG, "BLE disconnect during FLASHING — flasher will finish, SM reset to IDLE");
     		current_state = STATE_IDLE;
-    		led_set_pattern(LED_BLUE_BLINK);
+    		led_set_pattern(LED_BLUE_BLINK_SLOW);
     	}
     	break;
 
@@ -197,10 +197,10 @@ void state_machine_process_event(sm_event_t event, void *data)
             binary_parser_reset();
             serial_bridge_stop();
             current_state = STATE_IDLE;
-            led_set_pattern(LED_BLUE_BLINK);
+            led_set_pattern(LED_BLUE_BLINK_SLOW);
         } else if (event == EVENT_BLE_DISCONNECT) {
             current_state = STATE_IDLE;
-            led_set_pattern(LED_BLUE_BLINK);
+            led_set_pattern(LED_BLUE_BLINK_SLOW);
             ESP_LOGI(TAG, "Transition: ERROR -> IDLE (BLE disconnect)");
         }
         break;
@@ -231,6 +231,9 @@ void state_machine_tick(void)
     if (current_state == STATE_SERIAL_BRIDGE) {
         if (!usb_host_arduino_connected()) {
             state_machine_process_event(EVENT_USB_DISCONNECT, NULL);
+        }
+        if (!ble_service_is_connected()) {
+            state_machine_process_event(EVENT_BLE_DISCONNECT, NULL);
         }
     }
 

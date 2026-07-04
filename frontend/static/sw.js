@@ -1,5 +1,5 @@
 // static/sw.js
-const CACHE_VERSION = 'elemes-v12';
+const CACHE_VERSION = 'elemes-v14';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;

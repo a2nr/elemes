@@ -1,6 +1,8 @@
 #include <string.h>
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "serial_bridge.h"
 #include "ble_service.h"
 #include "usb_host.h"
@@ -67,14 +69,22 @@ void serial_bridge_on_usb_data(uint8_t *data, size_t len)
 {
     if (!active) return;
 
-    /* Large packet: flush buffer first, then send directly. */
+    ESP_LOGI(TAG, "USB->BLE: %d bytes, buf=%d/%d", len, bridge_buf_len, BRIDGE_BUF_SIZE);
+
+    /* Large packet: flush buffer first, then chunk into MTU-sized pieces. */
     size_t remaining = BRIDGE_BUF_SIZE - bridge_buf_len;
     if (len >= BRIDGE_BUF_SIZE) {
         if (bridge_buf_len > 0) {
             ble_service_send_notify_serial(bridge_buf, bridge_buf_len);
             bridge_buf_len = 0;
         }
-        ble_service_send_notify_serial(data, len);
+        size_t offset = 0;
+        while (offset < len) {
+            size_t chunk = (len - offset > BRIDGE_BUF_SIZE) ? BRIDGE_BUF_SIZE : (len - offset);
+            ble_service_send_notify_serial(data + offset, chunk);
+            offset += chunk;
+            vTaskDelay(1);
+        }
         return;
     }
 
@@ -106,6 +116,7 @@ void serial_bridge_tick(void)
     bool stale = since_flush >= BUFFER_FLUSH_MS;
 
     if (time_to_flush || stale) {
+        ESP_LOGI(TAG, "flush: %d bytes, notify#%d%s", bridge_buf_len, notify_count, stale ? " (stale)" : "");
         ble_service_send_notify_serial(bridge_buf, bridge_buf_len);
         bridge_buf_len = 0;
         last_flush_time = now;

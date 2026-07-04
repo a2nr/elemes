@@ -24,6 +24,7 @@
 #define CMD_END  0x03
 #define CMD_ACK  0x04
 #define CMD_ERR  0x05
+#define CMD_SET_BAUD 0x06
 
 /** Maximum hex binary buffer size (256 KB — fits largest Arduino sketch). */
 #define MAX_HEX_SIZE (256 * 1024)

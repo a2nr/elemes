@@ -32,6 +32,10 @@ export const CMD_DATA = 0x02;
 export const CMD_END = 0x03;
 export const CMD_ACK = 0x04;
 export const CMD_ERR = 0x05;
+export const CMD_SET_BAUD = 0x06;
+
+export const SUPPORTED_BAUD_RATES = [9600, 19200, 38400];
+export const DEFAULT_BAUD_RATE = 9600;
 
 export const CHUNK_SIZE = 240;
 export const BLE_TIMEOUT_MS = 5000;

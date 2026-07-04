@@ -15,9 +15,41 @@ static bool rx_claimed = false;
 static struct usbh_serial *serial_dev = NULL;
 static TaskHandle_t usb_monitor_task_handle = NULL;
 static TaskHandle_t usb_rx_task_handle = NULL;
+static uint32_t serial_baud = 9600;
 
-/* Default termios (serial bridge): blocking RX, 115200 8N1. */
+/* CherryUSB host event callback — forwards connect/disconnect events to
+ * usb_monitor_task so it responds faster than 1s poll. */
+static void usb_event_handler(uint8_t busid, uint8_t hub_index, uint8_t hub_port,
+                              uint8_t intf, uint8_t event)
+{
+    switch (event) {
+    case USBH_EVENT_INTERFACE_START:
+    case USBH_EVENT_DEVICE_DISCONNECTED:
+        if (usb_monitor_task_handle) {
+            xTaskNotifyGive(usb_monitor_task_handle);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+/* Serial bridge termios: blocking RX, configurable baud, 8N1. */
 static struct usbh_serial_termios make_termios(uint32_t rx_timeout)
+{
+    struct usbh_serial_termios t = {
+        .baudrate = serial_baud,
+        .databits = 8,
+        .parity = 0,
+        .stopbits = 0,
+        .rtscts = false,
+        .rx_timeout = rx_timeout,
+    };
+    return t;
+}
+
+/* STK500/avrdude termios: 115200 for Arduino bootloader sync. */
+static struct usbh_serial_termios make_stk500_termios(uint32_t rx_timeout)
 {
     struct usbh_serial_termios t = {
         .baudrate = 115200,
@@ -80,7 +112,7 @@ static void usb_monitor_task(void *arg)
                 serial_dev = NULL;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        xTaskNotifyWait(0, 0, NULL, pdMS_TO_TICKS(1000));
     }
 }
 
@@ -88,7 +120,7 @@ bool usb_host_init(void)
 {
     if (initialized) return true;
 
-    esp_err_t ret = usbh_initialize(0, ESP_USB_FS0_BASE, NULL);
+    esp_err_t ret = usbh_initialize(0, ESP_USB_FS0_BASE, usb_event_handler);
     if (ret != 0) {
         ESP_LOGE(TAG, "CherryUSB init failed: %d", ret);
         return false;
@@ -148,7 +180,7 @@ void usb_host_rx_claim(void)
         /* Reconfigure with bounded rx_timeout so usb_host_read_cdc returns
          * on timeout. SET_ATTR also kills+resubmits the IN URB and resets
          * the ringbuffer, clearing any stale serial data. */
-        struct usbh_serial_termios t = make_termios(50);
+        struct usbh_serial_termios t = make_stk500_termios(50);
         usbh_serial_control(serial_dev, USBH_SERIAL_CMD_SET_ATTR, &t);
     }
     rx_claimed = true;
@@ -190,6 +222,18 @@ void usb_host_reset_arduino(void)
     vTaskDelay(pdMS_TO_TICKS(50));
 
     ESP_LOGI(TAG, "Arduino DTR pulse sent (autoreset)");
+}
+
+void usb_host_set_baud_rate(uint32_t baud)
+{
+    serial_baud = baud;
+    ESP_LOGI(TAG, "Baud rate set to %lu", (unsigned long)serial_baud);
+
+    if (serial_dev && arduino_connected_flag && !rx_claimed) {
+        struct usbh_serial_termios t = make_termios(0);
+        usbh_serial_control(serial_dev, USBH_SERIAL_CMD_SET_ATTR, &t);
+        ESP_LOGI(TAG, "Baud rate reconfigured: %lu", (unsigned long)serial_baud);
+    }
 }
 
 void usb_host_deinit(void)

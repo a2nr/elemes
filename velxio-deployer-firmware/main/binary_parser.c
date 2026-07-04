@@ -59,7 +59,6 @@ parser_state_t binary_parser_process_packet(uint8_t *payload, size_t len)
         buffer_size = 0;
         received_chunks = 0;
         total_chunks = 0;
-        memset(hex_buffer, 0, MAX_HEX_SIZE);
         state = PARSER_RECEIVING;
         ESP_LOGI(TAG, "INIT: expected total CRC = 0x%08lX", (unsigned long)expected_total_crc);
 

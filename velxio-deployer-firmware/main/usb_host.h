@@ -84,6 +84,18 @@ void usb_host_rx_release(void);
 void usb_host_reset_arduino(void);
 
 /**
+ * @brief Set the serial bridge baud rate for USB CDC communication.
+ *
+ * Reconfigures the CDC termios immediately if the serial device is active
+ * and RX is not claimed (i.e. in serial bridge mode). If RX is claimed
+ * (STK500 flashing), stores the baud and applies it on rx_release().
+ *
+ * Safe to call from any context (stores value, configures if possible).
+ * @param baud  Baud rate (e.g. 9600, 19200, 38400)
+ */
+void usb_host_set_baud_rate(uint32_t baud);
+
+/**
  * @brief Deinitialise USB Host and release resources.
  */
 void usb_host_deinit(void);
