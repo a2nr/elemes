@@ -50,6 +50,7 @@ static const ble_uuid128_t serial_char_uuid = BLE_UUID128_INIT(
 );
 
 static int ble_gap_event_cb(struct ble_gap_event *event, void *arg);
+static void send_ack(uint16_t conn_handle, uint8_t cmd, uint16_t index);
 
 static int flashing_char_access_cb(uint16_t conn_handle, uint16_t attr_handle,
                                     struct ble_gatt_access_ctxt *ctxt, void *arg)
@@ -95,6 +96,7 @@ static int serial_char_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             if (len == 1 && data[0] == CMD_RESET) {
                 ESP_LOGI(TAG, "CMD_RESET: triggering Arduino reset");
                 arduino_trigger_reset();
+                send_ack(conn_handle, CMD_RESET, 0);
             } else if (len == 5 && data[0] == CMD_SET_BAUD) {
                 uint32_t baud = (uint32_t)data[1] | ((uint32_t)data[2] << 8) |
                                 ((uint32_t)data[3] << 16) | ((uint32_t)data[4] << 24);
@@ -322,6 +324,18 @@ void ble_service_send_notify_serial(uint8_t *data, size_t len)
                      rc, serial_attr_handle, conn_handle);
         }
     }
+}
+
+static void send_ack(uint16_t conn_handle, uint8_t cmd, uint16_t index)
+{
+    uint8_t ack[4] = {
+        CMD_ACK,
+        cmd,
+        (uint8_t)(index & 0xFF),
+        (uint8_t)((index >> 8) & 0xFF)
+    };
+    ble_service_send_notify_flashing(ack, sizeof(ack));
+    ESP_LOGI(TAG, "ACK sent: cmd=0x%02X index=%u", cmd, index);
 }
 
 bool ble_service_is_connected(void)
