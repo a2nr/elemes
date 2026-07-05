@@ -87,9 +87,26 @@
 	}
 
 	async function handleDeploy() {
-		if (!deployer || !isPaired) {
-			errorMessage = 'Hubungkan perangkat dulu';
+		if (!deployer) {
+			errorMessage = 'Deployer belum diinisialisasi';
 			return;
+		}
+
+		// Auto re-pair if BLE connection is lost
+		if (!deployer.isConnected || !isPaired) {
+			console.log('[DEPLOY] Connection lost, attempting re-pair...');
+			try {
+				deployState = 'pairing';
+				deployMessage = 'Re-connecting to device...';
+				await deployer.pair();
+				isPaired = true;
+				deployState = 'idle';
+				console.log('[DEPLOY] Re-pair successful!');
+			} catch (err: any) {
+				deployState = 'error';
+				errorMessage = 'Re-pair gagal: ' + err.message;
+				return;
+			}
 		}
 
 		serialActive = false;
