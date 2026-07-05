@@ -146,6 +146,10 @@
 		if (!deployer || !isPaired) return;
 
 		try {
+			// Auto-reset Arduino before opening serial monitor
+			console.log('[DEPLOY] Auto-resetting Arduino before serial monitor...');
+			await deployer.resetArduino();
+
 			if (serialPendingBaud !== null) {
 				await deployer.setBaudRate(serialPendingBaud);
 				baudRate = serialPendingBaud;
