@@ -2,7 +2,7 @@ import {
 	BLE_SERVICE_UUID,
 	BLE_CHAR_FLASHING_UUID,
 	BLE_CHAR_SERIAL_UUID,
-	CMD_INIT, CMD_DATA, CMD_END, CMD_ACK, CMD_ERR, CMD_SET_BAUD,
+	CMD_INIT, CMD_DATA, CMD_END, CMD_ACK, CMD_ERR, CMD_SET_BAUD, CMD_RESET,
 	CHUNK_SIZE, BLE_TIMEOUT_MS, END_TIMEOUT_MS, END_ACK_INDEX, INIT_ACK_INDEX, MAX_RETRIES,
 	type DeployProgress, type BLEACKResponse
 } from '$types/deployer';
@@ -531,6 +531,22 @@ export class BLEHardwareDeployer {
 		payload[3] = (baud >> 16) & 0xFF;
 		payload[4] = (baud >> 24) & 0xFF;
 		await this.serialChar.writeValueWithoutResponse(payload);
+	}
+
+	async resetArduino(): Promise<void> {
+		if (!this.serialChar) throw new Error('Belum terhubung ke perangkat');
+
+		console.log('[BLE-SERIAL] resetArduino: sending DTR pulse command...');
+
+		const payload = new Uint8Array(1);
+		payload[0] = CMD_RESET;
+
+		await this.serialChar.writeValueWithoutResponse(payload);
+
+		// Wait for firmware to complete DTR pulse (250ms delay via firmware DTR pulse timing)
+		await new Promise(resolve => setTimeout(resolve, 250));
+
+		console.log('[BLE-SERIAL] resetArduino: DTR pulse complete');
 	}
 
 	stopSerialMonitor(): void {
