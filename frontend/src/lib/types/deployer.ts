@@ -33,6 +33,7 @@ export const CMD_END = 0x03;
 export const CMD_ACK = 0x04;
 export const CMD_ERR = 0x05;
 export const CMD_SET_BAUD = 0x06;
+export const CMD_RESET = 0x07;
 
 export const SUPPORTED_BAUD_RATES = [9600, 19200, 38400];
 export const DEFAULT_BAUD_RATE = 9600;

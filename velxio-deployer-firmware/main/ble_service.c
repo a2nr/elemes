@@ -18,6 +18,7 @@ void ble_store_config_init(void);
 #include "state_machine.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "ble_service.h"
+#include "arduino_reset.h"
 #include "serial_bridge.h"
 #include "state_machine.h"
 #include "binary_parser.h"
@@ -91,7 +92,10 @@ static int serial_char_access_cb(uint16_t conn_handle, uint16_t attr_handle,
             os_mbuf_copydata(ctxt->om, 0, len, data);
             ESP_LOGI(TAG, "Serial write: len=%d conn=%d", len, conn_handle);
 
-            if (len == 5 && data[0] == CMD_SET_BAUD) {
+            if (len == 1 && data[0] == CMD_RESET) {
+                ESP_LOGI(TAG, "CMD_RESET: triggering Arduino reset");
+                arduino_trigger_reset();
+            } else if (len == 5 && data[0] == CMD_SET_BAUD) {
                 uint32_t baud = (uint32_t)data[1] | ((uint32_t)data[2] << 8) |
                                 ((uint32_t)data[3] << 16) | ((uint32_t)data[4] << 24);
                 ESP_LOGI(TAG, "CMD_SET_BAUD: %lu", (unsigned long)baud);

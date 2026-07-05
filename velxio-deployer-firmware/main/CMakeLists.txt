@@ -9,6 +9,7 @@ idf_component_register(
         state_machine.c
         serial_bridge.c
         led_button.c
+        arduino_reset.c
     INCLUDE_DIRS
         .
 )
