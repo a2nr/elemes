@@ -152,7 +152,7 @@
 
 			deployState = 'success';
 			deployMessage = 'Upload berhasil! LED Hijau.';
-			handleOpenSerial();
+			await handleOpenSerial();
 		} catch (err: any) {
 			deployState = 'error';
 			errorMessage = err.message || 'Deploy gagal';
