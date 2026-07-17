@@ -91,11 +91,15 @@ const ATMEGA328P_SIG_2 = 0x0f;
 const ATMEGA328P_FLASH_SIZE = 32768;
 const ATMEGA328P_PAGE_SIZE = 128;
 
-const STK_SYNC_RETRIES = 10;
-const STK_SYNC_TIMEOUT_MS = 500;  /* Longer timeout for initial sync (optiboot may be slow) */
+const STK_SYNC_RETRIES = 6;
+const STK_SYNC_TIMEOUT_MS = 300; /* Per-attempt read timeout during initial sync */
 const STK_CMD_TIMEOUT_MS = 200;
 const STK_PAGE_TIMEOUT_MS = 500;
 const STK_LEAVE_TIMEOUT_MS = 100;
+
+const BOOTLOADER_SETTLE_MS = 100; /* Wait after DTR release for optiboot to start */
+const DRAIN_BYTE_TIMEOUT_MS = 10; /* How long to wait for the next stray byte */
+const DRAIN_TOTAL_MS = 50; /* Max total time to spend draining */
 
 /* ── Arduino VID/PID pairs for port filter ─────────────────────────── */
 const ARDUINO_VID_PIDS: SerialPortFilter[] = [
