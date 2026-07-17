@@ -92,6 +92,7 @@ const ATMEGA328P_FLASH_SIZE = 32768;
 const ATMEGA328P_PAGE_SIZE = 128;
 
 const STK_SYNC_RETRIES = 10;
+const STK_SYNC_TIMEOUT_MS = 500;  /* Longer timeout for initial sync (optiboot may be slow) */
 const STK_CMD_TIMEOUT_MS = 200;
 const STK_PAGE_TIMEOUT_MS = 500;
 const STK_LEAVE_TIMEOUT_MS = 100;
@@ -215,7 +216,8 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			dataTerminalReady: true,
 			requestToSend: true
 		});
-		await sleep(50);
+		/* Wait for optiboot to initialize (~100ms is safe, gives us ~900ms for sync) */
+		await sleep(100);
 		console.log('[USB] resetArduino: DTR pulse done');
 	}
 
@@ -483,20 +485,32 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 	/**
 	 * Drain any stray bytes from the serial input (short timeout).
+	 * Drains repeatedly until no more bytes arrive or 50ms elapsed.
 	 */
 	private async drainStray(): Promise<void> {
-		try {
-			const { value, done } = await Promise.race([
-				this.reader!.read(),
-				new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error('timeout')), 10)
-				)
-			]);
-			if (!done && value && value.length > 0) {
-				console.log(`[USB] drained ${value.length} stray bytes`);
+		const deadline = Date.now() + 50;
+		let totalDrained = 0;
+		
+		while (Date.now() < deadline) {
+			try {
+				const { value, done } = await Promise.race([
+					this.reader!.read(),
+					new Promise<never>((_, reject) =>
+						setTimeout(() => reject(new Error('timeout')), 10)
+					)
+				]);
+				if (done) break;
+				if (value && value.length > 0) {
+					totalDrained += value.length;
+				}
+			} catch {
+				/* timeout — no more bytes available */
+				break;
 			}
-		} catch {
-			/* nothing to drain — expected */
+		}
+		
+		if (totalDrained > 0) {
+			console.log(`[USB] drained ${totalDrained} stray bytes`);
 		}
 	}
 
@@ -507,14 +521,18 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 		for (let attempt = 0; attempt < STK_SYNC_RETRIES; attempt++) {
 			try {
-				await this.sendAndExpect(cmd, 0, STK_CMD_TIMEOUT_MS, true);
+				/* Drain before sending to ensure clean channel */
+				await this.drainStray();
+				await this.sendAndExpect(cmd, 0, STK_SYNC_TIMEOUT_MS, true);
 				console.log(`[USB] get_sync OK (attempt ${attempt + 1})`);
 				return;
 			} catch (e) {
 				console.log(`[USB] get_sync attempt ${attempt + 1} failed:`, e);
 				/* Drain stray bytes before retry */
 				await this.drainStray();
-				await sleep(20);
+				/* Exponential backoff: 20ms, 40ms, 80ms, ... max 200ms */
+				const delay = Math.min(20 * Math.pow(2, attempt), 200);
+				await sleep(delay);
 			}
 		}
 		throw new Error(
