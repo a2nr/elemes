@@ -209,19 +209,33 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	async resetArduino(): Promise<void> {
 		if (!this.port) throw new Error('Belum terhubung ke perangkat');
 
-		console.log('[USB] resetArduino: DTR/RTS pulse');
-		/* DTR low + RTS low → 10ms → both high → wait for optiboot */
+		console.log('[USB] resetArduino: Double DTR pulse sequence');
+
+		/* Pulse 1 */
 		await this.port.setSignals({
 			dataTerminalReady: false,
 			requestToSend: false
 		});
-		await sleep(10);
+		await sleep(50);
+		await this.port.setSignals({
+			dataTerminalReady: true,
+			requestToSend: true
+		});
+		await sleep(100);
+
+		/* Pulse 2 (Handshake) */
+		await this.port.setSignals({
+			dataTerminalReady: false,
+			requestToSend: false
+		});
+		await sleep(50);
 		await this.port.setSignals({
 			dataTerminalReady: true,
 			requestToSend: true
 		});
 		await sleep(BOOTLOADER_SETTLE_MS);
-		console.log('[USB] resetArduino: DTR pulse done');
+
+		console.log('[USB] resetArduino: pulse sequence done');
 	}
 
 	/* ── Deploy ─────────────────────────────────────────────────── */
@@ -416,6 +430,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		);
 
 		await this.withTimeout(this.writer.write(cmd), timeoutMs, 'write');
+		await sleep(50);
 		console.log('[USB] write done');
 
 		/* Read STK_INSYNC (1 byte) */
