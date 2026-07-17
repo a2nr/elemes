@@ -210,7 +210,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		if (!this.port) throw new Error('Belum terhubung ke perangkat');
 
 		console.log('[USB] resetArduino: DTR/RTS pulse');
-		/* DTR low + RTS low → 10ms → both high → wait 50ms for optiboot */
+		/* DTR low + RTS low → 10ms → both high → wait for optiboot */
 		await this.port.setSignals({
 			dataTerminalReady: false,
 			requestToSend: false
@@ -220,8 +220,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			dataTerminalReady: true,
 			requestToSend: true
 		});
-		/* Wait for optiboot to initialize (~100ms is safe, gives us ~900ms for sync) */
-		await sleep(100);
+		await sleep(BOOTLOADER_SETTLE_MS);
 		console.log('[USB] resetArduino: DTR pulse done');
 	}
 
