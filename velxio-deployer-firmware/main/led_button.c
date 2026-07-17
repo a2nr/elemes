@@ -1,6 +1,8 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "esp_timer.h"
+#include "nvs_flash.h"
+#include "esp_system.h"
 #include "led_button.h"
 
 static const char *TAG = "LED_BTN";
@@ -10,6 +12,10 @@ static bool button_previous_state = true;
 static bool button_pressed_flag = false;
 static int64_t last_toggle_time = 0;
 static bool blink_state = false;
+
+/* Long-press factory reset tracking */
+static int64_t button_press_start_ms = 0;
+static bool button_is_held = false;
 
 static void set_led(bool red, bool green, bool blue)
 {
@@ -78,6 +84,27 @@ bool button_retry_pressed(void)
 
 void led_button_tick(void)
 {
+    /* Factory reset long-press detection (GPIO0 = BOOT button) */
+    bool btn_level = gpio_get_level(BTN_GPIO_RETRY);
+    if (btn_level == 0) {  /* button pressed (active low with pull-up) */
+        if (!button_is_held) {
+            button_is_held = true;
+            button_press_start_ms = esp_timer_get_time() / 1000;
+        } else {
+            int64_t held_ms = (esp_timer_get_time() / 1000) - button_press_start_ms;
+            if (held_ms > 5000) {
+                ESP_LOGW(TAG, "BOOT button held %lldms — factory reset!", held_ms);
+                esp_err_t erase_err = nvs_flash_erase();
+                if (erase_err != ESP_OK) {
+                    ESP_LOGE(TAG, "NVS erase failed: %d", erase_err);
+                }
+                esp_restart();
+            }
+        }
+    } else {
+        button_is_held = false;
+    }
+
     if (current_pattern != LED_GREEN_BLINK &&
         current_pattern != LED_RED_BLINK &&
         current_pattern != LED_BLUE_BLINK &&

@@ -14,6 +14,8 @@
 #include "state_machine.h"
 #include "serial_bridge.h"
 #include "led_button.h"
+#include "device_name.h"
+#include "wifi_ap.h"
 
 static const char *TAG = "MAIN";
 
@@ -67,7 +69,20 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "Velxio BLE Deployer v1.0");
 
+    // Initialize NVS
     nvs_flash_init();
+
+    // Initialize device name from NVS or MAC suffix
+    device_name_init();
+
+    // AP setup mode: if no custom name, start AP config portal
+    if (!device_name_is_custom()) {
+        ESP_LOGW(TAG, "No custom name — entering AP setup mode");
+        wifi_ap_start_and_block();  // never returns
+    }
+
+    // --- Normal boot: BLE + USB Host mode ---
+
     esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);
 
     led_button_init();

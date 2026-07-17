@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velxio Deployer Setup</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+        .container { max-width: 420px; width: 90%; padding: 24px; }
+        .card { background: #1e293b; border-radius: 12px; padding: 28px; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
+        h1 { font-size: 1.4rem; margin-bottom: 4px; color: #3b82f6; }
+        .subtitle { font-size: 0.85rem; color: #94a3b8; margin-bottom: 20px; }
+        .current-name { background: #334155; border-radius: 8px; padding: 12px; margin-bottom: 20px; }
+        .current-label { font-size: 0.75rem; color: #94a3b8; margin-bottom: 4px; }
+        .current-value { font-size: 1rem; font-weight: 600; color: #22c55e; font-family: monospace; }
+        label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 6px; }
+        .input-group { display: flex; gap: 0; margin-bottom: 20px; }
+        .prefix { background: #475569; padding: 10px 12px; border-radius: 8px 0 0 8px; font-family: monospace; font-size: 0.9rem; color: #cbd5e1; border: 1px solid #475569; border-right: none; }
+        input[type="text"] { flex: 1; padding: 10px 12px; border: 1px solid #475569; border-radius: 0 8px 8px 0; background: #0f172a; color: #e2e8f0; font-size: 0.9rem; font-family: monospace; outline: none; }
+        input[type="text"]:focus { border-color: #3b82f6; }
+        button { width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        .status { margin-top: 16px; padding: 10px; border-radius: 8px; font-size: 0.85rem; text-align: center; }
+        .status.success { background: #14532d; color: #22c55e; }
+        .status.error { background: #450a0a; color: #ef4444; }
+        .status.loading { background: #1e3a5f; color: #3b82f6; }
+        .hint { font-size: 0.75rem; color: #64748b; margin-top: 16px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>Velxio Deployer</h1>
+            <p class="subtitle">Konfigurasi nama perangkat</p>
+            <div class="current-name">
+                <div class="current-label">Nama saat ini</div>
+                <div class="current-value" id="currentName">--</div>
+            </div>
+            <label for="nameInput">Nama baru</label>
+            <div class="input-group">
+                <span class="prefix">Velxio-</span>
+                <input type="text" id="nameInput" placeholder="LAB-01" maxlength="24" autocomplete="off">
+            </div>
+            <button id="saveBtn" onclick="saveName()">Simpan & Reboot</button>
+            <div id="status"></div>
+            <p class="hint">Nama akan tampil di pairing Bluetooth. Maks 24 karakter.</p>
+        </div>
+    </div>
+    <script>
+        const currentEl = document.getElementById('currentName');
+        const inputEl = document.getElementById('nameInput');
+        const btnEl = document.getElementById('saveBtn');
+        const statusEl = document.getElementById('status');
+
+        async function loadCurrent() {
+            try {
+                const res = await fetch('/api/name');
+                const data = await res.json();
+                currentEl.textContent = data.name;
+                const stripped = data.name.startsWith('Velxio-') ? data.name.slice(7) : data.name;
+                inputEl.value = stripped;
+            } catch (e) {
+                currentEl.textContent = 'Error';
+            }
+        }
+
+        async function saveName() {
+            const name = inputEl.value.trim();
+            if (!name) {
+                statusEl.className = 'status error';
+                statusEl.textContent = 'Nama tidak boleh kosong';
+                return;
+            }
+            btnEl.disabled = true;
+            statusEl.className = 'status loading';
+            statusEl.textContent = 'Menyimpan...';
+            try {
+                const res = await fetch('/api/name', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: 'Velxio-' + name })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    statusEl.className = 'status success';
+                    statusEl.textContent = 'Tersimpan! Rebooting...';
+                } else {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = 'Error: ' + (data.error || 'unknown');
+                    btnEl.disabled = false;
+                }
+            } catch (e) {
+                statusEl.className = 'status error';
+                statusEl.textContent = 'Error: ' + e.message;
+                btnEl.disabled = false;
+            }
+        }
+
+        loadCurrent();
+    </script>
+</body>
+</html>

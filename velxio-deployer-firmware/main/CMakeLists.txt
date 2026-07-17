@@ -10,6 +10,10 @@ idf_component_register(
         serial_bridge.c
         led_button.c
         arduino_reset.c
+        device_name.c
+        wifi_ap.c
     INCLUDE_DIRS
         .
+    EMBED_TXTFILES
+        config_page.html
 )

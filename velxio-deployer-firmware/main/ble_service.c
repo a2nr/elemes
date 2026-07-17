@@ -18,6 +18,7 @@ void ble_store_config_init(void);
 #include "state_machine.h"
 #include "services/gatt/ble_svc_gatt.h"
 #include "ble_service.h"
+#include "device_name.h"
 #include "arduino_reset.h"
 #include "serial_bridge.h"
 #include "state_machine.h"
@@ -148,9 +149,21 @@ static void ble_restart_adv(void)
     struct ble_hs_adv_fields fields;
     memset(&fields, 0, sizeof(fields));
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-    fields.name = (uint8_t *)"Velxio";
-    fields.name_len = 6;
-    fields.name_is_complete = 0;
+    const char *name = device_name_get();
+    size_t name_len = strlen(name);
+    // Check if full name fits in 31-byte adv packet
+    // Adv fields overhead: flags(3) + name header(2) = ~5 bytes overhead for name
+    // So name content needs ≤ 26 bytes max
+    if (name_len <= 24) {  // safe margin under 31-byte limit
+        fields.name = (uint8_t *)name;
+        fields.name_len = name_len;
+        fields.name_is_complete = 1;
+    } else {
+        // Truncate to short prefix for advertising
+        fields.name = (uint8_t *)"Velxio";
+        fields.name_len = 6;
+        fields.name_is_complete = 0;
+    }
     fields.uuids16 = NULL;
     fields.num_uuids16 = 0;
 
@@ -270,7 +283,7 @@ void ble_service_init(void)
     ble_gatts_count_cfg(gatt_svcs);
     ble_gatts_add_svcs(gatt_svcs);
 
-    ble_svc_gap_device_name_set("Velxio-Deployer");
+    ble_svc_gap_device_name_set(device_name_get());
     ble_svc_gap_device_appearance_set(0x0080);
 
     ble_store_config_init();
