@@ -143,6 +143,22 @@ def compile_code():
     except Exception as e:
         return jsonify({'success': False, 'output': '', 'error': f'An error occurred: {e}'})
 
+def _hex_to_binary(hex_content):
+    """Parse Intel HEX string into raw binary bytes."""
+    binary = bytearray()
+    for line in hex_content.strip().split('\n'):
+        line = line.strip()
+        if not line or not line.startswith(':'):
+            continue
+        byte_count = int(line[1:3], 16)
+        record_type = int(line[7:9], 16)
+        if record_type == 0:  # Data record
+            data = bytes.fromhex(line[9:9 + byte_count * 2])
+            binary.extend(data)
+        elif record_type == 1:  # EOF
+            break
+    return bytes(binary)
+
 @compile_bp.route('/velxio-compile', methods=['POST'])
 @compile_bp.route('/velxio-compile/', methods=['POST'])
 @limiter.limit("1 per 2 minutes", exempt_when=is_logged_in)
@@ -169,7 +185,18 @@ def velxio_compile():
             json=request.get_json(silent=True) or {},
             timeout=30
         )
-        return jsonify(response.json())
+        result = response.json()
+        # If Velxio only returned hex_content (AVR/Arduino), convert to binary
+        if result.get('success') and result.get('hex_content') and not result.get('binary_content'):
+            try:
+                binary = _hex_to_binary(result['hex_content'])
+                import base64
+                result['binary_content'] = base64.b64encode(binary).decode('ascii')
+                result['binary_type'] = 'bin'
+            except Exception as e:
+                # Non-fatal: hex_content still available for BLE path
+                print(f'hex_to_binary conversion failed: {e}')
+        return jsonify(result)
 
     except requests.exceptions.RequestException as re:
         return jsonify({'success': False, 'output': '', 'error': f'Velxio service unavailable: {re}'})
