@@ -545,14 +545,12 @@ export class USBHardwareDeployer implements HardwareDeployer {
 				console.log(`[USB] get_sync attempt ${attempt + 1} failed:`, e);
 				/* Drain stray bytes before retry */
 				await this.drainStray();
-				/* Exponential backoff: 20ms, 40ms, 80ms, ... max 200ms */
-				const delay = Math.min(20 * Math.pow(2, attempt), 200);
+				/* Exponential backoff: 20ms, 40ms, 80ms, ... capped at 150ms */
+				const delay = Math.min(20 * Math.pow(2, attempt), 150);
 				await sleep(delay);
 			}
 		}
-		throw new Error(
-			`get_sync failed after ${STK_SYNC_RETRIES} attempts`
-		);
+		throw new Error(`get_sync failed after ${STK_SYNC_RETRIES} attempts`);
 	}
 
 	private async getSignature(): Promise<Uint8Array> {
