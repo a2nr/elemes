@@ -51,9 +51,18 @@
 		}
 	});
 
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		const mq = window.matchMedia('(min-width: 1024px)');
+		isDesktop = mq.matches;
+		const handler = (e: MediaQueryListEvent) => { isDesktop = e.matches; };
+		mq.addEventListener('change', handler);
+		return () => mq.removeEventListener('change', handler);
+	});
+
 	function detectMode() {
 		usbSupported = typeof navigator !== 'undefined' && 'serial' in navigator;
-		isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+		isDesktop = typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
 		if (usbSupported && isDesktop) {
 			deployMode = 'usb';
 		} else {
@@ -189,8 +198,8 @@
 				completedChunks = p.completedChunks;
 			};
 
-			if (deployMode === 'usb' && res.binary_content) {
-				await deployer.deployBinary!(res.binary_content, onProgress);
+			if (deployMode === 'usb' && res.binary_content && typeof deployer.deployBinary === 'function') {
+				await deployer.deployBinary(res.binary_content, onProgress);
 			} else {
 				await deployer.deployHex(res.hex_content, onProgress);
 			}
@@ -288,18 +297,22 @@
 			{deployMode === 'usb' ? 'USB Deployer' : 'BLE Deployer'}
 		</h3>
 		{#if usbSupported && isDesktop}
-			<div class="deploy-mode-toggle">
-				<button 
-					class="mode-btn" 
-					class:active={deployMode === 'ble'}
-					onclick={() => handleModeChange('ble')}
-				>BLE</button>
-				<button 
-					class="mode-btn" 
-					class:active={deployMode === 'usb'}
-					onclick={() => handleModeChange('usb')}
-				>USB</button>
-			</div>
+		<div class="deploy-mode-toggle">
+			<button 
+				class="mode-btn" 
+				class:active={deployMode === 'ble'}
+				onclick={() => handleModeChange('ble')}
+				disabled={deployState !== 'idle' && deployState !== 'error' && deployState !== 'success'}
+				aria-pressed={deployMode === 'ble'}
+			>BLE</button>
+			<button 
+				class="mode-btn" 
+				class:active={deployMode === 'usb'}
+				onclick={() => handleModeChange('usb')}
+				disabled={deployState !== 'idle' && deployState !== 'error' && deployState !== 'success'}
+				aria-pressed={deployMode === 'usb'}
+			>USB</button>
+		</div>
 		{/if}
 		<div class="deploy-status" class:connected={isPaired}>
 			<span class="status-dot"></span>
