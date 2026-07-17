@@ -114,10 +114,14 @@ const SERIAL_MONITOR_BAUD = 9600;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function decodeBase64(base64: string): Uint8Array {
-	const binary = atob(base64);
-	const bytes = new Uint8Array(binary.length);
-	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-	return bytes;
+	try {
+		const binary = atob(base64);
+		const bytes = new Uint8Array(binary.length);
+		for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+		return bytes;
+	} catch {
+		throw new Error('Invalid base64 input: expected a valid base64-encoded string');
+	}
 }
 
 /* ── USBHardwareDeployer ─────────────────────────────────────────────── */
@@ -126,7 +130,6 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 	private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
 	private keepReading = false;
-	private serialMonitorActive = false;
 	private _onDisconnected: (() => void) | null = null;
 	private _deviceName: string | null = null;
 
@@ -157,7 +160,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		}
 
 		/* Clean up any previous session first */
-		this.cleanup();
+		await this.cleanup();
 
 		let port: SerialPort;
 		try {
@@ -186,10 +189,10 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		this.reader = this.port.readable!.getReader();
 
 		/* Listen for disconnect on navigator.serial */
-		this._boundDisconnectHandler = (event: SerialConnectionEvent) => {
+		this._boundDisconnectHandler = async (event: SerialConnectionEvent) => {
 			if (event.port === this.port) {
 				console.log('[USB] port disconnected event');
-				this.cleanup();
+				await this.cleanup();
 				this._onDisconnected?.();
 			}
 		};
@@ -262,7 +265,6 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
-		this.serialMonitorActive = true;
 		this.keepReading = true;
 
 		const decoder = new TextDecoder();
@@ -294,7 +296,6 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 	stopSerialMonitor(): void {
 		console.log('[USB-SERIAL] stopSerialMonitor');
-		this.serialMonitorActive = false;
 		this.keepReading = false;
 	}
 
@@ -323,9 +324,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 	/* ── Disconnect / lifecycle ─────────────────────────────────── */
 
-	disconnect(): void {
+	async disconnect(): Promise<void> {
 		this.stopSerialMonitor();
-		this.cleanup();
+		await this.cleanup();
 	}
 
 	onDisconnected(callback: () => void): void {
@@ -337,7 +338,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	private async stopReaderWriter(): Promise<void> {
 		this.keepReading = false;
 		try {
-			this.reader?.cancel();
+			await this.reader?.cancel();
 		} catch {
 			/* ignore */
 		}
@@ -350,7 +351,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		this.writer = null;
 	}
 
-	private cleanup(): void {
+	private async cleanup(): Promise<void> {
 		if (this._boundDisconnectHandler) {
 			navigator.serial.removeEventListener(
 				'disconnect',
@@ -359,9 +360,12 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			this._boundDisconnectHandler = null;
 		}
 		this.keepReading = false;
-		this.serialMonitorActive = false;
-		this.stopReaderWriter();
-		this.port?.close().catch(() => {});
+		await this.stopReaderWriter();
+		try {
+			await this.port?.close();
+		} catch {
+			/* ignore */
+		}
 		this.port = null;
 		this._deviceName = null;
 	}
@@ -442,6 +446,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 	/**
 	 * Read exactly `len` bytes from the serial stream, with a deadline.
+	 *
+	 * On timeout, any stray bytes that arrive from the orphaned `reader.read()`
+	 * promise are drained so the protocol stream stays synchronised (C1).
 	 */
 	private async readExact(len: number, timeoutMs: number): Promise<Uint8Array> {
 		const result = new Uint8Array(len);
@@ -451,19 +458,25 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			const remaining = deadline - Date.now();
 			if (remaining <= 0)
 				throw new Error(`read timeout: got ${got}/${len}`);
-			const { value, done } = await Promise.race([
-				this.reader!.read(),
-				new Promise<never>((_, reject) =>
-					setTimeout(
-						() => reject(new Error('read timeout')),
-						remaining
+			try {
+				const { value, done } = await Promise.race([
+					this.reader!.read(),
+					new Promise<never>((_, reject) =>
+						setTimeout(
+							() => reject(new Error('read timeout')),
+							remaining
+						)
 					)
-				)
-			]);
-			if (done) throw new Error('stream closed');
-			const copyLen = Math.min(value.length, len - got);
-			result.set(value.subarray(0, copyLen), got);
-			got += copyLen;
+				]);
+				if (done) throw new Error('stream closed');
+				const copyLen = Math.min(value.length, len - got);
+				result.set(value.subarray(0, copyLen), got);
+				got += copyLen;
+			} catch (e) {
+				/* Drain stale bytes from orphaned reader.read() promise (C1) */
+				await this.drainStray();
+				throw e;
+			}
 		}
 		return result;
 	}
@@ -512,6 +525,11 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	private async getSignature(): Promise<Uint8Array> {
 		const cmd = new Uint8Array([STK_READ_SIGN, CRC_EOP]);
 		const resp = await this.sendAndExpect(cmd, 3, STK_CMD_TIMEOUT_MS, true);
+		if (resp.length < 3) {
+			throw new Error(
+				`signature response too short: got ${resp.length} bytes, expected 3`
+			);
+		}
 		console.log(
 			`[USB] signature: ${Array.from(resp)
 				.map((b) => '0x' + b.toString(16).padStart(2, '0'))
@@ -580,6 +598,28 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			completedChunks: 0
 		});
 
+		/* ── Ensure port is at flash baud rate (I4) ── */
+		this.stopSerialMonitor();
+		await this.stopReaderWriter();
+		if (!this.port) {
+			throw new Error('Port tidak tersedia — hubungkan perangkat terlebih dahulu');
+		}
+		try {
+			await this.port.close();
+		} catch {
+			/* may already be closed */
+		}
+		await this.port.open({
+			baudRate: FLASH_BAUD,
+			dataBits: 8,
+			stopBits: 1,
+			parity: 'none',
+			flowControl: 'none'
+		});
+		console.log('[USB] flashBuffer: port reopened at', FLASH_BAUD);
+		this.writer = this.port.writable!.getWriter();
+		this.reader = this.port.readable!.getReader();
+
 		/* 1. Auto-reset → optiboot */
 		await this.resetArduino();
 
@@ -605,35 +645,58 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			);
 		}
 
-		/* 4. Enter programming mode */
-		await this.enterProgmode();
+		/* Track progmode for safe error recovery (I2) */
+		let inProgmode = false;
 
-		/* 5. Program pages (word addresses = byte/2) */
-		for (let page = 0; page < totalPages; page++) {
-			const byteAddr = page * pageSize;
-			const remaining = buffer.length - byteAddr;
-			const thisLen = remaining > pageSize ? pageSize : remaining;
-			const wordAddr = byteAddr / 2;
+		try {
+			/* 4. Enter programming mode */
+			await this.enterProgmode();
+			inProgmode = true;
 
-			await this.loadAddress(wordAddr);
-			await this.progPage(buffer.slice(byteAddr, byteAddr + thisLen));
+			/* 5. Program pages (word addresses = byte/2) */
+			for (let page = 0; page < totalPages; page++) {
+				const byteAddr = page * pageSize;
+				const remaining = buffer.length - byteAddr;
+				const thisLen = remaining > pageSize ? pageSize : remaining;
+				const wordAddr = byteAddr / 2;
+
+				await this.loadAddress(wordAddr);
+				await this.progPage(buffer.subarray(byteAddr, byteAddr + thisLen));
+
+				onProgress({
+					state: 'flashing',
+					message: `Flashing page ${page + 1}/${totalPages}`,
+					totalChunks: totalPages,
+					completedChunks: page + 1
+				});
+			}
+
+			/* 6. Leave programming mode */
+			await this.leaveProgmode();
+			inProgmode = false;
 
 			onProgress({
-				state: 'flashing',
-				message: `Flashing page ${page + 1}/${totalPages}`,
+				state: 'success',
+				message: 'Flash berhasil!',
 				totalChunks: totalPages,
-				completedChunks: page + 1
+				completedChunks: totalPages
 			});
+		} catch (e) {
+			/* Best-effort leave progmode to unstick the device (I2) */
+			if (inProgmode) {
+				try {
+					await this.leaveProgmode();
+				} catch {
+					/* give up */
+				}
+			}
+			onProgress({
+				state: 'error',
+				message: `Flash gagal: ${(e as Error).message}`,
+				totalChunks: totalPages,
+				completedChunks: 0
+			});
+			throw e;
 		}
-
-		/* 6. Leave programming mode */
-		await this.leaveProgmode();
-
-		onProgress({
-			state: 'success',
-			message: 'Flash berhasil!',
-			totalChunks: totalPages,
-			completedChunks: totalPages
-		});
 	}
 }
