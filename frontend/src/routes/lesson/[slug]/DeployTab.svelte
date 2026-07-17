@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { BLEHardwareDeployer } from '$services/ble-deployer';
+	import { USBHardwareDeployer } from '$services/usb-deployer';
 	import { getHexContent } from '$services/api';
 	import { getVelxioState } from '$services/velxio-manager';
 	import {
 		SUPPORTED_BAUD_RATES,
 		DEFAULT_BAUD_RATE,
 		type DeployState,
-		type DeployProgress
+		type DeployProgress,
+		type HardwareDeployer
 	} from '$types/deployer';
 
 	let {
@@ -22,7 +24,7 @@
 		authLoggedIn: boolean;
 	} = $props();
 
-	let deployer = $state<BLEHardwareDeployer | null>(null);
+	let deployer = $state<HardwareDeployer | null>(null);
 	let isPaired = $state(false);
 	let deployState = $state<DeployState>('idle');
 	let deployMessage = $state('');
@@ -30,6 +32,11 @@
 	let completedChunks = $state(0);
 	let progressPercent = $derived(totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0);
 	let bleSupported = $state(true);
+
+	type DeployMode = 'ble' | 'usb';
+	let deployMode: DeployMode = $state('ble');
+	let usbSupported = $state(false);
+	let isDesktop = $state(false);
 	let serialLog = $state<string[]>([]);
 	let serialInput = $state('');
 	let serialActive = $state(false);
@@ -44,18 +51,52 @@
 		}
 	});
 
+	function detectMode() {
+		usbSupported = typeof navigator !== 'undefined' && 'serial' in navigator;
+		isDesktop = window.matchMedia('(min-width: 1024px)').matches;
+		if (usbSupported && isDesktop) {
+			deployMode = 'usb';
+		} else {
+			deployMode = 'ble';
+		}
+	}
+
+	function createDeployer(mode: DeployMode): HardwareDeployer {
+		if (mode === 'usb') return new USBHardwareDeployer();
+		return new BLEHardwareDeployer();
+	}
+
 	function initDeployer() {
-		deployer = new BLEHardwareDeployer();
+		detectMode();
+		deployer = createDeployer(deployMode);
 		bleSupported = deployer.checkSupport();
 		if (!bleSupported) {
 			deployState = 'error';
-			errorMessage = 'Web Bluetooth tidak didukung. Gunakan Chrome Android.';
+			errorMessage = deployMode === 'usb' 
+				? 'Web Serial tidak didukung. Gunakan Chrome desktop.' 
+				: 'Web Bluetooth tidak didukung. Gunakan Chrome Android.';
 		}
 		deployer.onDisconnected(() => {
 			deployState = 'error';
-			errorMessage = 'Koneksi BLE terputus.';
+			errorMessage = deployMode === 'usb' ? 'Koneksi USB terputus.' : 'Koneksi BLE terputus.';
 			serialActive = false;
 		});
+	}
+
+	function handleModeChange(mode: DeployMode) {
+		if (deployer?.isConnected) {
+			deployer.disconnect();
+		}
+		resetState();
+		deployMode = mode;
+		deployer = createDeployer(mode);
+		bleSupported = deployer.checkSupport();
+		if (!bleSupported) {
+			deployState = 'error';
+			errorMessage = mode === 'usb' 
+				? 'Web Serial tidak didukung. Gunakan Chrome desktop.' 
+				: 'Web Bluetooth tidak didukung. Gunakan Chrome Android.';
+		}
 	}
 
 	function resetState() {
@@ -148,7 +189,11 @@
 				completedChunks = p.completedChunks;
 			};
 
-			await deployer.deployHex(res.hex_content, onProgress);
+			if (deployMode === 'usb' && res.binary_content) {
+				await deployer.deployBinary!(res.binary_content, onProgress);
+			} else {
+				await deployer.deployHex(res.hex_content, onProgress);
+			}
 
 			deployState = 'success';
 			deployMessage = 'Upload berhasil! LED Hijau.';
@@ -239,17 +284,33 @@
 
 <div class="deploy-tab">
 	<div class="deploy-toolbar">
-		<h3 class="deploy-title">BLE Deployer</h3>
+		<h3 class="deploy-title">
+			{deployMode === 'usb' ? 'USB Deployer' : 'BLE Deployer'}
+		</h3>
+		{#if usbSupported && isDesktop}
+			<div class="deploy-mode-toggle">
+				<button 
+					class="mode-btn" 
+					class:active={deployMode === 'ble'}
+					onclick={() => handleModeChange('ble')}
+				>BLE</button>
+				<button 
+					class="mode-btn" 
+					class:active={deployMode === 'usb'}
+					onclick={() => handleModeChange('usb')}
+				>USB</button>
+			</div>
+		{/if}
 		<div class="deploy-status" class:connected={isPaired}>
 			<span class="status-dot"></span>
-			{isPaired ? 'Terhubung' : 'Terputus'}
+			{isPaired ? (deployer?.deviceName ? `Terhubung (${deployer.deviceName})` : 'Terhubung') : 'Terputus'}
 		</div>
 	</div>
 
 	<div class="deploy-connection">
 		{#if !isPaired}
 			<button class="btn btn-primary" onclick={handlePair} disabled={deployState === 'pairing'}>
-				{deployState === 'pairing' ? 'Menghubungkan...' : 'Pair Device'}
+				{deployState === 'pairing' ? 'Menghubungkan...' : (deployMode === 'usb' ? 'Pilih Port USB' : 'Pair Device')}
 			</button>
 		{:else}
 			<div class="deploy-actions">
@@ -327,7 +388,7 @@
 
 	{#if !bleSupported && deployState !== 'error'}
 		<div class="deploy-error">
-			<div class="error-message">Web Bluetooth tidak didukung di browser ini. Gunakan Chrome Android.</div>
+			<div class="error-message">{deployMode === 'usb' ? 'Web Serial tidak didukung di browser ini. Gunakan Chrome desktop.' : 'Web Bluetooth tidak didukung di browser ini. Gunakan Chrome Android.'}</div>
 		</div>
 	{/if}
 </div>
@@ -521,5 +582,31 @@
 	.error-message {
 		font-size: 0.9rem;
 		color: #991b1b;
+	}
+
+	.deploy-mode-toggle {
+		display: flex;
+		gap: 0;
+		border-radius: 6px;
+		overflow: hidden;
+		border: 1px solid #d1d5db;
+	}
+
+	.mode-btn {
+		padding: 4px 12px;
+		font-size: 0.8rem;
+		background: #f9fafb;
+		border: none;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.mode-btn.active {
+		background: #3b82f6;
+		color: white;
+	}
+
+	.mode-btn:not(.active):hover {
+		background: #e5e7eb;
 	}
 </style>
