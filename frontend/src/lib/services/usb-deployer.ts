@@ -137,6 +137,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	private keepReading = false;
 	private _onDisconnected: (() => void) | null = null;
 	private _deviceName: string | null = null;
+	private currentBaudRate: number | null = null;
 
 	/* Bound handler so we can removeEventListener on cleanup */
 	private _boundDisconnectHandler: ((event: SerialConnectionEvent) => void) | null = null;
@@ -188,6 +189,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			parity: 'none',
 			flowControl: 'none'
 		});
+		this.currentBaudRate = FLASH_BAUD;
 		console.log('[USB] port opened at', FLASH_BAUD);
 
 		this.writer = this.port.writable!.getWriter();
@@ -209,21 +211,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	async resetArduino(): Promise<void> {
 		if (!this.port) throw new Error('Belum terhubung ke perangkat');
 
-		console.log('[USB] resetArduino: Double DTR pulse sequence');
-
-		/* Pulse 1 */
-		await this.port.setSignals({
-			dataTerminalReady: false,
-			requestToSend: false
-		});
-		await sleep(50);
-		await this.port.setSignals({
-			dataTerminalReady: true,
-			requestToSend: true
-		});
-		await sleep(100);
-
-		/* Pulse 2 (Handshake) */
+		console.log('[USB] resetArduino: DTR/RTS pulse');
+		/* DTR low + RTS low → 50ms → both high → wait for optiboot.
+		   Longer low period (50ms vs 10ms) improves reliability on CH340 clones. */
 		await this.port.setSignals({
 			dataTerminalReady: false,
 			requestToSend: false
@@ -234,8 +224,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			requestToSend: true
 		});
 		await sleep(BOOTLOADER_SETTLE_MS);
-
-		console.log('[USB] resetArduino: pulse sequence done');
+		console.log('[USB] resetArduino: DTR pulse done');
 	}
 
 	/* ── Deploy ─────────────────────────────────────────────────── */
@@ -281,6 +270,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			flowControl: 'none'
 		});
 		console.log('[USB-SERIAL] port opened at', SERIAL_MONITOR_BAUD);
+		this.currentBaudRate = SERIAL_MONITOR_BAUD;
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
@@ -339,6 +329,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
 		console.log('[USB-SERIAL] baud rate changed to', baud);
+		this.currentBaudRate = baud;
 	}
 
 	/* ── Disconnect / lifecycle ─────────────────────────────────── */
@@ -358,6 +349,14 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		this.keepReading = false;
 		try {
 			await this.reader?.cancel();
+			/* Wait for reader lock to release before close */
+			if (this.reader) {
+				try {
+					await this.reader.closed.catch(() => {});
+				} catch {
+					/* ignore */
+				}
+			}
 		} catch {
 			/* ignore */
 		}
@@ -380,6 +379,7 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		}
 		this.keepReading = false;
 		await this.stopReaderWriter();
+		this.currentBaudRate = null;
 		try {
 			await this.port?.close();
 		} catch {
@@ -430,7 +430,6 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		);
 
 		await this.withTimeout(this.writer.write(cmd), timeoutMs, 'write');
-		await sleep(50);
 		console.log('[USB] write done');
 
 		/* Read STK_INSYNC (1 byte) */
@@ -643,25 +642,38 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			completedChunks: 0
 		});
 
-		/* ── Ensure port is at flash baud rate (I4) ── */
+		/* ── Ensure port is at flash baud rate ── */
 		this.stopSerialMonitor();
 		await this.stopReaderWriter();
+
 		if (!this.port) {
 			throw new Error('Port tidak tersedia — hubungkan perangkat terlebih dahulu');
 		}
-		try {
-			await this.port.close();
-		} catch {
-			/* may already be closed */
+
+		/* Reuse port if already at FLASH_BAUD. Closing+opening causes kernel
+		   DTR toggle on CH340/CH341 clones, which can make the bootloader
+		   exit before we get to resetArduino(). */
+		const needReopen = this.currentBaudRate !== FLASH_BAUD;
+
+		if (needReopen) {
+			try {
+				await this.port.close();
+			} catch {
+				/* may already be closed */
+			}
+			await this.port.open({
+				baudRate: FLASH_BAUD,
+				dataBits: 8,
+				stopBits: 1,
+				parity: 'none',
+				flowControl: 'none'
+			});
+			this.currentBaudRate = FLASH_BAUD;
+			console.log('[USB] flashBuffer: port reopened at', FLASH_BAUD);
+		} else {
+			console.log('[USB] flashBuffer: reusing existing port at', FLASH_BAUD);
 		}
-		await this.port.open({
-			baudRate: FLASH_BAUD,
-			dataBits: 8,
-			stopBits: 1,
-			parity: 'none',
-			flowControl: 'none'
-		});
-		console.log('[USB] flashBuffer: port reopened at', FLASH_BAUD);
+
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
 
