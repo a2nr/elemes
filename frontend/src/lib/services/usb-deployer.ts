@@ -494,31 +494,36 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	}
 
 	/**
-	 * Drain any stray bytes from the serial input (short timeout).
-	 * Drains repeatedly until no more bytes arrive or 50ms elapsed.
+	 * Drain any stray bytes from the serial input.
+	 * Keeps reading until no bytes arrive for DRAIN_BYTE_TIMEOUT_MS,
+	 * or DRAIN_TOTAL_MS has elapsed.
 	 */
 	private async drainStray(): Promise<void> {
-		const deadline = Date.now() + 50;
+		const deadline = Date.now() + DRAIN_TOTAL_MS;
 		let totalDrained = 0;
-		
+
 		while (Date.now() < deadline) {
 			try {
 				const { value, done } = await Promise.race([
 					this.reader!.read(),
 					new Promise<never>((_, reject) =>
-						setTimeout(() => reject(new Error('timeout')), 10)
+						setTimeout(() => reject(new Error('timeout')), DRAIN_BYTE_TIMEOUT_MS)
 					)
 				]);
 				if (done) break;
 				if (value && value.length > 0) {
 					totalDrained += value.length;
+					/* Got bytes; keep looping inside the same deadline window. */
+					continue;
 				}
+				/* Empty chunk: treat same as a quiet window. */
+				break;
 			} catch {
-				/* timeout — no more bytes available */
+				/* No bytes available for DRAIN_BYTE_TIMEOUT_MS -> channel is clean. */
 				break;
 			}
 		}
-		
+
 		if (totalDrained > 0) {
 			console.log(`[USB] drained ${totalDrained} stray bytes`);
 		}
