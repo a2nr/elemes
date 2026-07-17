@@ -16,6 +16,26 @@ export interface DeployProgress {
 	bytesPerSecond?: number;
 }
 
+/**
+ * Abstraction untuk hardware deployer (BLE atau USB).
+ * DeployTab menggunakan interface ini, switching instance berdasarkan mode.
+ */
+export interface HardwareDeployer {
+	checkSupport(): boolean;
+	readonly isConnected: boolean;
+	readonly deviceName: string | null;
+	pair(): Promise<void>;
+	deployHex(hexContent: string, onProgress: (p: DeployProgress) => void): Promise<void>;
+	deployBinary?(base64Binary: string, onProgress: (p: DeployProgress) => void): Promise<void>;
+	startSerialMonitor(onData: (text: string) => void): Promise<void>;
+	stopSerialMonitor(): void;
+	sendSerialInput(text: string): Promise<void>;
+	setBaudRate(baud: number): Promise<void>;
+	resetArduino(): Promise<void>;
+	disconnect(): void;
+	onDisconnected(cb: () => void): void;
+}
+
 export interface BLEACKResponse {
 	command: number;
 	index: number;

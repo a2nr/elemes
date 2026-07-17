@@ -4,6 +4,7 @@ import {
 	BLE_CHAR_SERIAL_UUID,
 	CMD_INIT, CMD_DATA, CMD_END, CMD_ACK, CMD_ERR, CMD_SET_BAUD, CMD_RESET,
 	CHUNK_SIZE, BLE_TIMEOUT_MS, END_TIMEOUT_MS, END_ACK_INDEX, INIT_ACK_INDEX, MAX_RETRIES,
+	type HardwareDeployer,
 	type DeployProgress, type BLEACKResponse
 } from '$types/deployer';
 
@@ -12,7 +13,7 @@ function logAck(tag: string, msg: string) {
 	console.log(`[BLE-ACK#${++_ackNotificationCount}] ${tag}: ${msg}`);
 }
 
-export class BLEHardwareDeployer {
+export class BLEHardwareDeployer implements HardwareDeployer {
 	private server: BluetoothRemoteGATTServer | null = null;
 	private service: BluetoothRemoteGATTService | null = null;
 	private flashingChar: BluetoothRemoteGATTCharacteristic | null = null;
@@ -44,6 +45,10 @@ export class BLEHardwareDeployer {
 
 	get isConnected(): boolean {
 		return this.server?.connected ?? false;
+	}
+
+	get deviceName(): string | null {
+		return this.device?.name ?? null;
 	}
 
 	private withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
