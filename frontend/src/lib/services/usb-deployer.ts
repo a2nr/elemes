@@ -420,9 +420,13 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		console.log(`[USB] INSYNC: 0x${insync[0].toString(16).padStart(2, '0')}`);
 
 		if (insync[0] === STK_NOSYNC) {
+			console.log('[USB] optiboot replied NOSYNC');
 			throw new Error('optiboot replied NOSYNC');
 		}
 		if (insync[0] !== STK_INSYNC) {
+			console.log(
+				`[USB] expected INSYNC 0x${STK_INSYNC.toString(16)}, got 0x${insync[0].toString(16)}`
+			);
 			throw new Error(
 				`expected INSYNC 0x14, got 0x${insync[0].toString(16)}`
 			);
@@ -475,6 +479,8 @@ export class USBHardwareDeployer implements HardwareDeployer {
 				result.set(value.subarray(0, copyLen), got);
 				got += copyLen;
 			} catch (e) {
+				const reason = (e as Error).message || 'unknown';
+				console.log(`[USB] readExact failed at ${got}/${len}: ${reason}`);
 				/* Drain stale bytes from orphaned reader.read() promise (C1) */
 				await this.drainStray();
 				throw e;
