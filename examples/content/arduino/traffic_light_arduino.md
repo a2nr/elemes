@@ -8,10 +8,10 @@ Pelajaran Arduino: Membuat simulasi lampu lalu lintas dengan 3 LED.
 - Menggunakan `const int` untuk nama pin yang mudah dibaca
 
 **Prerequisites:**
-- Hello, World!
-- LED Blink
-- Hello Serial
-- Button Input
+- [Hello, World!](lesson/hello_world.md)
+- [LED Blink](lesson/led_blink_arduino.md)
+- [Hello Serial](lesson/hello_serial_arduino.md)
+- [Button Input](lesson/button_input_arduino.md)
 ---END_LESSON_INFO---
 
 # Traffic Light — Lampu Lalu Lintas

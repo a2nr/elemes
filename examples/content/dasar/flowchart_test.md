@@ -5,7 +5,7 @@
 - Membuat siklus perulangan (LOOP) untuk pemantauan berkelanjutan.
 
 **Prerequisites:**
-- Variabel
+- [Variabel](lesson/variabel.md)
 
 **Challenge:**
 Buatlah flowchart untuk **Sistem Penyiraman Tanaman Otomatis**.

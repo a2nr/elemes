@@ -7,8 +7,8 @@ Pelajaran hybrid: Pemrograman C + Simulator Rangkaian Elektronika.
 - Menggunakan simulator rangkaian
 
 **Prerequisites:**
-- Hello, World!
-- Variabel
+- [Hello, World!](lesson/hello_world.md)
+- [Variabel](lesson/variabel.md)
 ---END_LESSON_INFO---
 
 # Rangkaian Voltage Divider

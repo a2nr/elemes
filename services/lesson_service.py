@@ -174,18 +174,31 @@ def get_lessons_with_learning_objectives():
             prereq_start = lesson_info_section.find('**Prerequisites:**')
             if prereq_start != -1:
                 prereq_section = lesson_info_section[prereq_start + len('**Prerequisites:**'):]
-                # Look for bullet points
-                prerequisite_titles = re.findall(r'- ([^\n]+)', prereq_section)
-                if not prerequisite_titles:
-                    # Fallback to lines until next bold or end
-                    next_bold = prereq_section.find('**')
-                    if next_bold != -1:
-                        prereq_section = prereq_section[:next_bold]
-                    prerequisite_titles = [l.strip() for l in prereq_section.split('\n') if l.strip()]
+                # Look for bullet points - support both plain text and markdown link format
+                # Plain text: - Hello, World!
+                # Markdown link: - [Hello, World!](lesson/hello_world.md)
+                bullet_lines = re.findall(r'- ([^\n]+)', prereq_section)
                 
-                # Filter out "None" or "Tidak ada"
-                prerequisite_titles = [t.strip() for t in prerequisite_titles 
-                                      if t.strip().lower() not in ('tidak ada', 'none', '-', '')]
+                prerequisite_slugs = []
+                for bullet in bullet_lines:
+                    bullet = bullet.strip()
+                    # Filter out "None" or "Tidak ada"
+                    if bullet.lower() in ('tidak ada', 'none', '-', ''):
+                        continue
+                    
+                    # Check if it's a markdown link format [title](path)
+                    md_link_match = re.match(r'\[([^\]]+)\]\(([^)]+)\)', bullet)
+                    if md_link_match:
+                        # Extract slug from the link path
+                        link_path = md_link_match.group(2)
+                        # Handle paths like lesson/hello_world.md or just hello_world.md
+                        slug = link_path.replace('.md', '').split('/')[-1]
+                        prerequisite_slugs.append(slug)
+                    else:
+                        # Plain text - keep as title for later resolution
+                        prerequisite_slugs.append(bullet)
+                
+                prerequisite_titles = prerequisite_slugs
 
             content_after_info = content[lesson_info_end + len('---END_LESSON_INFO---'):].strip()
             for line in content_after_info.split('\n'):
@@ -232,9 +245,18 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
         else:
             lesson['completed'] = False
         
-        # Resolve prerequisite titles to slugs
-        titles = lesson.get('prerequisite_titles', [])
-        lesson['prerequisites'] = [title_to_slug[t] for t in titles if t in title_to_slug]
+        # Resolve prerequisites - now contains slugs directly from markdown links
+        # or still contains plain text titles that need resolution
+        items = lesson.get('prerequisite_titles', [])
+        resolved_prereqs = []
+        for item in items:
+            # If it's already a valid slug (exists in all_lessons), use it directly
+            if item in title_to_slug.values():
+                resolved_prereqs.append(item)
+            # Otherwise try to resolve via title mapping
+            elif item in title_to_slug:
+                resolved_prereqs.append(title_to_slug[item])
+        lesson['prerequisites'] = resolved_prereqs
         return lesson
 
     if lesson_links:

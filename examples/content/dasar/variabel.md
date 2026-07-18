@@ -5,7 +5,7 @@
 - Mengenal tipe data dasar: int, float, char
 
 **Prerequisites:**
-- Hello, World!
+- [Hello, World!](lesson/hello_world.md)
 ---END_LESSON_INFO---
 
 # Variabel dalam C

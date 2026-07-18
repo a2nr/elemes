@@ -8,9 +8,8 @@ Pelajaran Arduino: Komunikasi Serial Monitor dan debugging.
 - Menggunakan `millis()` untuk tracking waktu
 
 **Prerequisites:**
-- Hello, World!
+- [Hello, World!](lesson/hello_world.md)
 ---END_LESSON_INFO---
-
 # Hello Serial — Komunikasi Serial Arduino
 
 Serial Monitor adalah **alat debugging utama** saat bekerja dengan Arduino.

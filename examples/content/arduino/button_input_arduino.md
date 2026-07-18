@@ -8,9 +8,9 @@ Pelajaran Arduino: Membaca input tombol dan mengontrol LED.
 - Menghubungkan push button dan LED ke Arduino
 
 **Prerequisites:**
-- Hello, World!
-- LED Blink
-- Hello Serial
+- [Hello, World!](lesson/hello_world.md)
+- [LED Blink](lesson/led_blink_arduino.md)
+- [Hello Serial](lesson/hello_serial_arduino.md)
 ---END_LESSON_INFO---
 
 # Button Input — Membaca Tombol

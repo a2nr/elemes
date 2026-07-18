@@ -7,9 +7,8 @@ Pelajaran Arduino: Mengedipkan LED menggunakan simulator Velxio.
 - Menggunakan `Serial.print()` untuk debugging
 
 **Prerequisites:**
-- Hello, World!
+- [Hello, World!](lesson/hello_world.md)
 ---END_LESSON_INFO---
-
 # LED Blink dengan Arduino
 
 Proyek pertama setiap programmer Arduino: **mengedipkan LED!**

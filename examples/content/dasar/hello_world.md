@@ -4,7 +4,7 @@
 - Belajar menggunakan printf untuk menampilkan output
 
 **Prerequisites:**
-- Tidak ada persyaratan khusus
+- Tidak ada
 ---END_LESSON_INFO---
 
 # Hello, World!
