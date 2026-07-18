@@ -1,5 +1,7 @@
-// static/sw.js
-const CACHE_VERSION = 'elemes-v14';
+// src/service-worker.ts — SvelteKit Service Worker
+import { APP_VERSION } from '$lib/version';
+
+const CACHE_VERSION = `elemes-v${APP_VERSION}`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const API_CACHE = `${CACHE_VERSION}-api`;
 const ASSET_CACHE = `${CACHE_VERSION}-assets`;
@@ -75,9 +77,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // StaleWhileRevalidate: HTML pages
+  // NetworkFirst: HTML pages (new routes need network first)
   if (request.headers.get('accept')?.includes('text/html')) {
-    event.respondWith(staleWhileRevalidate(request, STATIC_CACHE));
+    event.respondWith(networkFirst(request, STATIC_CACHE, 1440));
     return;
   }
 
@@ -90,7 +92,7 @@ self.addEventListener('fetch', (event) => {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-async function cacheFirst(request, cacheName, maxAgeDays = 7) {
+async function cacheFirst(request: Request, cacheName: string, maxAgeDays = 7): Promise<Response> {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return cached;
@@ -99,7 +101,7 @@ async function cacheFirst(request, cacheName, maxAgeDays = 7) {
   return response;
 }
 
-async function networkFirst(request, cacheName, maxAgeMinutes = 60) {
+async function networkFirst(request: Request, cacheName: string, maxAgeMinutes = 60): Promise<Response> {
   const cache = await caches.open(cacheName);
   try {
     const response = await fetch(request);
@@ -115,7 +117,7 @@ async function networkFirst(request, cacheName, maxAgeMinutes = 60) {
   }
 }
 
-async function staleWhileRevalidate(request, cacheName) {
+async function staleWhileRevalidate(request: Request, cacheName: string): Promise<Response> {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
   const networkFetch = fetch(request).then(response => {

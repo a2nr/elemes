@@ -33,6 +33,7 @@
 		class="velxio-iframe"
 		src="/velxio/editor?embed=true{hasArduinoCode ? '' : '&hideEditor=true'}&lockComponents=true"
 		onload={(e) => onSetupBridge(e.currentTarget as HTMLIFrameElement)}
-		allow="cross-origin-isolated"
+		allow="cross-origin-isolated; fullscreen"
+		allowfullscreen
 	></iframe>
 {/if}

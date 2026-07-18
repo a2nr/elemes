@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { auth } from '$stores/auth';
 	import { theme } from '$stores/theme';
 	import Navbar from '$components/Navbar.svelte';
@@ -12,12 +13,19 @@
 		theme.init();
 		auth.init();
 	});
+
+	// Suppress Navbar/Footer on full-viewport routes (e.g. /playground)
+	let isFullViewport = $derived($page.url.pathname === '/playground');
 </script>
 
-<Navbar />
+{#if !isFullViewport}
+	<Navbar />
+{/if}
 
-<main class="container" style="flex: 1; padding-block: 1.5rem;">
+<main class="container" style="flex: 1; padding-block: {isFullViewport ? '0' : '1.5rem'}; overflow: {isFullViewport ? 'hidden' : 'visible'};">
 	{@render children()}
 </main>
 
-<Footer />
+{#if !isFullViewport}
+	<Footer />
+{/if}
