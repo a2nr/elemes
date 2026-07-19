@@ -135,7 +135,6 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	private port: SerialPort | null = null;
 	private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 	private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
-	private keepReading = false;
 	private _onDisconnected: (() => void) | null = null;
 	private _deviceName: string | null = null;
 	private currentBaudRate: number | null = null;
@@ -263,11 +262,11 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	async startSerialMonitor(onData: (text: string) => void): Promise<void> {
 		if (!this.port) throw new Error('Belum terhubung ke perangkat');
 
-		/* Release flash-mode reader/writer, then close port */
+		/* Stop pump + release reader/writer, reopen at monitor baud. */
+		this.rxBuffer.onData = null;
+		await this.stopPump();
 		await this.stopReaderWriter();
 		await this.port.close();
-
-		/* Reopen at serial-monitor baud rate (9600 default) */
 		await this.port.open({
 			baudRate: SERIAL_MONITOR_BAUD,
 			dataBits: 8,
@@ -275,43 +274,24 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			parity: 'none',
 			flowControl: 'none'
 		});
-		console.log('[USB-SERIAL] port opened at', SERIAL_MONITOR_BAUD);
 		this.currentBaudRate = SERIAL_MONITOR_BAUD;
+		console.log('[USB-SERIAL] port opened at', SERIAL_MONITOR_BAUD);
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
-		this.keepReading = true;
+		this.rxBuffer.clear();
 
 		const decoder = new TextDecoder();
-		this.readLoop(onData, decoder).catch((e) =>
-			console.error('[USB-SERIAL] read loop error:', e)
-		);
-	}
-
-	private async readLoop(
-		onData: (text: string) => void,
-		decoder: TextDecoder
-	): Promise<void> {
-		while (this.keepReading && this.reader) {
-			try {
-				const { value, done } = await this.reader.read();
-				if (done) break;
-				if (value && value.length > 0) {
-					const text = decoder.decode(value, { stream: true });
-					onData(text);
-				}
-			} catch (e) {
-				if (this.keepReading) {
-					console.error('[USB-SERIAL] read error:', e);
-				}
-				break;
-			}
-		}
+		this.rxBuffer.onData = (chunk) => {
+			const text = decoder.decode(chunk, { stream: true });
+			if (text) onData(text);
+		};
+		this.startPump();
 	}
 
 	stopSerialMonitor(): void {
 		console.log('[USB-SERIAL] stopSerialMonitor');
-		this.keepReading = false;
+		this.rxBuffer.onData = null;
 	}
 
 	async sendSerialInput(text: string): Promise<void> {
@@ -322,7 +302,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 	async setBaudRate(baud: number): Promise<void> {
 		if (!this.port) throw new Error('Belum terhubung ke perangkat');
+		const prevOnData = this.rxBuffer.onData;
 		/* Web Serial cannot change baud without close+reopen */
+		await this.stopPump();
 		await this.stopReaderWriter();
 		await this.port.close();
 		await this.port.open({
@@ -334,6 +316,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		});
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
+		this.rxBuffer.clear();
+		this.rxBuffer.onData = prevOnData;
+		this.startPump();
 		console.log('[USB-SERIAL] baud rate changed to', baud);
 		this.currentBaudRate = baud;
 	}
@@ -352,19 +337,11 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	/* ── Private helpers ──────────────────────────────────────────── */
 
 	private async stopReaderWriter(): Promise<void> {
-		this.keepReading = false;
+		/* Pump owns reader.cancel via stopPump; here we just release locks. */
 		try {
-			await this.reader?.cancel();
-			/* Wait for reader lock to release before close */
-			if (this.reader) {
-				try {
-					await this.reader.closed.catch(() => {});
-				} catch {
-					/* ignore */
-				}
-			}
+			this.reader?.releaseLock();
 		} catch {
-			/* ignore */
+			/* reader may already be released/cancelled */
 		}
 		this.reader = null;
 		try {
@@ -423,8 +400,10 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			);
 			this._boundDisconnectHandler = null;
 		}
-		this.keepReading = false;
+		await this.stopPump();
 		await this.stopReaderWriter();
+		this.rxBuffer.clear();
+		this.rxBuffer.onData = null;
 		this.currentBaudRate = null;
 		try {
 			await this.port?.close();
@@ -647,7 +626,8 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		});
 
 		/* ── Ensure port is at flash baud rate ── */
-		this.stopSerialMonitor();
+		this.rxBuffer.onData = null; /* detach serial monitor sink */
+		await this.stopPump();
 		await this.stopReaderWriter();
 
 		if (!this.port) {
@@ -680,9 +660,15 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
+		this.rxBuffer.clear();
+		this.startPump();
 
 		/* 1. Auto-reset → optiboot */
 		await this.resetArduino();
+
+		/* Drain stray bytes from prior serial session / boot chatter
+		   before sync (mirrors firmware ESP32 drain_cdc). */
+		await this.drainStray();
 
 		/* 2. Get sync (retry within optiboot ~1s window) */
 		onProgress({
