@@ -71,6 +71,7 @@ declare global {
 }
 
 import type { HardwareDeployer, DeployProgress } from '$types/deployer';
+import { ByteStreamBuffer } from './byte-stream-buffer';
 
 /* ── STK500v1 protocol constants ────────────────────────────────────── */
 const CRC_EOP = 0x20;
@@ -138,6 +139,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	private _onDisconnected: (() => void) | null = null;
 	private _deviceName: string | null = null;
 	private currentBaudRate: number | null = null;
+	private rxBuffer = new ByteStreamBuffer();
+	private pumpRunning = false;
+	private pumpDone: Promise<void> | null = null;
 
 	/* Bound handler so we can removeEventListener on cleanup */
 	private _boundDisconnectHandler: ((event: SerialConnectionEvent) => void) | null = null;
@@ -194,6 +198,8 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
+		this.rxBuffer.clear();
+		this.startPump();
 
 		/* Listen for disconnect on navigator.serial */
 		this._boundDisconnectHandler = async (event: SerialConnectionEvent) => {
@@ -367,6 +373,46 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			/* ignore */
 		}
 		this.writer = null;
+	}
+
+	/* ── Read pump: the ONLY consumer of reader.read() ──────────
+	 * Feeds every incoming byte into rxBuffer. readExact/drain and the
+	 * serial monitor consume from rxBuffer, never from reader.read().
+	 * This eliminates orphaned-read races during STK500 sync.        */
+	private startPump(): void {
+		if (this.pumpRunning) return;
+		if (!this.reader) throw new Error('startPump: no reader');
+		this.pumpRunning = true;
+		const reader = this.reader;
+		this.pumpDone = (async () => {
+			while (this.pumpRunning) {
+				try {
+					const { value, done } = await reader.read();
+					if (done) break;
+					if (value && value.length > 0) this.rxBuffer.push(value);
+				} catch (e) {
+					if (this.pumpRunning) {
+						console.error('[USB] pump read error:', e);
+					}
+					break;
+				}
+			}
+		})();
+	}
+
+	private async stopPump(): Promise<void> {
+		this.pumpRunning = false;
+		try {
+			await this.reader?.cancel();
+		} catch {
+			/* ignore */
+		}
+		try {
+			await this.pumpDone;
+		} catch {
+			/* ignore */
+		}
+		this.pumpDone = null;
 	}
 
 	private async cleanup(): Promise<void> {
