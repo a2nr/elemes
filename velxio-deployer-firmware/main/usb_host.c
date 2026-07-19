@@ -1,5 +1,6 @@
 #include <string.h>
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "usbh_core.h"
@@ -163,6 +164,23 @@ int usb_host_read_cdc(uint8_t *buf, size_t len, uint32_t timeout_ms)
     return ret;  /* >=0 bytes, <0 on error/timeout */
 }
 
+/* Drain up to N bytes from CDC ringbuffer with short timeout. Returns bytes drained. */
+size_t usb_host_drain_cdc(size_t max_bytes, uint32_t total_ms)
+{
+    size_t total = 0;
+    int64_t deadline = esp_timer_get_time() + (int64_t)total_ms * 1000;
+    uint8_t buf[64];
+    while (total < max_bytes && esp_timer_get_time() < deadline) {
+        int n = usb_host_read_cdc(buf, sizeof(buf), 10);
+        if (n <= 0) break;
+        total += (size_t)n;
+    }
+    if (total > 0) {
+        ESP_LOGI(TAG, "drained %d stale bytes from CDC", (int)total);
+    }
+    return total;
+}
+
 void usb_host_set_serial_callback(usb_data_cb_t cb)
 {
     serial_callback = cb;
@@ -209,19 +227,22 @@ void usb_host_reset_arduino(void)
         ESP_LOGW(TAG, "reset_arduino: no device — skipping DTR pulse");
         return;
     }
-
-    /* Drive DTR+RTS low to assert RESET (Arduino autoreset circuit).
-     * TIOCMSET expects a pointer to uint32_t flags — NEVER pass flags
-     * cast directly as the pointer (that was bug B10, a NULL+small deref). */
+    /* Mirrors avrdude stk500v1 + frontend USBHardwareDeployer.resetArduino.
+     * 100nF/10kΩ RC on Uno R3 (~1ms τ) needs DTR low long enough to pull RESET
+     * below V_IL reliably across CH340/CP2102 clones.
+     * Sequence: DTR+RTS low (50ms) -> high -> settle 100ms for optiboot. */
     uint32_t flags_low = 0;
     usbh_serial_control(serial_dev, USBH_SERIAL_CMD_TIOCMSET, &flags_low);
-    vTaskDelay(pdMS_TO_TICKS(1));
+    ESP_LOGI(TAG, "reset_arduino: DTR/RTS low (asserting RESET)");
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     uint32_t flags_high = USBH_SERIAL_TIOCM_DTR | USBH_SERIAL_TIOCM_RTS;
     usbh_serial_control(serial_dev, USBH_SERIAL_CMD_TIOCMSET, &flags_high);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    ESP_LOGI(TAG, "reset_arduino: DTR/RTS high (releasing RESET)");
 
-    ESP_LOGI(TAG, "Arduino DTR pulse sent (autoreset)");
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    ESP_LOGI(TAG, "reset_arduino: DTR pulse done (autoreset, 150ms total)");
 }
 
 void usb_host_set_baud_rate(uint32_t baud)

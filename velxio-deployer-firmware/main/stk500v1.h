@@ -43,8 +43,8 @@
 #define ATMEGA328P_PAGE_SIZE    128    /* bytes */
 
 /* Timing / retries */
-#define STK_SYNC_RETRIES        10    /* get_sync attempts (optiboot window ~1s) */
-#define STK_CMD_TIMEOUT_MS      200   /* per-command response timeout */
+#define STK_SYNC_RETRIES        20    /* was 10 — give cold-boot optiboot more chances */
+#define STK_CMD_TIMEOUT_MS      250   /* was 200 — slightly more per-attempt slack */
 #define STK_PAGE_TIMEOUT_MS     500   /* prog_page timeout (page write ~4ms) */
 #define STK_LEAVE_TIMEOUT_MS    100   /* leave_progmode (OK may be absent) */
 

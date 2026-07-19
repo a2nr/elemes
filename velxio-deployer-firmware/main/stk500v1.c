@@ -26,6 +26,10 @@ static bool read_exact(uint8_t *buf, size_t resp_len, uint32_t timeout_ms)
         int n = usb_host_read_cdc(buf + got, resp_len - got, chunk_to);
         if (n < 0) {
             ESP_LOGD(TAG, "read_exact: got %d/%d (n=%d)", (int)got, (int)resp_len, n);
+            if (!usb_host_arduino_connected()) {
+                ESP_LOGE(TAG, "read_exact: device disconnected mid-read");
+                return false;
+            }
             continue;
         }
         if (n > 0) {
@@ -210,7 +214,14 @@ bool stk500v1_flash_buffer(const uint8_t *buffer, size_t size, uint16_t page_siz
     ESP_LOGI(TAG, "Starting flash: %d bytes, page %d", (int)size, page_size);
 
     /* 1. Auto-reset Arduino to (re)enter optiboot. */
+    if (!usb_host_arduino_connected()) {
+        ESP_LOGE(TAG, "flash_buffer: Arduino not connected — abort before reset");
+        return false;
+    }
     usb_host_reset_arduino();
+
+    /* 1b. Drain any stale bytes left in CDC ringbuffer from prior serial bridge session. */
+    usb_host_drain_cdc(256, 50);
 
     /* 2. Get sync (retry within optiboot ~1s window). */
     if (!cmd_get_sync()) {
