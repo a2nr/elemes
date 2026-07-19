@@ -374,6 +374,8 @@ export class USBHardwareDeployer implements HardwareDeployer {
 					break;
 				}
 			}
+			/* Keep state accurate even if loop exits via {done} or error. */
+			this.pumpRunning = false;
 		})();
 	}
 
@@ -503,6 +505,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		} catch (e) {
 			const got = this.rxBuffer.length;
 			console.log(`[USB] readExact failed (${got} buffered): ${(e as Error).message}`);
+			/* Drop any partial/stale bytes so the next command starts clean.
+			   The port baud hasn't changed here, so a clear is safe. */
+			this.rxBuffer.clear();
 			throw e;
 		}
 	}
