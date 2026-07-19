@@ -514,78 +514,36 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	}
 
 	/**
-	 * Read exactly `len` bytes from the serial stream, with a deadline.
-	 *
-	 * On timeout, any stray bytes that arrive from the orphaned `reader.read()`
-	 * promise are drained so the protocol stream stays synchronised (C1).
+	 * Read exactly `len` bytes from rxBuffer with a deadline.
+	 * The pump is the sole reader.read() caller, so there is no orphaned-read
+	 * race: bytes that arrive after a timeout stay buffered for the next call.
 	 */
 	private async readExact(len: number, timeoutMs: number): Promise<Uint8Array> {
-		const result = new Uint8Array(len);
-		let got = 0;
-		const deadline = Date.now() + timeoutMs;
-		while (got < len) {
-			const remaining = deadline - Date.now();
-			if (remaining <= 0)
-				throw new Error(`read timeout: got ${got}/${len}`);
-			try {
-				const { value, done } = await Promise.race([
-					this.reader!.read(),
-					new Promise<never>((_, reject) =>
-						setTimeout(
-							() => reject(new Error('read timeout')),
-							remaining
-						)
-					)
-				]);
-				if (done) throw new Error('stream closed');
-				const copyLen = Math.min(value.length, len - got);
-				result.set(value.subarray(0, copyLen), got);
-				got += copyLen;
-			} catch (e) {
-				const reason = (e as Error).message || 'unknown';
-				console.log(`[USB] readExact failed at ${got}/${len}: ${reason}`);
-				/* Drain stale bytes from orphaned reader.read() promise (C1) */
-				await this.drainStray();
-				throw e;
-			}
+		try {
+			return await this.rxBuffer.readExact(len, timeoutMs);
+		} catch (e) {
+			const got = this.rxBuffer.length;
+			console.log(`[USB] readExact failed (${got} buffered): ${(e as Error).message}`);
+			throw e;
 		}
-		return result;
 	}
 
 	/**
-	 * Drain any stray bytes from the serial input.
-	 * Keeps reading until no bytes arrive for DRAIN_BYTE_TIMEOUT_MS,
-	 * or DRAIN_TOTAL_MS has elapsed.
+	 * Drain any buffered/stray bytes. With the pump running, stray bytes are
+	 * already in rxBuffer, so draining is a synchronous clear plus a short
+	 * settle window to absorb bytes still in flight.
 	 */
 	private async drainStray(): Promise<void> {
+		/* Absorb bytes still arriving: wait up to DRAIN_TOTAL_MS, clearing. */
 		const deadline = Date.now() + DRAIN_TOTAL_MS;
-		let totalDrained = 0;
-
+		let drained = this.rxBuffer.readAvailable().length;
 		while (Date.now() < deadline) {
-			try {
-				const { value, done } = await Promise.race([
-					this.reader!.read(),
-					new Promise<never>((_, reject) =>
-						setTimeout(() => reject(new Error('timeout')), DRAIN_BYTE_TIMEOUT_MS)
-					)
-				]);
-				if (done) break;
-				if (value && value.length > 0) {
-					totalDrained += value.length;
-					/* Got bytes; keep looping inside the same deadline window. */
-					continue;
-				}
-				/* Empty chunk: treat same as a quiet window. */
-				break;
-			} catch {
-				/* No bytes available for DRAIN_BYTE_TIMEOUT_MS -> channel is clean. */
-				break;
-			}
+			await sleep(DRAIN_BYTE_TIMEOUT_MS);
+			const more = this.rxBuffer.readAvailable().length;
+			if (more === 0) break;
+			drained += more;
 		}
-
-		if (totalDrained > 0) {
-			console.log(`[USB] drained ${totalDrained} stray bytes`);
-		}
+		if (drained > 0) console.log(`[USB] drained ${drained} stray bytes`);
 	}
 
 	/* ── STK500v1 command implementations ─────────────────────────── */
