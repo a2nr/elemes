@@ -97,7 +97,7 @@ static bool cmd_get_sync(void)
     uint8_t cmd[] = { STK_GET_SYNC, STK_CRC_EOP };
 
     for (int attempt = 0; attempt < STK_SYNC_RETRIES; attempt++) {
-        ESP_LOGI(TAG, "get_sync attempt %d/%d: sending 0x30 0x20", attempt + 1, STK_SYNC_RETRIES);
+        ESP_LOGD(TAG, "get_sync attempt %d/%d: sending 0x30 0x20", attempt + 1, STK_SYNC_RETRIES);
         if (send_and_expect(cmd, sizeof(cmd), NULL, 0,
                             STK_CMD_TIMEOUT_MS, true)) {
             ESP_LOGI(TAG, "get_sync OK after %d attempt(s)", attempt + 1);
@@ -107,7 +107,7 @@ static bool cmd_get_sync(void)
         uint8_t drain[32];
         int drained = usb_host_read_cdc(drain, sizeof(drain), 30);
         if (drained > 0) {
-            ESP_LOGW(TAG, "drained %d bytes after attempt %d: first=0x%02X", drained, attempt + 1, drain[0]);
+            ESP_LOGD(TAG, "drained %d bytes after attempt %d: first=0x%02X", drained, attempt + 1, drain[0]);
         }
         uint32_t backoff = (20u << attempt);
         if (backoff > 150u) backoff = 150u;
