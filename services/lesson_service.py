@@ -5,8 +5,10 @@ Lesson loading, ordering, and markdown rendering.
 import os
 import re
 import html as html_module
+import bleach
 from functools import lru_cache
 from threading import Lock
+from urllib.parse import urlparse
 
 import markdown as md
 
@@ -293,6 +295,32 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
 
 MD_EXTENSIONS = ['fenced_code', 'tables', 'nl2br', 'toc', 'mdx_math']
 
+# Domain blacklist for embed iframe src (must be https).
+EMBED_BLOCKED_HOSTS = {
+    'localhost', '127.0.0.1', '0.0.0.0',
+    'metadata.google.internal', '169.254.169.254',
+}
+
+# HTML sanitization config for ```embed fences (raw HTML embed code)
+EMBED_ALLOWED_TAGS = ['div', 'iframe', 'a', 'span', 'p', 'br', 'img']
+EMBED_ALLOWED_ATTRS = {
+    'div': ['style', 'class'],
+    'iframe': ['src', 'style', 'loading', 'allowfullscreen', 'allow', 'title', 'class'],
+    'a': ['href', 'target', 'rel', 'style', 'class'],
+    'span': ['style', 'class'],
+    'p': ['style', 'class'],
+    'img': ['src', 'alt', 'style', 'class', 'loading'],
+    '*': ['class'],
+}
+EMBED_ALLOWED_STYLES = [
+    'position', 'width', 'height', 'padding', 'padding-top', 'padding-bottom',
+    'padding-left', 'padding-right', 'margin', 'margin-top', 'margin-bottom',
+    'margin-left', 'margin-right', 'border', 'border-radius',
+    'overflow', 'box-shadow', 'top', 'left', 'right', 'bottom',
+    'will-change', 'display', 'flex-direction', 'gap',
+    'max-width', 'max-height', 'min-height',
+]
+
 
 def _process_circuit_embeds(text):
     """Replace ```circuit[,width][,height] code fences with embeddable HTML divs.
@@ -362,6 +390,62 @@ def _process_flowchart_embeds(text):
             f'<div class="flowchart-embed-loading">Memuat flowchart...</div>'
             f'</div>'
         )
+
+    return pattern.sub(_replacer, text)
+
+
+def _sanitize_embed_html(html_text):
+    """Sanitize raw embed HTML: whitelist tags/attrs/styles + check iframe src domain."""
+    cleaned = bleach.clean(
+        html_text,
+        tags=EMBED_ALLOWED_TAGS,
+        attributes=EMBED_ALLOWED_ATTRS,
+        strip=True,
+    )
+    # Optional CSS sanitization — requires tinycss2 (skip if not installed)
+    try:
+        from bleach.css_sanitizer import CSSSanitizer
+        css_sanitizer = CSSSanitizer(allowed_css_properties=EMBED_ALLOWED_STYLES)
+        cleaned = bleach.clean(
+            html_text,
+            tags=EMBED_ALLOWED_TAGS,
+            attributes=EMBED_ALLOWED_ATTRS,
+            css_sanitizer=css_sanitizer,
+            strip=True,
+        )
+    except ImportError:
+        pass  # tinycss2 missing — CSS styles left unsanitized but tags/attrs still stripped
+    # Check every iframe src: must be https + not blacklisted
+    for match in re.finditer(r'<iframe[^>]+src="([^"]*)"', cleaned):
+        src = match.group(1)
+        try:
+            host = (urlparse(src).hostname or '').lower()
+        except Exception:
+            return '<div class="embed-error">Konten embed ditolak: URL iframe tidak valid.</div>'
+        if not src.startswith('https://'):
+            return '<div class="embed-error">Konten embed ditolak: iframe harus https.</div>'
+        if host in EMBED_BLOCKED_HOSTS or any(host.endswith('.' + h) for h in EMBED_BLOCKED_HOSTS):
+            return '<div class="embed-error">Konten embed ditolak: domain iframe diblokir.</div>'
+    return cleaned
+
+
+def _process_embed_embeds(text):
+    """Replace ```embed fences containing raw HTML embed code with sanitized HTML.
+
+    User pastes embed code from Canva/YouTube/Google Docs (Share → Embed).
+    HTML is sanitized via bleach (whitelist tags/attrs/styles) and iframe src
+    is checked against EMBED_BLOCKED_HOSTS.
+    """
+    pattern = re.compile(
+        r'```embed\s*\n(.*?)```',
+        re.DOTALL,
+    )
+
+    def _replacer(match):
+        raw_html = match.group(1).strip()
+        if not raw_html:
+            return '<div class="embed-error">Konten embed kosong.</div>'
+        return _sanitize_embed_html(raw_html)
 
     return pattern.sub(_replacer, text)
 
@@ -613,6 +697,7 @@ def render_markdown_content(file_path):
                 # Process embeds in slides too
                 s = _process_circuit_embeds(s)
                 s = _process_flowchart_embeds(s)
+                s = _process_embed_embeds(s)
                 slides_html.append(md.markdown(s.strip(), extensions=MD_EXTENSIONS))
 
     # Just use whichever initial code matched as the generic 'initial_code' for simplicity 
@@ -628,12 +713,15 @@ def render_markdown_content(file_path):
     # Convert ```circuit and ```flowchart fences to embed divs before markdown rendering
     lesson_content = _process_circuit_embeds(lesson_content)
     lesson_content = _process_flowchart_embeds(lesson_content)
+    lesson_content = _process_embed_embeds(lesson_content)
     if exercise_content:
         exercise_content = _process_circuit_embeds(exercise_content)
         exercise_content = _process_flowchart_embeds(exercise_content)
+        exercise_content = _process_embed_embeds(exercise_content)
     if lesson_info:
         lesson_info = _process_circuit_embeds(lesson_info)
         lesson_info = _process_flowchart_embeds(lesson_info)
+        lesson_info = _process_embed_embeds(lesson_info)
 
     lesson_html = md.markdown(lesson_content, extensions=MD_EXTENSIONS)
     exercise_html = md.markdown(exercise_content, extensions=MD_EXTENSIONS) if exercise_content else ""

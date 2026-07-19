@@ -18,6 +18,7 @@
 	import { setupTryButtons } from '$actions/setupTryButtons';
 	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
 	import { renderFlowchartEmbeds } from '$actions/renderFlowchartEmbeds';
+
 	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
 	import { tick, mount, unmount } from 'svelte';
 	import { LessonManager } from './lesson.svelte';
@@ -94,6 +95,7 @@
 					highlightAllCode(el);
 					renderCircuitEmbeds(el);
 					renderFlowchartEmbeds(el);
+
 					autoRenderMath(el);
 				});
 			});
