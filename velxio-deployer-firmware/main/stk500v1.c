@@ -25,7 +25,7 @@ static bool read_exact(uint8_t *buf, size_t resp_len, uint32_t timeout_ms)
 
         int n = usb_host_read_cdc(buf + got, resp_len - got, chunk_to);
         if (n < 0) {
-            /* timeout or error on this chunk — keep trying until deadline */
+            ESP_LOGD(TAG, "read_exact: got %d/%d (n=%d)", (int)got, (int)resp_len, n);
             continue;
         }
         if (n > 0) {
@@ -83,6 +83,7 @@ static bool send_and_expect(const uint8_t *cmd, size_t cmd_len,
 
 bool stk500v1_init(void)
 {
+    esp_log_level_set(TAG, ESP_LOG_DEBUG);
     ESP_LOGI(TAG, "STK500v1 layer initialised (optiboot / ATmega328P)");
     return true;
 }
@@ -92,19 +93,21 @@ static bool cmd_get_sync(void)
     uint8_t cmd[] = { STK_GET_SYNC, STK_CRC_EOP };
 
     for (int attempt = 0; attempt < STK_SYNC_RETRIES; attempt++) {
+        ESP_LOGI(TAG, "get_sync attempt %d/%d: sending 0x30 0x20", attempt + 1, STK_SYNC_RETRIES);
         if (send_and_expect(cmd, sizeof(cmd), NULL, 0,
                             STK_CMD_TIMEOUT_MS, true)) {
-            if (attempt > 0) {
-                ESP_LOGI(TAG, "get_sync OK after %d retries", attempt);
-            } else {
-                ESP_LOGI(TAG, "get_sync OK");
-            }
+            ESP_LOGI(TAG, "get_sync OK after %d attempt(s)", attempt + 1);
             return true;
         }
         /* Drain any stray bytes before retrying. */
-        uint8_t drain[16];
-        usb_host_read_cdc(drain, sizeof(drain), 10);
-        vTaskDelay(pdMS_TO_TICKS(20));
+        uint8_t drain[32];
+        int drained = usb_host_read_cdc(drain, sizeof(drain), 30);
+        if (drained > 0) {
+            ESP_LOGW(TAG, "drained %d bytes after attempt %d: first=0x%02X", drained, attempt + 1, drain[0]);
+        }
+        uint32_t backoff = (20u << attempt);
+        if (backoff > 150u) backoff = 150u;
+        vTaskDelay(pdMS_TO_TICKS(backoff));
     }
     ESP_LOGE(TAG, "get_sync failed after %d attempts", STK_SYNC_RETRIES);
     return false;
