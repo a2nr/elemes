@@ -71,6 +71,7 @@ declare global {
 }
 
 import type { HardwareDeployer, DeployProgress } from '$types/deployer';
+import { ByteStreamBuffer } from './byte-stream-buffer';
 
 /* ── STK500v1 protocol constants ────────────────────────────────────── */
 const CRC_EOP = 0x20;
@@ -134,10 +135,12 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	private port: SerialPort | null = null;
 	private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 	private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
-	private keepReading = false;
 	private _onDisconnected: (() => void) | null = null;
 	private _deviceName: string | null = null;
 	private currentBaudRate: number | null = null;
+	private rxBuffer = new ByteStreamBuffer();
+	private pumpRunning = false;
+	private pumpDone: Promise<void> | null = null;
 
 	/* Bound handler so we can removeEventListener on cleanup */
 	private _boundDisconnectHandler: ((event: SerialConnectionEvent) => void) | null = null;
@@ -194,6 +197,8 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
+		this.rxBuffer.clear();
+		this.startPump();
 
 		/* Listen for disconnect on navigator.serial */
 		this._boundDisconnectHandler = async (event: SerialConnectionEvent) => {
@@ -257,11 +262,11 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	async startSerialMonitor(onData: (text: string) => void): Promise<void> {
 		if (!this.port) throw new Error('Belum terhubung ke perangkat');
 
-		/* Release flash-mode reader/writer, then close port */
+		/* Stop pump + release reader/writer, reopen at monitor baud. */
+		this.rxBuffer.onData = null;
+		await this.stopPump();
 		await this.stopReaderWriter();
 		await this.port.close();
-
-		/* Reopen at serial-monitor baud rate (9600 default) */
 		await this.port.open({
 			baudRate: SERIAL_MONITOR_BAUD,
 			dataBits: 8,
@@ -269,43 +274,24 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			parity: 'none',
 			flowControl: 'none'
 		});
-		console.log('[USB-SERIAL] port opened at', SERIAL_MONITOR_BAUD);
 		this.currentBaudRate = SERIAL_MONITOR_BAUD;
+		console.log('[USB-SERIAL] port opened at', SERIAL_MONITOR_BAUD);
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
-		this.keepReading = true;
+		this.rxBuffer.clear();
 
 		const decoder = new TextDecoder();
-		this.readLoop(onData, decoder).catch((e) =>
-			console.error('[USB-SERIAL] read loop error:', e)
-		);
-	}
-
-	private async readLoop(
-		onData: (text: string) => void,
-		decoder: TextDecoder
-	): Promise<void> {
-		while (this.keepReading && this.reader) {
-			try {
-				const { value, done } = await this.reader.read();
-				if (done) break;
-				if (value && value.length > 0) {
-					const text = decoder.decode(value, { stream: true });
-					onData(text);
-				}
-			} catch (e) {
-				if (this.keepReading) {
-					console.error('[USB-SERIAL] read error:', e);
-				}
-				break;
-			}
-		}
+		this.rxBuffer.onData = (chunk) => {
+			const text = decoder.decode(chunk, { stream: true });
+			if (text) onData(text);
+		};
+		this.startPump();
 	}
 
 	stopSerialMonitor(): void {
 		console.log('[USB-SERIAL] stopSerialMonitor');
-		this.keepReading = false;
+		this.rxBuffer.onData = null;
 	}
 
 	async sendSerialInput(text: string): Promise<void> {
@@ -316,7 +302,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 	async setBaudRate(baud: number): Promise<void> {
 		if (!this.port) throw new Error('Belum terhubung ke perangkat');
+		const prevOnData = this.rxBuffer.onData;
 		/* Web Serial cannot change baud without close+reopen */
+		await this.stopPump();
 		await this.stopReaderWriter();
 		await this.port.close();
 		await this.port.open({
@@ -328,6 +316,9 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		});
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
+		this.rxBuffer.clear();
+		this.rxBuffer.onData = prevOnData;
+		this.startPump();
 		console.log('[USB-SERIAL] baud rate changed to', baud);
 		this.currentBaudRate = baud;
 	}
@@ -346,19 +337,11 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	/* ── Private helpers ──────────────────────────────────────────── */
 
 	private async stopReaderWriter(): Promise<void> {
-		this.keepReading = false;
+		/* Pump owns reader.cancel via stopPump; here we just release locks. */
 		try {
-			await this.reader?.cancel();
-			/* Wait for reader lock to release before close */
-			if (this.reader) {
-				try {
-					await this.reader.closed.catch(() => {});
-				} catch {
-					/* ignore */
-				}
-			}
+			this.reader?.releaseLock();
 		} catch {
-			/* ignore */
+			/* reader may already be released/cancelled */
 		}
 		this.reader = null;
 		try {
@@ -369,6 +352,48 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		this.writer = null;
 	}
 
+	/* ── Read pump: the ONLY consumer of reader.read() ──────────
+	 * Feeds every incoming byte into rxBuffer. readExact/drain and the
+	 * serial monitor consume from rxBuffer, never from reader.read().
+	 * This eliminates orphaned-read races during STK500 sync.        */
+	private startPump(): void {
+		if (this.pumpRunning) return;
+		if (!this.reader) throw new Error('startPump: no reader');
+		this.pumpRunning = true;
+		const reader = this.reader;
+		this.pumpDone = (async () => {
+			while (this.pumpRunning) {
+				try {
+					const { value, done } = await reader.read();
+					if (done) break;
+					if (value && value.length > 0) this.rxBuffer.push(value);
+				} catch (e) {
+					if (this.pumpRunning) {
+						console.error('[USB] pump read error:', e);
+					}
+					break;
+				}
+			}
+			/* Keep state accurate even if loop exits via {done} or error. */
+			this.pumpRunning = false;
+		})();
+	}
+
+	private async stopPump(): Promise<void> {
+		this.pumpRunning = false;
+		try {
+			await this.reader?.cancel();
+		} catch {
+			/* ignore */
+		}
+		try {
+			await this.pumpDone;
+		} catch {
+			/* ignore */
+		}
+		this.pumpDone = null;
+	}
+
 	private async cleanup(): Promise<void> {
 		if (this._boundDisconnectHandler) {
 			navigator.serial.removeEventListener(
@@ -377,8 +402,10 @@ export class USBHardwareDeployer implements HardwareDeployer {
 			);
 			this._boundDisconnectHandler = null;
 		}
-		this.keepReading = false;
+		await this.stopPump();
 		await this.stopReaderWriter();
+		this.rxBuffer.clear();
+		this.rxBuffer.onData = null;
 		this.currentBaudRate = null;
 		try {
 			await this.port?.close();
@@ -468,78 +495,39 @@ export class USBHardwareDeployer implements HardwareDeployer {
 	}
 
 	/**
-	 * Read exactly `len` bytes from the serial stream, with a deadline.
-	 *
-	 * On timeout, any stray bytes that arrive from the orphaned `reader.read()`
-	 * promise are drained so the protocol stream stays synchronised (C1).
+	 * Read exactly `len` bytes from rxBuffer with a deadline.
+	 * The pump is the sole reader.read() caller, so there is no orphaned-read
+	 * race: bytes that arrive after a timeout stay buffered for the next call.
 	 */
 	private async readExact(len: number, timeoutMs: number): Promise<Uint8Array> {
-		const result = new Uint8Array(len);
-		let got = 0;
-		const deadline = Date.now() + timeoutMs;
-		while (got < len) {
-			const remaining = deadline - Date.now();
-			if (remaining <= 0)
-				throw new Error(`read timeout: got ${got}/${len}`);
-			try {
-				const { value, done } = await Promise.race([
-					this.reader!.read(),
-					new Promise<never>((_, reject) =>
-						setTimeout(
-							() => reject(new Error('read timeout')),
-							remaining
-						)
-					)
-				]);
-				if (done) throw new Error('stream closed');
-				const copyLen = Math.min(value.length, len - got);
-				result.set(value.subarray(0, copyLen), got);
-				got += copyLen;
-			} catch (e) {
-				const reason = (e as Error).message || 'unknown';
-				console.log(`[USB] readExact failed at ${got}/${len}: ${reason}`);
-				/* Drain stale bytes from orphaned reader.read() promise (C1) */
-				await this.drainStray();
-				throw e;
-			}
+		try {
+			return await this.rxBuffer.readExact(len, timeoutMs);
+		} catch (e) {
+			const got = this.rxBuffer.length;
+			console.log(`[USB] readExact failed (${got} buffered): ${(e as Error).message}`);
+			/* Drop any partial/stale bytes so the next command starts clean.
+			   The port baud hasn't changed here, so a clear is safe. */
+			this.rxBuffer.clear();
+			throw e;
 		}
-		return result;
 	}
 
 	/**
-	 * Drain any stray bytes from the serial input.
-	 * Keeps reading until no bytes arrive for DRAIN_BYTE_TIMEOUT_MS,
-	 * or DRAIN_TOTAL_MS has elapsed.
+	 * Drain any buffered/stray bytes. With the pump running, stray bytes are
+	 * already in rxBuffer, so draining is a synchronous clear plus a short
+	 * settle window to absorb bytes still in flight.
 	 */
 	private async drainStray(): Promise<void> {
+		/* Absorb bytes still arriving: wait up to DRAIN_TOTAL_MS, clearing. */
 		const deadline = Date.now() + DRAIN_TOTAL_MS;
-		let totalDrained = 0;
-
+		let drained = this.rxBuffer.readAvailable().length;
 		while (Date.now() < deadline) {
-			try {
-				const { value, done } = await Promise.race([
-					this.reader!.read(),
-					new Promise<never>((_, reject) =>
-						setTimeout(() => reject(new Error('timeout')), DRAIN_BYTE_TIMEOUT_MS)
-					)
-				]);
-				if (done) break;
-				if (value && value.length > 0) {
-					totalDrained += value.length;
-					/* Got bytes; keep looping inside the same deadline window. */
-					continue;
-				}
-				/* Empty chunk: treat same as a quiet window. */
-				break;
-			} catch {
-				/* No bytes available for DRAIN_BYTE_TIMEOUT_MS -> channel is clean. */
-				break;
-			}
+			await sleep(DRAIN_BYTE_TIMEOUT_MS);
+			const more = this.rxBuffer.readAvailable().length;
+			if (more === 0) break;
+			drained += more;
 		}
-
-		if (totalDrained > 0) {
-			console.log(`[USB] drained ${totalDrained} stray bytes`);
-		}
+		if (drained > 0) console.log(`[USB] drained ${drained} stray bytes`);
 	}
 
 	/* ── STK500v1 command implementations ─────────────────────────── */
@@ -643,7 +631,8 @@ export class USBHardwareDeployer implements HardwareDeployer {
 		});
 
 		/* ── Ensure port is at flash baud rate ── */
-		this.stopSerialMonitor();
+		this.rxBuffer.onData = null; /* detach serial monitor sink */
+		await this.stopPump();
 		await this.stopReaderWriter();
 
 		if (!this.port) {
@@ -676,9 +665,15 @@ export class USBHardwareDeployer implements HardwareDeployer {
 
 		this.writer = this.port.writable!.getWriter();
 		this.reader = this.port.readable!.getReader();
+		this.rxBuffer.clear();
+		this.startPump();
 
 		/* 1. Auto-reset → optiboot */
 		await this.resetArduino();
+
+		/* Drain stray bytes from prior serial session / boot chatter
+		   before sync (mirrors firmware ESP32 drain_cdc). */
+		await this.drainStray();
 
 		/* 2. Get sync (retry within optiboot ~1s window) */
 		onProgress({

@@ -1,8 +1,8 @@
 # 05. Velxio BLE Deployer — Dokumentasi Implementasi
 
-**Versi:** 3.1
-**Tanggal:** 4 Juli 2026
-**Status:** ✅ **SELESAI + ENHANCEMENT** — Re-deploy fix, serial terminal always visible, baud dropdown, LED patterns, event-based Arduino detection
+**Versi:** 3.2
+**Tanggal:** 19 Juli 2026
+**Status:** ✅ **SELESAI + USB DEPLOYER FIX (v3.2)** — Re-deploy fix, serial terminal, baud dropdown, LED patterns, event-based Arduino detection, get_sync timing & fail-fast reliability
 
 ---
 
@@ -47,7 +47,8 @@ Webapp Serial Monitor
 | **Re-deploy fix** (v3.1) | ✅ **FIXED** | Stuck di INIT setelah deploy pertama — root cause: ACK sent before serial_bridge_stop + CCCD left at 0 |
 | **Serial terminal inline** (v3.1) | ✅ **DONE** | Serial terminal tampil saat paired (bukan gated di deploy success) + baud dropdown (9600/19200/38400) |
 | **LED blink patterns** (v3.1) | ✅ **DONE** | IDLE slow blink (1s), RECEIVING medium (200ms), FLASHING fast (100ms) |
-| **Arduino event-based** (v3.1) | ✅ **DONE** | Hybrid event+1s poll via CherryUSB `usbh_event_handler_t` — disconnect ~200ms |
+|| **Arduino event-based** (v3.1) | ✅ **DONE** | Hybrid event+1s poll via CherryUSB `usbh_event_handler_t` — disconnect ~200ms |
+|| **USB Deployer (get_sync fix)** (v3.2) | ✅ **SELESAI** | DTR 50ms+100ms, CDC drain, fail-fast, STK_SYNC_RETRIES 20 |
 
 ---
 
@@ -166,7 +167,25 @@ Switch terjadi otomatis via `usb_host_rx_claim()` / `usb_host_rx_release()`:
 - Saat flashing: `rx_claim()` set 115200 → STK500 sync sukses
 - Setelah flash: `rx_release()` set 9600 → serial bridge cocok dengan baud sketch Arduino
 
-### 6.5 File Firmware
+### 6.5 USB Deployer Timing & Reliability (v3.2 fix)
+
+Bug fix: `get_sync failed after 10 attempts` saat deploy USB via BLE → ESP32 → Arduino.
+
+Root cause: DTR pulse 1ms terlalu pendek untuk RC reset circuit klon Arduino,
+CDC ringbuffer berisi byte stale dari sesi serial bridge sebelumnya, dan
+`read_exact` tidak fail-fast saat device disconnect.
+
+Fix:
+1. `usb_host_reset_arduino`: DTR/RTS low 50ms → high → settle 100ms (align avrdude + frontend TS)
+2. `usb_host_drain_cdc`: explicit drain 256 bytes / 50ms sebelum `cmd_get_sync` pertama
+3. `stk500v1_flash_buffer`: guard `usb_host_arduino_connected()` di awal
+4. `read_exact`: break early jika device disconnect mid-read
+5. `STK_SYNC_RETRIES`: 10 → 20 dengan backoff 20-150ms (total ≤9s, masih dalam optiboot 8s window)
+6. Logging: per-attempt DEBUG, OK/fail INFO
+
+Verification: 5× berturut-turut deploy (cold + re-deploy) sukses, rata-rata get_sync OK ≤ 3 attempts.
+
+### 6.6 File Firmware
 
 | File | Fungsi |
 |------|--------|
@@ -179,7 +198,7 @@ Switch terjadi otomatis via `usb_host_rx_claim()` / `usb_host_rx_release()`:
 | `serial_bridge.c` | USB CDC ↔ BLE Notify bridge, throttle 20 pkt/s |
 | `led_button.c` | LED RGB + tombol Retry |
 
-### 6.6 Debug
+### 6.7 Debug
 
 - Serial log: UART0 (CH343 USB-to-UART devkit) via `/dev/ttyACM0`
 - Tag logging: `BLE_SVC`, `BIN_PARSER`, `SM`, `USB`, `STK500`, `SERIAL_BRIDGE`

@@ -55,6 +55,18 @@ bool usb_host_write_cdc(const uint8_t *data, size_t len);
 int usb_host_read_cdc(uint8_t *buf, size_t len, uint32_t timeout_ms);
 
 /**
+ * @brief Drain up to N stale bytes from CDC ringbuffer with short timeout.
+ *
+ * Reads and discards bytes left in the CherryUSB ringbuffer from a prior
+ * serial bridge session. Returns number of bytes drained.
+ *
+ * @param max_bytes Maximum bytes to drain
+ * @param total_ms  Total time budget for draining
+ * @return number of bytes drained
+ */
+size_t usb_host_drain_cdc(size_t max_bytes, uint32_t total_ms);
+
+/**
  * @brief Register callback for incoming CDC serial data (serial bridge).
  */
 void usb_host_set_serial_callback(usb_data_cb_t cb);

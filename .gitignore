@@ -3,3 +3,11 @@ test_data.json
 load-test/env
 load-test/test_data.json
 video_gen
+.last_run
+.venv/
+.hermes/
+frontend/.svelte-kit/
+frontend/build/
+frontend/node_modules/
+velxio-deployer-firmware/build
+velxio-deployer-firmware/managed_components/

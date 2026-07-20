@@ -5,6 +5,11 @@ PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 EXAMPLES_DIR="$SCRIPT_DIR/examples"
 PROJECT_NAME="$(basename "$PARENT_DIR")"
 
+# Siapkan variabel waktu eksekusi (dicetak di akhir)
+LAST_RUN_FILE="$SCRIPT_DIR/.last_run"
+RUN_TIME="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+RUN_CMD="${*:-<kosong>}"
+
 # Check for --verbose flag
 VERBOSE=0
 for arg in "$@"; do
@@ -214,3 +219,11 @@ verify)
   echo "  ./elemes.sh loadtest       # Menjalankan utilitas simulasi Load Test (Locust)"
   ;;
 esac
+
+# Catat & tampilkan waktu eksekusi terakhir (setelah semua selesai)
+{
+  echo "command: $RUN_CMD"
+  echo "time: $RUN_TIME"
+} > "$LAST_RUN_FILE"
+echo ""
+echo "🕒 Selesai dijalankan: $RUN_TIME  (perintah: $RUN_CMD)"
