@@ -8,7 +8,7 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 
 from compiler import compiler_factory
-from config import CONTENT_DIR
+from config import CONTENT_DIR, ASSETS_DIR
 from services.lesson_service import (
     get_ordered_lessons_with_learning_objectives,
     render_markdown_content,
@@ -225,5 +225,5 @@ def get_key_text(filename):
 
 @lessons_bp.route('/assets/<path:path>')
 def send_assets(path):
-    """Serve asset files (images, etc.)."""
-    return send_from_directory('assets', path)
+    """Serve asset files (images, etc.) from ASSETS_DIR."""
+    return send_from_directory(ASSETS_DIR, path)

@@ -481,14 +481,30 @@ def _parse_flashcards(text):
         if not question:
             continue
 
+        # Initialize image_url - will be set from markdown image or 'image:' directive
+        image_url = ""
+        
+        # Extract image from markdown syntax ![...](path) in question
+        md_image_match = re.search(r'!\[.*?\]\(([^)]+)\)', question)
+        if md_image_match:
+            md_image_path = md_image_match.group(1).strip()
+            # Jika path lokal (/assets/ atau bare filename) dan belum ada image dari 'image:' directive
+            if md_image_path.startswith('/assets/') or (not md_image_path.startswith(('http://', 'https://')) and not image_url):
+                image_url = md_image_path
+
         # Check for MCQ options: - [ ] or - [x]
         option_pattern = re.compile(r'^\s*-\s*\[([ xX]?)\]\s*(.*)$', re.MULTILINE)
         options = option_pattern.findall(body)
         
         # Check for image: URL
         image_match = re.search(r'^\s*image:\s*(.*)$', body, re.MULTILINE)
-        image_url = image_match.group(1).strip() if image_match else ""
         if image_match:
+            image_url = image_match.group(1).strip()  # Override jika ada 'image:' directive
+            if image_url.startswith('/assets/'):
+                # Path sudah lengkap, tidak perlu konversi
+                pass
+            elif not image_url.startswith(('http://', 'https://', '/')):
+                image_url = f'/assets/{image_url}'
             body = re.sub(r'^\s*image:\s*.*$', '', body, flags=re.MULTILINE).strip()
         
         # Check for explanation (blockquote starting with >)

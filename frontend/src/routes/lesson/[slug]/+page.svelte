@@ -297,7 +297,7 @@
 					{/if}
 
 					{#if mgr.data?.active_tabs?.includes('quiz')}
-						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'quiz'}>
+						<div class="tab-panel quiz-panel" class:tab-hidden={mgr.activeTab !== 'quiz'}>
 							<QuizTab
 								quizData={mgr.data.quiz_data ?? []}
 								bind:isQuizMode={mgr.isQuizMode}

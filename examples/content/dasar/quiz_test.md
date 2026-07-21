@@ -26,6 +26,15 @@ Menandakan bahwa program telah selesai berjalan dengan sukses tanpa ada error.
 ### Pilih gambar yang melambangkan bahasa C:
 - [x] ![C Logo](https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg)
 - [] ![Wrong Logo](https://upload.wikimedia.org/wikipedia/commons/c/c3/Python-logo-notext.svg)
+
+### Apa warna langit pada siang hari?
+image: demo_quiz.png
+- [x] Biru
+- [] Hijau
+- [] Merah
+- [] Kuning
+> Penjelasan: Langit terlihat biru karena hamburan Rayleigh — cahaya matahari dihamburkan oleh atmosfer bumi.
+
 ---END_QUIZ_FLASHCARD---
 
 ---EXERCISE---
