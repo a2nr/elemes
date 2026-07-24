@@ -212,10 +212,24 @@
 	}
 
 	.pg-circuit-wrap {
-		width: 100%;
-		height: 100%;
-		overflow: auto;
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 		padding: 8px;
+		overflow: hidden;
+	}
+
+	/* Override CircuitEditor agar fill flex area */
+	.pg-content :global(.circuit-container) {
+		flex: 1;
+		min-height: 0;
+	}
+
+	.pg-content :global(.circuit-wrapper) {
+		flex: 1;
+		height: auto;
+		min-height: 0;
 	}
 
 	.pg-code-wrap {
