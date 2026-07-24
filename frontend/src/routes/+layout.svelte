@@ -22,7 +22,7 @@
 	<Navbar />
 {/if}
 
-<main class="container" style="flex: 1; padding-block: {isFullViewport ? '0' : '1.5rem'}; overflow: {isFullViewport ? 'hidden' : 'visible'};">
+<main class="container" style="flex: 1; padding-block: {isFullViewport ? '0' : '1.5rem'}; overflow: {isFullViewport ? 'hidden' : 'visible'}; max-width: {isFullViewport ? '100%' : ''}; padding-inline: {isFullViewport ? '0' : ''}; width: {isFullViewport ? '100%' : ''};">
 	{@render children()}
 </main>
 
