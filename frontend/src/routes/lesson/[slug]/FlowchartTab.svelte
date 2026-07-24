@@ -93,6 +93,7 @@
 </script>
 
 <div class="flowchart-container">
+  {#if onRun}
   <button 
     type="button" 
     class="floating-action-btn" 
@@ -103,6 +104,7 @@
     <span class="btn-icon">{compiling ? '⌛' : '▶'}</span>
     <span class="btn-text">{compiling ? 'Mengevaluasi...' : 'Cek Flowchart'}</span>
   </button>
+  {/if}
 
   {#if storageKey}
     <div class="storage-indicator-inline" title={saving ? "Menyimpan draf..." : "Draf tersimpan di browser"}>
