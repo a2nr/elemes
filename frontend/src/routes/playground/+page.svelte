@@ -62,6 +62,13 @@
 
 <svelte:head>
 	<title>Developer Playground — Elemes</title>
+	<style>
+		/* Override root container constrainer — playground is full viewport */
+		main.container {
+			max-width: none !important;
+			padding-inline: 0 !important;
+		}
+	</style>
 </svelte:head>
 
 <div class="playground-page">
