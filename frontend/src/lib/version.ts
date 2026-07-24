@@ -3,4 +3,4 @@
  * Both Footer.svelte and service-worker.ts import from here.
  * Bump this number after every feature/bugfix release.
  */
-export const APP_VERSION = 18;
+export const APP_VERSION = 19;
