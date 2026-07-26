@@ -60,14 +60,10 @@
 		return () => mq.removeEventListener('change', handler);
 	});
 
-	function detectMode() {
-		usbSupported = typeof navigator !== 'undefined' && 'serial' in navigator;
-		isDesktop = typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
-		if (usbSupported && isDesktop) {
-			deployMode = 'usb';
-		} else {
-			deployMode = 'ble';
-		}
+	function detectDeviceMode(): DeployMode {
+		const hasWebSerial = typeof navigator !== 'undefined' && 'serial' in navigator;
+		const isDesktop = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches;
+		return hasWebSerial && isDesktop ? 'usb' : 'ble';
 	}
 
 	function createDeployer(mode: DeployMode): HardwareDeployer {
@@ -76,7 +72,8 @@
 	}
 
 	function initDeployer() {
-		detectMode();
+		deployMode = detectDeviceMode();
+		usbSupported = typeof navigator !== 'undefined' && 'serial' in navigator;
 		deployer = createDeployer(deployMode);
 		bleSupported = deployer.checkSupport();
 		if (!bleSupported) {
@@ -296,24 +293,6 @@
 		<h3 class="deploy-title">
 			{deployMode === 'usb' ? 'USB Deployer' : 'BLE Deployer'}
 		</h3>
-		{#if usbSupported && isDesktop}
-		<div class="deploy-mode-toggle">
-			<button 
-				class="mode-btn" 
-				class:active={deployMode === 'ble'}
-				onclick={() => handleModeChange('ble')}
-				disabled={deployState !== 'idle' && deployState !== 'error' && deployState !== 'success'}
-				aria-pressed={deployMode === 'ble'}
-			>BLE</button>
-			<button 
-				class="mode-btn" 
-				class:active={deployMode === 'usb'}
-				onclick={() => handleModeChange('usb')}
-				disabled={deployState !== 'idle' && deployState !== 'error' && deployState !== 'success'}
-				aria-pressed={deployMode === 'usb'}
-			>USB</button>
-		</div>
-		{/if}
 		<div class="deploy-status" class:connected={isPaired}>
 			<span class="status-dot"></span>
 			{isPaired ? (deployer?.deviceName ? `Terhubung (${deployer.deviceName})` : 'Terhubung') : 'Terputus'}
@@ -359,6 +338,20 @@
 		<div class="serial-monitor">
 			<div class="serial-header">
 				<span>Serial Monitor</span>
+				{#if usbSupported && bleSupported && deployState === 'idle'}
+				<div class="mode-toggle-inline">
+					<button 
+						class="mode-chip" 
+						class:active={deployMode === 'ble'}
+						onclick={() => handleModeChange('ble')}
+					>BLE</button>
+					<button 
+						class="mode-chip" 
+						class:active={deployMode === 'usb'}
+						onclick={() => handleModeChange('usb')}
+					>USB</button>
+				</div>
+				{/if}
 				<select class="baud-select" bind:value={baudRate} onchange={handleBaudChange}>
 					{#each SUPPORTED_BAUD_RATES as b}
 						<option value={b}>{b}</option>
@@ -368,6 +361,11 @@
 				<button class="btn btn-sm btn-outline" onclick={serialActive ? handleCloseSerial : handleOpenSerial}>
 					{serialActive ? 'Tutup' : 'Mulai'}
 				</button>
+				{#if isPaired && deployState === 'idle'}
+				<button class="deploy-fab" onclick={handleDeploy} title="Compile & Deploy">
+					⚡
+				</button>
+				{/if}
 			</div>
 			<div class="serial-output">
 				{#if !serialActive}
@@ -621,5 +619,55 @@
 
 	.mode-btn:not(.active):hover {
 		background: #e5e7eb;
+	}
+
+	.mode-toggle-inline {
+		display: flex;
+		gap: 2px;
+		border-radius: 4px;
+		overflow: hidden;
+		border: 1px solid #d1d5db;
+		padding: 2px;
+	}
+
+	.mode-chip {
+		padding: 2px 8px;
+		font-size: 0.7rem;
+		background: #f9fafb;
+		border: none;
+		cursor: pointer;
+		transition: all 0.15s;
+		color: #374151;
+	}
+
+	.mode-chip.active {
+		background: #3b82f6;
+		color: white;
+	}
+
+	.mode-chip:not(.active):hover {
+		background: #e5e7eb;
+	}
+
+	.deploy-fab {
+		background: #22c55e;
+		border: none;
+		border-radius: 50%;
+		width: 28px;
+		height: 28px;
+		cursor: pointer;
+		font-size: 14px;
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-left: auto;
+		transition: all 0.2s;
+		flex-shrink: 0;
+	}
+
+	.deploy-fab:hover {
+		background: #16a34a;
+		transform: scale(1.05);
 	}
 </style>
