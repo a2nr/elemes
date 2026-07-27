@@ -244,7 +244,7 @@ def main():
         ordered_slugs = [
             f.replace('.md', '')
             for f in sorted(os.listdir(content_dir))
-            if f.endswith('.md') and f != 'home.md'
+            if f.endswith('.md') and f not in ('home.md', 'sub-home.md')
         ]
 
     print(f"  📚 Found {len(ordered_slugs)} lessons:")

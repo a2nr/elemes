@@ -44,7 +44,7 @@ def get_lesson_names():
     lesson_files = glob.glob(os.path.join(CONTENT_DIR, "*.md"))
     for file_path in lesson_files:
         filename = os.path.basename(file_path)
-        if filename == "home.md":
+        if filename in ("home.md", "sub-home.md"):
             continue
         lesson_names.append(filename.replace('.md', ''))
     lesson_names.sort()

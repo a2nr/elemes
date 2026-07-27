@@ -14,40 +14,71 @@ import markdown as md
 
 from config import CONTENT_DIR
 
-_home_cache = {'content': None, 'mtime': -1.0}
-_home_lock = Lock()
+# Generic file cache (path -> {content, mtime})
+_file_cache = {}  # {path: {'content': str, 'mtime': float}}
+_file_cache_lock = Lock()
 
 _markdown_cache = {}
 _markdown_lock = Lock()
 
+# Pre-computed absolute path for home.md (avoids repeated syscall on hot path)
+_HOME_MD_PATH = os.path.abspath(os.path.join(CONTENT_DIR, "home.md"))
 
-def _read_home_md():
-    """Read home.md and return its content, or empty string if missing."""
-    path = os.path.join(CONTENT_DIR, "home.md")
+
+def _read_md_cached(path):
+    """Read any markdown file with mtime-based caching.
+    
+    Uses a single dict cache keyed by absolute path.
+    Returns empty string if file is missing or unreadable.
+    """
     if not os.path.exists(path):
         return ""
     try:
         current_mtime = os.path.getmtime(path)
     except OSError:
-        return _home_cache.get('content') or ""
-        
-    with _home_lock:
-        if current_mtime != _home_cache['mtime']:
-            with open(path, 'r', encoding='utf-8') as f:
-                _home_cache['content'] = f.read()
-            _home_cache['mtime'] = current_mtime
-            # Invalidate all downstream caches
-            find_lesson_file.cache_clear()
-            get_lessons.cache_clear()
-            get_lesson_names.cache_clear()
-            get_lessons_with_learning_objectives.cache_clear()
-            with _markdown_lock:
-                _markdown_cache.clear()
-        return _home_cache['content']
+        cached = _file_cache.get(path)
+        return (cached['content'] if cached else "") or ""
+
+    with _file_cache_lock:
+        cached = _file_cache.get(path)
+        if cached and cached['mtime'] == current_mtime:
+            return cached['content']
+
+    # Read outside the lock (no file I/O under lock)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except (OSError, PermissionError) as e:
+        print(f"Warning: Could not read {path}: {e}")
+        cached = _file_cache.get(path)
+        return (cached['content'] if cached else "") or ""
+
+    with _file_cache_lock:
+        _file_cache[path] = {'content': content, 'mtime': current_mtime}
+
+    # If this is the root home.md, invalidate downstream caches
+    if os.path.abspath(path) == _HOME_MD_PATH:
+        find_lesson_file.cache_clear()
+        get_lessons.cache_clear()
+        get_lesson_names.cache_clear()
+        get_lessons_with_learning_objectives.cache_clear()
+        with _markdown_lock:
+            _markdown_cache.clear()
+
+    return content
+
+
+def _read_home_md():
+    """Read root home.md — thin wrapper for backwards compatibility."""
+    path = os.path.join(CONTENT_DIR, "home.md")
+    return _read_md_cached(path)
 
 
 def _parse_lesson_links(home_content):
-    """Extract (link_text, filename) pairs from the Available_Lessons section."""
+    """Extract (link_text, filename) pairs from the Available_Lessons section.
+    
+    Skips sub-home.md entries so they don't appear as lessons.
+    """
     parts = re.split(r'-{3,}Available_Lessons-{3,}', home_content)
     if len(parts) <= 1:
         return []
@@ -59,6 +90,9 @@ def _parse_lesson_links(home_content):
     processed_links = []
     for title, slug in links:
         filename = slug if slug.endswith('.md') else slug + '.md'
+        # Skip sub-home.md — it's not a lesson
+        if filename == 'sub-home.md':
+            continue
         processed_links.append((title, filename))
     return processed_links
 
@@ -72,6 +106,9 @@ def find_lesson_file(filename):
     """Recursively search for filename in CONTENT_DIR and return its full path."""
     # Security: Prevent directory traversal
     if '/' in filename or '\\' in filename:
+        return None
+    # Skip sub-home.md — it's not a lesson
+    if filename == 'sub-home.md':
         return None
         
     for root, _, files in os.walk(CONTENT_DIR):
@@ -287,6 +324,133 @@ def get_ordered_lessons_with_learning_objectives(progress=None):
         _add_completion_and_prereqs(copy, progress)
         ordered_fallback.append(copy)
     return ordered_fallback
+
+
+# ---------------------------------------------------------------------------
+# Sub-Home helpers
+# ---------------------------------------------------------------------------
+
+def find_sub_home_for_lesson(file_path):
+    """Find sub-home.md in the same folder as file_path, or None.
+    
+    Returns (sub_home_path, folder_name) or (None, None).
+    Handles PermissionError gracefully.
+    """
+    if not file_path:
+        return None, None
+    folder = os.path.dirname(file_path)
+    sub_home_path = os.path.join(folder, 'sub-home.md')
+    if not os.path.exists(sub_home_path):
+        return None, None
+    # Permission check
+    try:
+        if not os.access(sub_home_path, os.R_OK):
+            print(f"Warning: Cannot read {sub_home_path} (permission denied)")
+            return None, None
+    except OSError:
+        return None, None
+    folder_name = os.path.basename(folder)
+    return sub_home_path, folder_name
+
+
+@lru_cache(maxsize=32)
+def get_sub_home_data(folder_name):
+    """Return parsed sub-home data for a given folder name.
+    
+    Returns dict with keys: title, intro_html, lessons, folder, url.
+    Returns None if no sub-home.md found or unreadable.
+    """
+    folder_path = os.path.join(CONTENT_DIR, folder_name)
+    if not os.path.isdir(folder_path):
+        return None
+    sub_home_path = os.path.join(folder_path, 'sub-home.md')
+    if not os.path.exists(sub_home_path):
+        return None
+    # Permission check
+    try:
+        if not os.access(sub_home_path, os.R_OK):
+            print(f"Warning: Cannot read {sub_home_path} (permission denied)")
+            return None
+    except OSError:
+        return None
+    content = _read_md_cached(sub_home_path)
+    if not content:
+        return None
+
+    # Extract intro (before Available_Lessons)
+    parts = re.split(r'-{3,}Available_Lessons-{3,}', content)
+    intro_raw = parts[0] if parts else content
+    # Remove heading from intro if present (it becomes the title)
+    title = folder_name.replace('_', ' ').title()
+    intro_lines = intro_raw.strip().split('\n')
+    if intro_lines and intro_lines[0].startswith('# '):
+        title = intro_lines[0][2:].strip()
+        intro_raw = '\n'.join(intro_lines[1:])
+    intro_html = md.markdown(intro_raw, extensions=['fenced_code', 'tables', 'mdx_math']) if intro_raw.strip() else ''
+
+    # Parse lesson links from Available_Lessons
+    lesson_links = _parse_lesson_links(content)
+    lessons = []
+    for link_text, filename in lesson_links:
+        file_path = find_lesson_file(filename)
+        if not file_path:
+            continue
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                lesson_content = f.read()
+        except (OSError, PermissionError):
+            continue
+
+        lesson_title = link_text
+        description = "Learn C programming concepts with practical examples."
+        prerequisite_titles = []
+        lesson_info_start = lesson_content.find('---LESSON_INFO---')
+        lesson_info_end = lesson_content.find('---END_LESSON_INFO---')
+        if lesson_info_start != -1 and lesson_info_end != -1:
+            lesson_info_section = lesson_content[lesson_info_start + len('---LESSON_INFO---'):lesson_info_end]
+            objectives_start = lesson_info_section.find('**Learning Objectives:**')
+            if objectives_start != -1:
+                objectives_section = lesson_info_section[objectives_start:]
+                objective_matches = re.findall(r'- ([^\n]+)', objectives_section)
+                if objective_matches:
+                    description = '; '.join(objective_matches[:3])
+            # Extract Prerequisites
+            prereq_start = lesson_info_section.find('**Prerequisites:**')
+            if prereq_start != -1:
+                prereq_section = lesson_info_section[prereq_start + len('**Prerequisites:**'):]
+                bullet_lines = re.findall(r'- ([^\n]+)', prereq_section)
+                for bullet in bullet_lines:
+                    bullet = bullet.strip()
+                    if bullet.lower() in ('tidak ada', 'none', '-', ''):
+                        continue
+                    md_link_match = re.match(r'\[([^\]]+)\]\(([^)]+)\)', bullet)
+                    if md_link_match:
+                        link_path = md_link_match.group(2)
+                        slug = link_path.replace('.md', '').split('/')[-1]
+                        prerequisite_titles.append(slug)
+                    else:
+                        prerequisite_titles.append(bullet)
+        else:
+            for line in lesson_content.split('\n')[:10]:
+                if line.startswith('# '):
+                    lesson_title = line[2:].strip()
+                    break
+
+        lessons.append({
+            'filename': filename,
+            'title': lesson_title,
+            'description': description,
+            'path': file_path,
+            'prerequisite_titles': prerequisite_titles,
+        })
+
+    return {
+        'title': title,
+        'intro_html': intro_html,
+        'lessons': lessons,
+        'folder': folder_name,
+        'url': f'/bab/{folder_name}',
+    }
 
 
 # ---------------------------------------------------------------------------

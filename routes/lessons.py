@@ -11,6 +11,8 @@ from compiler import compiler_factory
 from config import CONTENT_DIR, ASSETS_DIR
 from services.lesson_service import (
     get_ordered_lessons_with_learning_objectives,
+    get_sub_home_data,
+    find_sub_home_for_lesson,
     render_markdown_content,
     render_home_content,
     find_lesson_file,
@@ -48,6 +50,15 @@ def api_lessons():
         'lessons': lessons,
         'home_content': home_content,
     })
+
+
+@lessons_bp.route('/bab/<folder>')
+def api_bab(folder):
+    """Return sub-home data for a given folder (e.g. 'dasar', 'arduino')."""
+    data = get_sub_home_data(folder)
+    if not data:
+        return jsonify({'error': 'Bab not found'}), 404
+    return jsonify(data)
 
 
 @lessons_bp.route('/lesson/<filename>.json')
@@ -139,6 +150,17 @@ def api_lesson(filename):
     prev_lesson = all_lessons[current_idx - 1] if current_idx > 0 else None
     next_lesson = all_lessons[current_idx + 1] if 0 <= current_idx < len(all_lessons) - 1 else None
 
+    # Detect sub-home for this lesson's folder
+    sub_home_path, sub_home_folder = find_sub_home_for_lesson(file_path)
+    sub_home = None
+    if sub_home_path and sub_home_folder:
+        sub_home_data = get_sub_home_data(sub_home_folder)
+        sub_home = {
+            'folder': sub_home_folder,
+            'url': f'/bab/{sub_home_folder}',
+            'title': sub_home_data['title'] if sub_home_data else sub_home_folder.replace('_', ' ').title(),
+        }
+
     # Derive default language from active_tabs (frontend manages switching)
     if 'python' in active_tabs and 'c' not in active_tabs:
         programming_language = 'python'
@@ -200,13 +222,14 @@ def api_lesson(filename):
         'quiz_data': quiz_data,
         'slides': parsed_data.get('slides', []),
         'lesson_progress_status': lesson_progress_status,
-        'lesson_title': full_filename.replace('.md', '').replace('_', ' ').title(),
+        'lesson_title': current_lesson_meta['title'] if current_lesson_meta else full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,
         'locked': is_locked,
         'missing_prerequisites': missing_prereqs,
         'prev_lesson': prev_lesson,
         'next_lesson': next_lesson,
         'ordered_lessons': all_lessons,
+        'sub_home': sub_home,
         'language': programming_language,
         'language_display_name': language_display_name,
     })
