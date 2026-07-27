@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { authLoggedIn } from '$stores/auth';
+
 	interface Option {
 		text: string;
 		is_correct: boolean;
@@ -19,9 +21,10 @@
 		isQuizMode: boolean;
 		completedStatus?: string; // e.g. "5/6" or "completed"
 		onComplete?: (status: string) => void;
+		onAnswerChange?: (status: boolean[], isCorrect: boolean[], total: number, types: ('flashcard' | 'mcq')[]) => void;
 	}
 
-	let { quizData = [], isQuizMode = $bindable(), completedStatus = '', onComplete }: Props = $props();
+	let { quizData = [], isQuizMode = $bindable(), completedStatus = '', onComplete, onAnswerChange }: Props = $props();
 
 	let currentIndex = $state(0);
 	let isFlipped = $state(false);
@@ -51,6 +54,17 @@
 	// Better way: Track correctness directly
 	let isCorrectArray = $state<boolean[]>([]);
 
+	function notifyAnswerChange() {
+		if (onAnswerChange) {
+			onAnswerChange(
+				[...answersStatus],
+				[...isCorrectArray],
+				quizData.length,
+				quizData.map(c => c.type)
+			);
+		}
+	}
+
 	function shuffleArray<T>(array: T[]): T[] {
 		const newArray = [...array];
 		for (let i = newArray.length - 1; i > 0; i--) {
@@ -58,6 +72,37 @@
 			[newArray[i], newArray[j]] = [newArray[j], newArray[i]];
 		}
 		return newArray;
+	}
+
+	// Gate 1: Login required
+	const isLoggedIn = $derived($authLoggedIn);
+	// Gate 2: Quiz already completed (one-attempt enforcement)
+	const quizAlreadyCompleted = $derived(
+		!!completedStatus && completedStatus !== 'not_started' && completedStatus !== ''
+	);
+
+	function handleExit() {
+		if (!isQuizMode) return;
+
+		const answeredCount = answersStatus.filter(s => s === true).length;
+		const unansweredCount = quizData.length - answeredCount;
+
+		let confirmMsg = 'Yakin keluar dari kuis?';
+		if (unansweredCount > 0) {
+			confirmMsg += ` ${unansweredCount} soal belum dijawab dan akan dianggap salah.`;
+		}
+		confirmMsg += ' Skor akan disimpan dan tidak bisa diulang.';
+
+		if (window.confirm(confirmMsg)) {
+			// Calculate score: only answered-correct MCQs count
+			const mcqTotal = quizData.filter(c => c.type === 'mcq').length;
+			const correctTotal = isCorrectArray.filter((v, i) => quizData[i].type === 'mcq' && v).length;
+			const statusString = mcqTotal > 0 ? `${correctTotal}/${mcqTotal}` : 'completed';
+
+			if (onComplete) onComplete(statusString);
+			showSummary = true;
+			isQuizMode = false;
+		}
 	}
 
 	function handleStart() {
@@ -68,6 +113,7 @@
 		isCorrectArray = new Array(quizData.length).fill(false);
 		showSummary = false;
 		resetCardState();
+		notifyAnswerChange();
 	}
 
 	function resetCardState() {
@@ -106,6 +152,7 @@
 			if (!answersStatus[currentIndex]) {
 				answersStatus[currentIndex] = true;
 				isCorrectArray[currentIndex] = true; // Flashcards are always "correct" once seen
+				notifyAnswerChange();
 			}
 		}
 	}
@@ -116,6 +163,7 @@
 		answersStatus[currentIndex] = true;
 		userSelections[currentIndex] = index;
 		isCorrectArray[currentIndex] = randomizedOptions[index].is_correct;
+		notifyAnswerChange();
 	}
 
 	function nextCard() {
@@ -140,7 +188,7 @@
 </script>
 
 <div class="quiz-container">
-	{#if showSummary || (completedStatus && completedStatus !== 'not_started' && !isQuizMode)}
+	{#if showSummary || quizAlreadyCompleted}
 		<div class="summary-view">
 			<div class="summary-header">
 				<div class="summary-icon">🏁</div>
@@ -183,12 +231,22 @@
 			<div class="quiz-icon">📝</div>
 			<h2>Kuis Interaktif</h2>
 			<p>Uji pemahamanmu dengan kuis ini.</p>
-			<div class="alert alert-warning">
-				⚠️ <strong>Penting:</strong> Materi pelajaran akan disembunyikan. Kamu harus menjawab semua soal untuk dapat menyelesaikannya.
-			</div>
-			<button class="btn btn-primary btn-lg" onclick={handleStart}>
-				Mulai Kuis Sekarang
-			</button>
+
+			{#if !isLoggedIn}
+				<div class="alert alert-warning">
+					⚠️ <strong>Login diperlukan.</strong> Klik tombol login di navbar atas untuk memulai kuis.
+				</div>
+				<button class="btn btn-primary btn-lg" disabled>
+					Mulai Kuis Sekarang
+				</button>
+			{:else}
+				<div class="alert alert-warning">
+					⚠️ <strong>Penting:</strong> Materi pelajaran akan disembunyikan. Kamu harus menjawab semua soal untuk dapat menyelesaikannya. Jika keluar di tengah kuis, soal yang belum dijawab akan dianggap <strong>salah</strong>.
+				</div>
+				<button class="btn btn-primary btn-lg" onclick={handleStart}>
+					Mulai Kuis Sekarang
+				</button>
+			{/if}
 		</div>
 	{:else if quizData.length > 0}
 		<div class="quiz-active-view">
@@ -279,8 +337,8 @@
 			</div>
 
 			<div class="cancel-container">
-				<button class="btn-exit-quiz" disabled>Batal Kuis</button>
-				<span class="cancel-lock-hint">🔒 Selesaikan kuis untuk melihat materi kembali</span>
+				<button class="btn-exit-quiz" onclick={handleExit}>Keluar Kuis</button>
+				<span class="cancel-lock-hint">⚠️ Keluar = selesai. Soal belum dijawab dianggap salah.</span>
 			</div>
 		</div>
 	{:else}
@@ -390,9 +448,10 @@
 	.btn-outline { background: white; border: 1px solid var(--color-border); color: var(--color-text); }
 	.btn-lg { padding: 1rem 2rem; font-size: 1.1rem; }
 
-	.btn-exit-quiz { background: none; border: none; color: var(--color-text-muted); text-decoration: underline; font-size: 0.85rem; cursor: pointer; }
+	.btn-exit-quiz { background: none; border: none; color: var(--color-danger, #dc3545); text-decoration: underline; font-size: 0.85rem; cursor: pointer; }
+	.btn-exit-quiz:hover { color: #c82333; }
 	.cancel-container { display: flex; flex-direction: column; align-items: center; margin-top: 1rem; gap: 0.5rem; }
-	.cancel-lock-hint { font-size: 0.75rem; color: #fa5252; font-weight: 500; }
+	.cancel-lock-hint { font-size: 0.75rem; color: var(--color-danger, #dc3545); font-weight: 500; }
 	.quiz-empty { text-align: center; margin: auto; color: var(--color-text-muted); }
 	@media (max-width: 600px) { .card-content { font-size: 1.1rem; } .option-btn { padding: 0.75rem; font-size: 0.95rem; } }
 </style>

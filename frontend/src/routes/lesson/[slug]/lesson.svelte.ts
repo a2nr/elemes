@@ -18,6 +18,12 @@ export class LessonManager {
 	data = $state<LessonContent | null>(null);
 	lessonCompleted = $state(false);
 	isQuizMode = $state(false);
+
+	// Quiz answer snapshot (updated by QuizTab via onAnswerChange callback)
+	quizAnswersStatus = $state<boolean[]>([]);
+	quizIsCorrect = $state<boolean[]>([]);
+	quizQuestionTypes = $state<('flashcard' | 'mcq')[]>([]);
+	quizTotalQuestions = $state(0);
 	currentCode = $state('');
 	currentLanguage = $state<string>('c');
 
@@ -162,9 +168,13 @@ export class LessonManager {
 		untrack(() => {
 			this.data = lesson;
 			this.lessonCompleted = lesson.lesson_completed;
-			this.isQuizMode = false;
+		this.isQuizMode = false;
+		this.quizAnswersStatus = [];
+		this.quizIsCorrect = [];
+		this.quizQuestionTypes = [];
+		this.quizTotalQuestions = 0;
 
-			this.cCode = lesson.initial_code_c || '';
+		this.cCode = lesson.initial_code_c || '';
 			this.pythonCode = lesson.initial_python || '';
 
 			const hasC = lesson.active_tabs?.includes('c');
@@ -217,6 +227,25 @@ export class LessonManager {
 			this.lessonCompleted = true;
 			lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
 		}
+	}
+
+	updateQuizSnapshot(status: boolean[], isCorrect: boolean[], total: number, types: ('flashcard' | 'mcq')[]) {
+		this.quizAnswersStatus = [...status];
+		this.quizIsCorrect = [...isCorrect];
+		this.quizQuestionTypes = [...types];
+		this.quizTotalQuestions = total;
+	}
+
+	async submitQuiz() {
+		if (!this.isQuizMode) return;
+
+		// Calculate score: unanswered MCQ = wrong (not in correct count)
+		const mcqTotal = this.quizQuestionTypes.filter(t => t === 'mcq').length;
+		const correctTotal = this.quizIsCorrect.filter((v, i) => this.quizQuestionTypes[i] === 'mcq' && v).length;
+		const statusString = mcqTotal > 0 ? `${correctTotal}/${mcqTotal}` : 'completed';
+
+		this.isQuizMode = false;
+		await this.completeLesson(statusString);
 	}
 
 	checkAllPassed(): boolean {

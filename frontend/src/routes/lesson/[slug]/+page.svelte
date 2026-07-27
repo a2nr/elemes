@@ -20,9 +20,10 @@
 	import { renderFlowchartEmbeds } from '$actions/renderFlowchartEmbeds';
 
 	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
-	import { tick, mount, unmount } from 'svelte';
+	import { tick, mount, unmount, onMount } from 'svelte';
 	import { LessonManager } from './lesson.svelte';
-	import { authLoggedIn } from '$stores/auth';
+	import { authLoggedIn, authToken } from '$stores/auth';
+	import { get } from 'svelte/store';
 	import SlideCarousel from '$components/SlideCarousel.svelte';
 
 	let { data: pageData } = $props();
@@ -104,6 +105,12 @@
 
 	beforeNavigate(() => {
 		lessonContext.set(null);
+
+		// Quiz integrity: submit with penalty on SPA navigation
+		if (mgr.isQuizMode) {
+			mgr.submitQuiz(); // fire-and-forget, async
+		}
+
 		if (mgr.velxioCleanup) {
 			mgr.velxioCleanup();
 			mgr.velxioCleanup = null;
@@ -112,6 +119,35 @@
 			mgr.velxioBridge.destroy();
 			mgr.velxioBridge = null;
 		}
+	});
+
+	onMount(() => {
+		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+			if (mgr.isQuizMode) {
+				// Calculate score with penalty
+				const mcqTotal = mgr.quizQuestionTypes.filter(t => t === 'mcq').length;
+				const correctTotal = mgr.quizIsCorrect.filter((v, i) => mgr.quizQuestionTypes[i] === 'mcq' && v).length;
+				const statusString = mcqTotal > 0 ? `${correctTotal}/${mcqTotal}` : 'completed';
+				const lessonName = mgr.slug.replace('.md', '');
+
+				// Send beacon to /track-progress (fire-and-forget on page unload)
+				const payload = JSON.stringify({
+					token: get(authToken) || localStorage.getItem('student_token') || '',
+					lesson_name: lessonName,
+					status: statusString
+				});
+				navigator.sendBeacon(
+					'/api/track-progress',
+					new Blob([payload], { type: 'application/json' })
+				);
+
+				// Trigger browser confirm dialog
+				e.preventDefault();
+				e.returnValue = '';
+			}
+		};
+		window.addEventListener('beforeunload', handleBeforeUnload);
+		return () => window.removeEventListener('beforeunload', handleBeforeUnload);
 	});
 
 	let contentEl = $state<HTMLElement | null>(null);
@@ -156,8 +192,8 @@
 						<div class="quiz-blur-content">
 							<div class="quiz-blur-icon">🫣</div>
 							<h3>Materi Disembunyikan</h3>
-							<p>Selesaikan atau batalkan kuis untuk melihat materi kembali.</p>
-							<button class="btn btn-outline" onclick={() => mgr.isQuizMode = false}>Batal Kuis</button>
+							<p>Keluar dari kuis akan menyimpan skor akhir. Soal yang belum dijawab dianggap salah.</p>
+							<button class="btn btn-outline" onclick={() => mgr.submitQuiz()}>Keluar Kuis</button>
 						</div>
 					</div>
 				{:else}
@@ -303,6 +339,7 @@
 								bind:isQuizMode={mgr.isQuizMode}
 								completedStatus={mgr.data.lesson_progress_status}
 								onComplete={(status) => mgr.completeLesson(status)}
+								onAnswerChange={(status, isCorrect, total, types) => mgr.updateQuizSnapshot(status, isCorrect, total, types)}
 							/>
 						</div>
 					{/if}
