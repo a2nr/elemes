@@ -8,3 +8,4 @@ flask-limiter==3.5.0
 python-markdown-math==0.8
 bleach>=6.0.0
 tinycss2>=1.2.0
+pytest==7.4.4

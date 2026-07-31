@@ -16,16 +16,48 @@ image: https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Languag
 - [] Error
 > Penjelasan: Operasi `5 + 5` dihitung terlebih dahulu menjadi `10`, lalu dicetak sebagai integer menggunakan format specifier `%d`.
 
+### Perhatikan program berikut:
+```c
+int x = 2;
+printf("%d", x * 3);
+```
+Berapakah keluaran program di atas?
+- [] 5
+- [] 8
+- [x] 6
+- [] Error
+> Pembahasan: `x * 3` menghasilkan `6` karena nilai `x` adalah `2`.
+
+### Berdasarkan tabel berikut, tipe data mana yang tepat untuk menyimpan `3.14`?
+| Tipe   | Ukuran | Rentang            |
+|--------|--------|--------------------|
+| int    | 4 byte | -2^31 s/d 2^31-1   |
+| float  | 4 byte | ~1e-38 s/d ~1e38   |
+| double | 8 byte | ~1e-308 s/d ~1e308 |
+- [x] double
+- [] int
+- [] char
+> Pembahasan: `double` punya presisi lebih tinggi dan rentang lebih luas untuk bilangan pecahan.
+
+### Berapakah nilai dari $\int_0^1 2x \, dx$?
+- [x] 1
+- [] 2
+- [] 0.5
+- [] Tidak terdefinisi
+> Pembahasan: Hasil integralnya adalah $[x^2]_0^1 = 1$.
+
+### Pilih gambar yang melambangkan bahasa C:
+![C Logo](https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg)
+- [x] Logo C
+- [] Logo Python
+- [] Logo Java
+
 ### Bagaimana cara menulis komentar satu baris di bahasa C?
 Cukup gunakan dua garis miring di awal baris, contoh: `// ini komentar`.
 > Penjelasan: Komentar berguna untuk mendokumentasikan kode agar mudah dibaca oleh manusia, dan akan diabaikan oleh compiler.
 
 ### Apa fungsi dari `return 0;` di dalam fungsi `main()`?
 Menandakan bahwa program telah selesai berjalan dengan sukses tanpa ada error.
-
-### Pilih gambar yang melambangkan bahasa C:
-- [x] ![C Logo](https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg)
-- [] ![Wrong Logo](https://upload.wikimedia.org/wikipedia/commons/c/c3/Python-logo-notext.svg)
 
 ### Apa warna langit pada siang hari?
 image: demo_quiz.png
@@ -36,16 +68,3 @@ image: demo_quiz.png
 > Penjelasan: Langit terlihat biru karena hamburan Rayleigh — cahaya matahari dihamburkan oleh atmosfer bumi.
 
 ---END_QUIZ_FLASHCARD---
-
----EXERCISE---
-Cobalah untuk menyelesaikan kuis di tab sebelah kanan. Ingat, kamu tidak bisa melihat materi ini jika kuis sedang berjalan!
----
-
----INITIAL_CODE---
-#include <stdio.h>
-
-int main() {
-    printf("Selesaikan kuisnya dulu ya!\n");
-    return 0;
-}
----END_INITIAL_CODE---

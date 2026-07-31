@@ -1,5 +1,6 @@
 import { page } from '$app/stores';
 import { get } from 'svelte/store';
+import { pickDefaultTab } from '$services/lesson-tabs';
 import { tick, untrack } from 'svelte';
 import { auth, authLoggedIn } from '$stores/auth';
 import { lessonContext } from '$stores/lessonContext';
@@ -13,17 +14,25 @@ import type { LessonContent } from '$types/lesson';
 import type { CodeEditor } from '$components/CodeEditor.svelte';
 import type { CircuitEditor } from '$components/CircuitEditor.svelte';
 import type { DeployState } from '$types/deployer';
+import type { QuizQuestion, QuizAnswer } from '$types/quiz';
+import {
+	createQuizSession,
+	answerQuestion,
+	acknowledgeQuestion,
+	calculateQuizResult,
+	type QuizSession,
+	type QuizResult
+} from '$services/quiz-session';
 
 export class LessonManager {
 	data = $state<LessonContent | null>(null);
 	lessonCompleted = $state(false);
 	isQuizMode = $state(false);
 
-	// Quiz answer snapshot (updated by QuizTab via onAnswerChange callback)
-	quizAnswersStatus = $state<boolean[]>([]);
-	quizIsCorrect = $state<boolean[]>([]);
-	quizQuestionTypes = $state<('flashcard' | 'mcq')[]>([]);
-	quizTotalQuestions = $state(0);
+	// Quiz session (single source of truth owned by the manager)
+	quizSession = $state<QuizSession | null>(null);
+	quizCurrentIndex = $state(0);
+	quizResult = $state<QuizResult | null>(null);
 	currentCode = $state('');
 	currentLanguage = $state<string>('c');
 
@@ -52,7 +61,7 @@ export class LessonManager {
 	velxioCleanup = $state<(() => void) | null>(null);
 
 	showSolution = $state(false);
-	activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart' | 'deploy'>('info');
+	activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart' | 'deploy' | 'quiz'>('info');
 	showCelebration = $state(false);
 	mobileMode = $state<'hidden' | 'half' | 'full'>('hidden');
 	isMobile = $state(false);
@@ -167,12 +176,11 @@ export class LessonManager {
 	init(lesson: LessonContent) {
 		untrack(() => {
 			this.data = lesson;
-			this.lessonCompleted = lesson.lesson_completed;
-		this.isQuizMode = false;
-		this.quizAnswersStatus = [];
-		this.quizIsCorrect = [];
-		this.quizQuestionTypes = [];
-		this.quizTotalQuestions = 0;
+				this.lessonCompleted = lesson.lesson_completed;
+				this.isQuizMode = false;
+				this.quizSession = null;
+				this.quizCurrentIndex = 0;
+				this.quizResult = null;
 
 		this.cCode = lesson.initial_code_c || '';
 			this.pythonCode = lesson.initial_python || '';
@@ -197,12 +205,7 @@ export class LessonManager {
 			this.velxioReady = false;
 			this.velxioError = false;
 
-			if (lesson.lesson_info) this.activeTab = 'info';
-			else if (lesson.exercise_content) this.activeTab = 'exercise';
-			else if (lesson.active_tabs?.includes('velxio')) this.activeTab = 'velxio';
-			else if (lesson.active_tabs?.includes('flowchart')) this.activeTab = 'flowchart';
-			else if (lesson.active_tabs?.includes('circuit') && !hasC && !hasPython) this.activeTab = 'circuit';
-			else this.activeTab = 'editor';
+			this.activeTab = pickDefaultTab(lesson);
 
 			this.deployState = 'idle';
 			
@@ -229,23 +232,91 @@ export class LessonManager {
 		}
 	}
 
-	updateQuizSnapshot(status: boolean[], isCorrect: boolean[], total: number, types: ('flashcard' | 'mcq')[]) {
-		this.quizAnswersStatus = [...status];
-		this.quizIsCorrect = [...isCorrect];
-		this.quizQuestionTypes = [...types];
-		this.quizTotalQuestions = total;
+	get currentQuizQuestion(): QuizQuestion | null {
+		return this.quizSession?.questions[this.quizCurrentIndex] ?? null;
+	}
+
+	get currentQuizAnswer(): QuizAnswer | null {
+		const q = this.currentQuizQuestion;
+		return q ? (this.quizSession?.answers[q.id] ?? null) : null;
+	}
+
+	get quizTotalCount(): number {
+		return this.quizSession?.questions.length ?? 0;
+	}
+
+	get quizAnsweredCount(): number {
+		if (!this.quizSession) return 0;
+		return Object.values(this.quizSession.answers).filter(
+			(a) => a.selectedOptionId !== null || a.acknowledged
+		).length;
+	}
+
+	get quizAllAnswered(): boolean {
+		return this.quizSession ? calculateQuizResult(this.quizSession).allHandled : false;
+	}
+
+	get quizSessionResult(): QuizResult | null {
+		return this.quizSession ? calculateQuizResult(this.quizSession) : null;
+	}
+
+	startQuiz() {
+		const source = this.data?.quiz_data;
+		if (!source?.length) return;
+		this.quizSession = createQuizSession(source);
+		this.quizCurrentIndex = 0;
+		this.quizResult = null;
+		this.isQuizMode = true;
+		this.activeTab = 'quiz';
+		// On mobile the tab panel is a bottom sheet — open it so the answer
+		// sheet is visible while the question stays in the content area above.
+		if (this.isMobile) this.mobileMode = 'half';
+	}
+
+	selectQuizOption(optionId: string) {
+		const q = this.currentQuizQuestion;
+		if (q && this.quizSession) answerQuestion(this.quizSession, q.id, optionId);
+	}
+
+	acknowledgeFlashcard() {
+		const q = this.currentQuizQuestion;
+		if (q && this.quizSession) acknowledgeQuestion(this.quizSession, q.id);
+	}
+
+	goToQuizQuestion(index: number) {
+		if (this.quizSession && index >= 0 && index < this.quizSession.questions.length) {
+			this.quizCurrentIndex = index;
+		}
+	}
+
+	nextQuizQuestion() {
+		this.goToQuizQuestion(this.quizCurrentIndex + 1);
+	}
+
+	prevQuizQuestion() {
+		this.goToQuizQuestion(this.quizCurrentIndex - 1);
+	}
+
+	async finishQuiz() {
+		if (!this.isQuizMode || !this.quizSession || !this.quizAllAnswered) return;
+		this.quizResult = calculateQuizResult(this.quizSession);
+		this.isQuizMode = false;
+		await this.completeLesson(this.quizResult.statusString);
 	}
 
 	async submitQuiz() {
-		if (!this.isQuizMode) return;
+		if (!this.isQuizMode || !this.quizSession) return;
 
-		// Calculate score: unanswered MCQ = wrong (not in correct count)
-		const mcqTotal = this.quizQuestionTypes.filter(t => t === 'mcq').length;
-		const correctTotal = this.quizIsCorrect.filter((v, i) => this.quizQuestionTypes[i] === 'mcq' && v).length;
-		const statusString = mcqTotal > 0 ? `${correctTotal}/${mcqTotal}` : 'completed';
-
+		// Exit path with penalty: unanswered MCQ counted as wrong via session result.
+		// Idempotent — duplicate triggers (nav + unload) do not double-submit.
+		this.quizResult = calculateQuizResult(this.quizSession);
 		this.isQuizMode = false;
-		await this.completeLesson(statusString);
+		await this.completeLesson(this.quizResult.statusString);
+	}
+
+	getExitStatus(): string {
+		if (!this.quizSession) return '';
+		return calculateQuizResult(this.quizSession).statusString;
 	}
 
 	checkAllPassed(): boolean {

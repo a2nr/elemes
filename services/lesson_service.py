@@ -614,6 +614,50 @@ def _process_embed_embeds(text):
     return pattern.sub(_replacer, text)
 
 
+_OPTION_LINE_RE = re.compile(r'^\s*-\s*\[([ xX]?)\]\s*(.*)$')
+
+
+def _iter_option_lines(body):
+    """Yield (char_index, mark, content) for option lines outside fenced code.
+
+    Lines inside ``` fenced blocks are skipped so code examples containing
+    '- [x] ...' are never mistaken for real options.
+    """
+    in_fence = False
+    pos = 0
+    for line in body.split('\n'):
+        if line.strip().startswith('```'):
+            in_fence = not in_fence
+        elif not in_fence:
+            m = _OPTION_LINE_RE.match(line)
+            if m:
+                yield pos, m.group(1), m.group(2)
+        pos += len(line) + 1
+
+
+def _extract_body_image(text):
+    """Return (image_url, cleaned_text) for the first markdown image found
+    outside fenced code blocks. cleaned_text has that image markup removed.
+    Returns (None, text) when no image is found.
+    """
+    lines = text.split('\n')
+    fence = False
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith('```'):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        m = re.search(r'!\[[^\]]*\]\(([^)]+)\)', line)
+        if m:
+            url = m.group(1).strip()
+            cleaned_line = line[:m.start()] + line[m.end():]
+            cleaned_lines = lines[:idx] + ([cleaned_line] if cleaned_line.strip() else []) + lines[idx + 1:]
+            return url, '\n'.join(cleaned_lines).strip()
+    return None, text
+
+
 def _parse_flashcards(text):
     """Parse a string of markdown with headings and options into a list of dicts.
     
@@ -621,10 +665,15 @@ def _parse_flashcards(text):
     1. Simple Flashcard: '### Question\nAnswer'
     2. Multiple Choice (MCQ): 
        '### Question
+        [optional rich markdown body: paragraphs, fenced code, tables, math]
         - [] option 1
         - [x] option 2 (Correct)
         - [] option 3
         > Explanation'
+
+    Every question and option receives a stable id based on original parse
+    order ('q-0', 'q-0-o-0', ...) — the frontend uses these ids for shuffling
+    and scoring, so they must never depend on display order.
     """
     if not text.strip():
         return []
@@ -640,7 +689,7 @@ def _parse_flashcards(text):
         # First line is the question (Front)
         subparts = part.split('\n', 1)
         question = subparts[0].strip()
-        body = subparts[1].strip() if len(subparts) > 1 else ""
+        body = subparts[1] if len(subparts) > 1 else ""
         
         if not question:
             continue
@@ -656,10 +705,6 @@ def _parse_flashcards(text):
             if md_image_path.startswith('/assets/') or (not md_image_path.startswith(('http://', 'https://')) and not image_url):
                 image_url = md_image_path
 
-        # Check for MCQ options: - [ ] or - [x]
-        option_pattern = re.compile(r'^\s*-\s*\[([ xX]?)\]\s*(.*)$', re.MULTILINE)
-        options = option_pattern.findall(body)
-        
         # Check for image: URL
         image_match = re.search(r'^\s*image:\s*(.*)$', body, re.MULTILINE)
         if image_match:
@@ -670,24 +715,58 @@ def _parse_flashcards(text):
             elif not image_url.startswith(('http://', 'https://', '/')):
                 image_url = f'/assets/{image_url}'
             body = re.sub(r'^\s*image:\s*.*$', '', body, flags=re.MULTILINE).strip()
-        
-        # Check for explanation (blockquote starting with >)
-        explanation_match = re.search(r'^\s*(>.*)$', body, re.MULTILINE | re.DOTALL)
+
+        # Option lines outside fenced code, in original order
+        option_lines = list(_iter_option_lines(body))
+        first_option_idx = option_lines[0][0] if option_lines else len(body)
+
+        # Explanation blockquote: after the options for MCQ, anywhere for flashcard
+        explanation_search_region = body[first_option_idx:] if option_lines else body
+        explanation_match = re.search(r'^\s*(>.*)$', explanation_search_region, re.MULTILINE | re.DOTALL)
         explanation = explanation_match.group(1).strip() if explanation_match else ""
-        
-        # If MCQ options exist, it's an MCQ. We also remove the options from the body to find clean explanation.
-        if options:
+
+        q_id = f'q-{len(flashcards)}'
+
+        # If MCQ options exist, it's an MCQ.
+        if option_lines:
             parsed_options = []
-            for mark, content in options:
+            for _, mark, content in option_lines:
                 is_correct = mark.lower() == 'x'
                 parsed_options.append({
+                    'id': f'{q_id}-o-{len(parsed_options)}',
                     'text': md.markdown(content.strip(), extensions=MD_EXTENSIONS),
                     'is_correct': is_correct
                 })
-            
+
+            correct_count = sum(1 for opt in parsed_options if opt['is_correct'])
+            if correct_count != 1:
+                raise ValueError(
+                    f"Soal kuis ke-{len(flashcards) + 1} wajib punya tepat satu opsi benar "
+                    f"(ditemukan {correct_count})."
+                )
+
+            # Rich question prompt: heading + everything before the first option
+            # line (paragraphs, fenced code, tables, math), through the same
+            # embed pipeline used for lesson material.
+            prompt_body = body[:first_option_idx].strip()
+
+            # Extract markdown image from the prompt body (outside code fences)
+            # if no image was found in the heading / image: directive yet, and
+            # drop it from the prompt so it is not rendered twice.
+            if not image_url:
+                extracted_url, prompt_body = _extract_body_image(prompt_body)
+                if extracted_url:
+                    image_url = extracted_url
+
+            prompt_text = f"{question}\n\n{prompt_body}" if prompt_body else question
+            prompt_text = _process_circuit_embeds(prompt_text)
+            prompt_text = _process_flowchart_embeds(prompt_text)
+            prompt_text = _process_embed_embeds(prompt_text)
+
             flashcards.append({
+                'id': q_id,
                 'type': 'mcq',
-                'question': md.markdown(question, extensions=MD_EXTENSIONS),
+                'question': md.markdown(prompt_text, extensions=MD_EXTENSIONS),
                 'options': parsed_options,
                 'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
                 'image': image_url
@@ -700,11 +779,13 @@ def _parse_flashcards(text):
                 clean_back = body[:explanation_match.start()].strip()
                 
             flashcards.append({
+                'id': q_id,
                 'type': 'flashcard',
                 'front': md.markdown(question, extensions=MD_EXTENSIONS),
                 'back': md.markdown(clean_back, extensions=MD_EXTENSIONS),
                 'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
-                'image': image_url
+                'image': image_url,
+                'options': None
             })
             
     return flashcards

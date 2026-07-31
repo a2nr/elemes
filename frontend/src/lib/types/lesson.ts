@@ -1,3 +1,5 @@
+import type { QuizQuestion } from './quiz';
+
 export interface Lesson {
 	filename: string;
 	title: string;
@@ -42,7 +44,7 @@ export interface LessonContent {
 	active_tabs: string[];
 	slides?: string[];
 	evaluation_config: Record<string, any>;
-	quiz_data?: Array<{ type: 'flashcard' | 'mcq', front?: string; back?: string; question?: string; options?: any[]; explanation?: string }>;
+	quiz_data?: QuizQuestion[];
 	lesson_progress_status?: string;
 	hex_content?: string;
 }

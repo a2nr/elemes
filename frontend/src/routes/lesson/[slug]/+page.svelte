@@ -6,6 +6,7 @@
 	import VelxioTab from './VelxioTab.svelte';
 	import FlowchartTab from './FlowchartTab.svelte';
 	import QuizTab from './QuizTab.svelte';
+import QuizQuestionView from './QuizQuestionView.svelte';
 	import DeployTab from './DeployTab.svelte';
 	import OutputPanel from '$components/OutputPanel.svelte';
 	import CelebrationOverlay from '$components/CelebrationOverlay.svelte';
@@ -22,6 +23,7 @@
 	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
 	import { tick, mount, unmount, onMount } from 'svelte';
 	import { LessonManager } from './lesson.svelte';
+	import { ensureActiveTab } from '$services/lesson-tabs';
 	import { authLoggedIn, authToken } from '$stores/auth';
 	import { get } from 'svelte/store';
 	import SlideCarousel from '$components/SlideCarousel.svelte';
@@ -33,11 +35,23 @@
 	let slideComponent = $state<any>(null);
 
 	// Initialize manager with lesson data whenever it changes.
-	$effect(() => {
-		if (pageData.lesson) {
-			mgr.init(pageData.lesson);
-		}
-	});
+		$effect(() => {
+			if (pageData.lesson) {
+				mgr.init(pageData.lesson);
+			}
+		});
+
+		// Safety-net: whenever lesson data changes, ensure the active tab is valid.
+		// This prevents "phantom tab" bugs where activeTab points to a panel that
+		// isn't rendered (e.g. 'editor' on a quiz-only lesson), leaving the workspace empty.
+		$effect(() => {
+			if (pageData.lesson && mgr.data) {
+				const validated = ensureActiveTab(mgr.data, mgr.activeTab as any);
+				if (validated !== mgr.activeTab) {
+					mgr.activeTab = validated as any;
+				}
+			}
+		});
 
 	// Handle Slide Carousel mounting
 	$effect(() => {
@@ -103,6 +117,20 @@
 		}
 	});
 
+	// Re-run the render pipeline whenever the active quiz question changes
+	$effect(() => {
+		const q = mgr.currentQuizQuestion;
+		if (mgr.isQuizMode && q) {
+			tick().then(() => {
+				if (!quizQuestionEl) return;
+				highlightAllCode(quizQuestionEl);
+				renderCircuitEmbeds(quizQuestionEl);
+				renderFlowchartEmbeds(quizQuestionEl);
+				autoRenderMath(quizQuestionEl);
+			});
+		}
+	});
+
 	beforeNavigate(() => {
 		lessonContext.set(null);
 
@@ -124,10 +152,8 @@
 	onMount(() => {
 		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
 			if (mgr.isQuizMode) {
-				// Calculate score with penalty
-				const mcqTotal = mgr.quizQuestionTypes.filter(t => t === 'mcq').length;
-				const correctTotal = mgr.quizIsCorrect.filter((v, i) => mgr.quizQuestionTypes[i] === 'mcq' && v).length;
-				const statusString = mcqTotal > 0 ? `${correctTotal}/${mcqTotal}` : 'completed';
+				// Calculate score with penalty from the session (single source of truth)
+				const statusString = mgr.getExitStatus();
 				const lessonName = mgr.slug.replace('.md', '');
 
 				// Send beacon to /track-progress (fire-and-forget on page unload)
@@ -151,6 +177,7 @@
 	});
 
 	let contentEl = $state<HTMLElement | null>(null);
+	let quizQuestionEl = $state<HTMLElement | null>(null);
 	let tabsEl = $state<HTMLElement | null>(null);
 </script>
 
@@ -187,19 +214,22 @@
 					</div>
 				{/if}
 
-				{#if mgr.isQuizMode}
-					<div class="quiz-blur-container">
-						<div class="quiz-blur-content">
-							<div class="quiz-blur-icon">🫣</div>
-							<h3>Materi Disembunyikan</h3>
-							<p>Keluar dari kuis akan menyimpan skor akhir. Soal yang belum dijawab dianggap salah.</p>
-							<button class="btn btn-outline" onclick={() => mgr.submitQuiz()}>Keluar Kuis</button>
-						</div>
-					</div>
-				{:else}
-					<div class="prose">{@html mgr.data?.lesson_content ?? ''}</div>
-					<LessonList lessons={mgr.data?.ordered_lessons ?? []} currentSlug={mgr.slug} />
-				{/if}
+	{#if mgr.isQuizMode}
+		<div class="quiz-question-area" bind:this={quizQuestionEl}>
+			<QuizQuestionView
+				question={mgr.currentQuizQuestion}
+				currentIndex={mgr.quizCurrentIndex}
+				totalCount={mgr.quizTotalCount}
+				answeredCount={mgr.quizAnsweredCount}
+				onExit={() => {
+					mgr.submitQuiz();
+				}}
+			/>
+		</div>
+	{:else}
+		<div class="prose">{@html mgr.data?.lesson_content ?? ''}</div>
+		<LessonList lessons={mgr.data?.ordered_lessons ?? []} currentSlug={mgr.slug} />
+	{/if}
 				</div>
 
 				{#if float.floating && float.minimized && !mgr.isMobile}
@@ -332,17 +362,11 @@
 						</div>
 					{/if}
 
-					{#if mgr.data?.active_tabs?.includes('quiz')}
-						<div class="tab-panel quiz-panel" class:tab-hidden={mgr.activeTab !== 'quiz'}>
-							<QuizTab
-								quizData={mgr.data.quiz_data ?? []}
-								bind:isQuizMode={mgr.isQuizMode}
-								completedStatus={mgr.data.lesson_progress_status}
-								onComplete={(status) => mgr.completeLesson(status)}
-								onAnswerChange={(status, isCorrect, total, types) => mgr.updateQuizSnapshot(status, isCorrect, total, types)}
-							/>
-						</div>
-					{/if}
+						{#if mgr.data?.active_tabs?.includes('quiz')}
+							<div class="tab-panel quiz-panel" class:tab-hidden={mgr.activeTab !== 'quiz'}>
+								<QuizTab mgr={mgr} />
+							</div>
+						{/if}
 
 					<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'output'}>
 						<OutputPanel sections={mgr.outputSections}>
