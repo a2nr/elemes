@@ -14,8 +14,8 @@ from extensions import limiter
 
 compile_bp = Blueprint('compile', __name__)
 
-COMPILER_WORKER_URL = os.environ.get('COMPILER_WORKER_URL', 'http://compiler-worker:8080/execute')
-VELXIO_COMPILER_URL = os.environ.get('VELXIO_COMPILER_URL', 'http://velxio:80/api/compile/')
+COMPILER_WORKER_URL = os.environ.get('COMPILER_WORKER_URL', 'http://127.0.0.1:8080/execute')
+VELXIO_COMPILER_URL = os.environ.get('VELXIO_COMPILER_URL', 'http://127.0.0.1:80/api/compile/')
 ANON_QUEUE_DIR = "/tmp/elemes_anon_queue"
 
 # Ensure queue directory exists

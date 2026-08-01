@@ -1,74 +1,6 @@
 version: '3.8'
 
 services:
-  elemes:
-    build: .
-    image: lms-backend:latest
-    volumes:
-      - ../content:/app/content:ro
-      - ../tokens_siswa.csv:/app/tokens.csv:rw
-      - ../assets:/app/assets:ro
-    env_file:
-      - ../.env
-    environment:
-      - COMPILER_WORKER_URL=http://compiler-worker:8080/execute
-    networks:
-      - elemes_network
-    # production
-    command: gunicorn --config gunicorn.conf.py "app:create_app()"
-    # debug
-    # command: python app.py
-
-  compiler-worker:
-    build: ./compiler_worker
-    image: lms-compiler-worker:latest
-    runtime: runsc # Enable gVisor
-    networks:
-      - elemes_network
-
-  elemes-frontend:
-    build: ./frontend
-    image: lms-frontend:latest
-    # ports:
-    #   - 3000:3000
-    environment:
-      - ORIGIN=http://localhost:3000
-      - API_BACKEND=http://elemes:5000
-      - PUBLIC_APP_BAR_TITLE=${APP_BAR_TITLE}
-      - PUBLIC_COPYRIGHT_TEXT=${COPYRIGHT_TEXT}
-      - PUBLIC_PAGE_TITLE_SUFFIX=${PAGE_TITLE_SUFFIX}
-      - PUBLIC_CURSOR_OFFSET_Y=${CURSOR_OFFSET_Y:-50}
-    networks:
-      - elemes_network
-    depends_on:
-      - elemes
-
-  velxio:
-    image: lms-velxio:latest
-    build:
-      context: ./velxio
-      dockerfile: Dockerfile.standalone
-      args:
-        VITE_BASE_PATH: /velxio/
-        VITE_API_BASE: /velxio/api
-        ENABLE_ESP32: ${ENABLE_ESP32:-0}
-    environment:
-      - SECRET_KEY=embed-only-no-auth-needed
-      - DATABASE_URL=sqlite+aiosqlite:////app/data/velxio.db
-      - DATA_DIR=/app/data
-    networks:
-      - elemes_network
-    volumes:
-      - velxio-data:/app/data
-      - velxio-arduino-libs:/root/.arduino15
-
-  flowchart:
-    build: ./flowchart
-    image: lms-flowchart:latest
-    networks:
-      - elemes_network
-
-
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
     hostname: ${ELEMES_HOST}
@@ -85,16 +17,85 @@ services:
       - net_admin
       - sys_module
     restart: unless-stopped
-    depends_on:
-      - elemes-frontend
     env_file:
       - ../.env
+
+  elemes:
+    build: .
+    image: lms-backend:latest
+    network_mode: service:elemes-ts
+    volumes:
+      - ../content:/app/content:ro
+      - ../tokens_siswa.csv:/app/tokens.csv:rw
+      - ../assets:/app/assets:ro
+    env_file:
+      - ../.env
+    environment:
+      - COMPILER_WORKER_URL=http://127.0.0.1:8080/execute
+      - VELXIO_COMPILER_URL=http://127.0.0.1:80/api/compile/
+    restart: unless-stopped
+    depends_on:
+      - elemes-ts
+    # production
+    command: gunicorn --config gunicorn.conf.py "app:create_app()"
+    # debug
+    # command: python app.py
+
+  compiler-worker:
+    build: ./compiler_worker
+    image: lms-compiler-worker:latest
+    runtime: runsc # Enable gVisor
+    network_mode: service:elemes-ts
+    restart: unless-stopped
+    depends_on:
+      - elemes-ts
+
+  elemes-frontend:
+    build: ./frontend
+    image: lms-frontend:latest
+    # ports:
+    #   - 3000:3000
+    network_mode: service:elemes-ts
+    environment:
+      - ORIGIN=http://localhost:3000
+      - API_BACKEND=http://127.0.0.1:5000
+      - PUBLIC_APP_BAR_TITLE=${APP_BAR_TITLE}
+      - PUBLIC_COPYRIGHT_TEXT=${COPYRIGHT_TEXT}
+      - PUBLIC_PAGE_TITLE_SUFFIX=${PAGE_TITLE_SUFFIX}
+      - PUBLIC_CURSOR_OFFSET_Y=${CURSOR_OFFSET_Y:-50}
+    restart: unless-stopped
+    depends_on:
+      - elemes-ts
+      - elemes
+
+  velxio:
+    image: lms-velxio:latest
+    build:
+      context: ./velxio
+      dockerfile: Dockerfile.standalone
+      args:
+        VITE_BASE_PATH: /velxio/
+        VITE_API_BASE: /velxio/api
+    network_mode: service:elemes-ts
+    environment:
+      - SECRET_KEY=embed-only-no-auth-needed
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/velxio.db
+      - DATA_DIR=/app/data
+    restart: unless-stopped
+    depends_on:
+      - elemes-ts
+    volumes:
+      - velxio-data:/app/data
+      - velxio-arduino-libs:/root/.arduino15
+
+  flowchart:
+    build: ./flowchart
+    image: lms-flowchart:latest
+    network_mode: service:elemes-ts
+    restart: unless-stopped
+    depends_on:
+      - elemes-ts
 
 volumes:
   velxio-data:
   velxio-arduino-libs:
-
-networks:
-  elemes_network:
-    driver: bridge
-    network_mode: service:elemes-ts

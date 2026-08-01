@@ -2,7 +2,8 @@
  * SvelteKit server hook — proxies /api/* requests to the Flask backend.
  *
  * Uses API_BACKEND env var (set in podman-compose.yml).
- * Falls back to http://elemes:5000, then tries container IP resolution.
+ * Falls back to http://127.0.0.1:5000 — all services share the
+ * elemes-ts network namespace, so the backend lives on localhost.
  */
 
 import type { Handle } from '@sveltejs/kit';
@@ -10,7 +11,7 @@ import type { Handle } from '@sveltejs/kit';
 function resolveBackend(): string {
 	const env = process.env.API_BACKEND;
 	if (env) return env;
-	return 'http://elemes:5000';
+	return 'http://127.0.0.1:5000';
 }
 
 const API_BACKEND = resolveBackend();
