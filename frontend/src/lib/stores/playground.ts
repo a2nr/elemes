@@ -29,6 +29,7 @@ interface PlaygroundState {
 	activeFileId: string;
 	consoleHistory: ConsoleLine[];
 	consoleInput: string;
+	stdinQueue: string[];
 	consoleVisible: boolean;
 	running: boolean;
 }
@@ -86,6 +87,7 @@ function initialState(): PlaygroundState {
 		activeFileId: files[0]?.id ?? '',
 		consoleHistory: [],
 		consoleInput: '',
+		stdinQueue: [],
 		consoleVisible: true,
 		running: false
 	};
@@ -167,6 +169,25 @@ function createPlaygroundStore() {
 
 		setConsoleInput: (text: string) => {
 			update((s) => ({ ...s, consoleInput: text }));
+		},
+
+		enqueueStdin: (text: string) => {
+			const trimmed = text.trim();
+			if (!trimmed) return;
+			update((s) => ({ ...s, stdinQueue: [...s.stdinQueue, trimmed] }));
+		},
+
+		consumeStdin: (): string => {
+			let stdin = '';
+			update((s) => {
+				stdin = s.stdinQueue.map((line) => line + '\n').join('') + s.consoleInput;
+				return { ...s, stdinQueue: [], consoleInput: '' };
+			});
+			return stdin;
+		},
+
+		clearStdinQueue: () => {
+			update((s) => ({ ...s, stdinQueue: [] }));
 		},
 
 		toggleConsole: () => {
