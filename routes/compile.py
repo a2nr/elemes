@@ -87,6 +87,7 @@ def compile_code():
         code = None
         language = None
         token = None
+        stdin = ""
 
         if request.content_type and 'application/json' in request.content_type:
             try:
@@ -95,6 +96,7 @@ def compile_code():
                     code = json_data.get('code', '')
                     language = json_data.get('language', '')
                     token = json_data.get('token', '').strip()
+                    stdin = json_data.get('stdin', '') or ''
             except Exception:
                 pass
 
@@ -102,6 +104,7 @@ def compile_code():
             code = request.form.get('code', '')
             language = request.form.get('language', '')
             token = request.form.get('token', '').strip()
+            stdin = request.form.get('stdin', '') or ''
 
         # Authorization logic:
         # 1. If token is provided, it MUST be valid.
@@ -130,7 +133,7 @@ def compile_code():
             # Forward to worker
             response = requests.post(
                 COMPILER_WORKER_URL,
-                json={'code': code, 'language': language},
+                json={'code': code, 'language': language, 'stdin': stdin},
                 timeout=15
             )
             return jsonify(response.json())

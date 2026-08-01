@@ -14,18 +14,17 @@
 		auth.init();
 	});
 
-	// Suppress Navbar/Footer on full-viewport routes (e.g. /playground)
-	let isFullViewport = $derived($page.url.pathname === '/playground');
+	// Playground = full-viewport route: tanpa padding/overflow halaman biasa, footer disembunyikan.
+	// Navbar tetap tampil (theme toggle + token login) — tinggi main otomatis menyesuaikan via flex.
+	let isPlayground = $derived($page.url.pathname === '/playground');
 </script>
 
-{#if !isFullViewport}
-	<Navbar />
-{/if}
+<Navbar />
 
-<main class="container" style="flex: 1; padding-block: {isFullViewport ? '0' : '1.5rem'}; overflow: {isFullViewport ? 'hidden' : 'visible'};">
+<main class="container" style="flex: 1; padding-block: {isPlayground ? '0' : '1.5rem'}; overflow: {isPlayground ? 'hidden' : 'visible'};">
 	{@render children()}
 </main>
 
-{#if !isFullViewport}
+{#if !isPlayground}
 	<Footer />
 {/if}
