@@ -43,12 +43,16 @@
 		const file = activeFile;
 		if (!file || $playgroundStore.running) return;
 
-		const stdin = $playgroundStore.consoleInput;
-		playgroundStore.setConsoleInput('');
+		const stdin = playgroundStore.consumeStdin();
 		playgroundStore.setRunning(true);
 		playgroundStore.appendConsole(
 			consoleLine('info', `$ run ${file.name} [${codeLanguage}]`)
 		);
+		if (!stdin) {
+			playgroundStore.appendConsole(
+				consoleLine('info', '(tanpa stdin — program yang membaca input akan mendapat EOF)')
+			);
+		}
 
 		try {
 			const res = await compileCode({
@@ -190,7 +194,7 @@
 			</div>
 		{:else if activeTab === 'code'}
 			<div class="pg-code-wrap">
-				<FileTree onselect={() => activeTab = 'code'} />
+				<FileTree language={codeLanguage} onselect={() => activeTab = 'code'} />
 
 				<div class="pg-code-main">
 					<div class="pg-code-toolbar">
