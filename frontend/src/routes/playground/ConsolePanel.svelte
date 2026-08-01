@@ -19,6 +19,9 @@
 	function sendInput() {
 		const text = get(playgroundStore).consoleInput.trim();
 		if (!text) return;
+		// Tambah ke antrean stdin (bukan hanya history)
+		playgroundStore.enqueueStdin(text);
+		// Tetap tampilkan di console history sebagai baris input
 		const line: ConsoleLine = { type: 'input', text, timestamp: Date.now() };
 		playgroundStore.appendConsole(line);
 		playgroundStore.setConsoleInput('');
@@ -89,8 +92,8 @@
 				value={$playgroundStore.consoleInput}
 				oninput={(e) => playgroundStore.setConsoleInput(e.currentTarget.value)}
 				onkeydown={handleKeydown}
-				placeholder="Input program (stdin) — dikirim saat Run…"
-			/>
+				placeholder="Ketik input, enter/Kirim untuk antre, lalu Run…"
+				/>
 			<button class="console-send" onclick={sendInput}>Kirim</button>
 		</div>
 	{/if}
