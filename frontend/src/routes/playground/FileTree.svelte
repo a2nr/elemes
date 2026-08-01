@@ -2,10 +2,17 @@
 	import { playgroundStore } from '$stores/playground';
 
 	interface Props {
+		language?: 'c' | 'python';
 		onselect?: (id: string) => void;
 	}
 
-	let { onselect }: Props = $props();
+	let { language = 'c', onselect }: Props = $props();
+
+	const fileExt = $derived(language === 'python' ? '.py' : '.c');
+	const langLabel = $derived(language === 'python' ? 'Python' : 'C');
+	const filteredFiles = $derived(
+		$playgroundStore.files.filter((f) => f.name.toLowerCase().endsWith(fileExt))
+	);
 
 	let renamingId = $state<string | null>(null);
 	let renameValue = $state('');
@@ -49,17 +56,21 @@
 
 <div class="file-tree">
 	<div class="ft-header">
-		<span class="ft-title">File</span>
-		<button class="ft-new-btn" onclick={() => playgroundStore.addFile('main.c')} title="Buat file baru">
+		<span class="ft-title">{langLabel} Files</span>
+		<button
+			class="ft-new-btn"
+			onclick={() => playgroundStore.addFile(language === 'python' ? 'main.py' : 'main.c')}
+			title={`Buat file ${fileExt} baru`}
+		>
 			+
 		</button>
 	</div>
 
-	{#if $playgroundStore.files.length === 0}
+	{#if filteredFiles.length === 0}
 		<div class="ft-empty">Belum ada file. Klik + untuk membuat.</div>
 	{:else}
 		<div class="ft-list">
-			{#each $playgroundStore.files as file (file.id)}
+			{#each filteredFiles as file (file.id)}
 				<div
 					class="ft-item"
 					class:active={file.id === $playgroundStore.activeFileId}
