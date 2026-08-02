@@ -1,36 +1,79 @@
 <script lang="ts">
 	import { playgroundStore } from '$stores/playground';
+	import {
+		uniqueDefaultName,
+		validateFileName,
+		type PlaygroundLanguage
+	} from '$services/playground-files';
 
 	interface Props {
-		language?: 'c' | 'python';
+		language?: PlaygroundLanguage;
 		onselect?: (id: string) => void;
 	}
 
 	let { language = 'c', onselect }: Props = $props();
 
-	const fileExt = $derived(language === 'python' ? '.py' : '.c');
 	const langLabel = $derived(language === 'python' ? 'Python' : 'C');
+
 	const filteredFiles = $derived(
-		$playgroundStore.files.filter((f) => f.name.toLowerCase().endsWith(fileExt))
+		$playgroundStore.files.filter((f) => {
+			const ext = f.name.includes('.') ? f.name.slice(f.name.lastIndexOf('.')) : '';
+			return language === 'python' ? ext === '.py' : ext === '.c' || ext === '.h';
+		})
 	);
 
 	let renamingId = $state<string | null>(null);
 	let renameValue = $state('');
+	let renameError = $state<string | null>(null);
+	let renameInput = $state<HTMLInputElement | null>(null);
+
+	/** Nama file lain (untuk deteksi duplikat saat rename). */
+	function otherNames(currentId: string | null): string[] {
+		return $playgroundStore.files
+			.filter((f) => f.id !== currentId)
+			.map((f) => f.name);
+	}
 
 	function selectFile(id: string) {
 		playgroundStore.setActiveFile(id);
 		onselect?.(id);
 	}
 
-	function startRename(id: string, currentName: string) {
+	function beginRename(id: string, initialName: string) {
 		renamingId = id;
-		renameValue = currentName;
+		renameValue = initialName;
+		renameError = null;
+		// Fokus + select nama (tanpa ekstensi) di tick berikutnya
+		queueMicrotask(() => {
+			renameInput?.focus();
+			const dot = initialName.lastIndexOf('.');
+			renameInput?.setSelectionRange(0, dot > 0 ? dot : initialName.length);
+		});
+	}
+
+	/** Rename kosong/Enter → batal (tanpa menghapus file). */
+	function cancelRename() {
+		renamingId = null;
+		renameError = null;
 	}
 
 	function commitRename(id: string) {
-		const name = renameValue.trim();
-		if (name) playgroundStore.renameFile(id, name);
+		const res = validateFileName(renameValue, language, otherNames(id));
+		if (!res.ok) {
+			renameError = res.reason;
+			return; // input tetap terbuka — JANGAN commit nama invalid
+		}
+		playgroundStore.renameFile(id, res.name);
 		renamingId = null;
+		renameError = null;
+	}
+
+	/** Tambah file baru dengan nama unik, langsung mode rename. */
+	function addFile() {
+		const base = 'untitled';
+		const name = uniqueDefaultName(base, language, $playgroundStore.files.map((f) => f.name));
+		const id = playgroundStore.addFile(name);
+		beginRename(id, name);
 	}
 
 	function getFileIcon(name: string): string {
@@ -57,13 +100,16 @@
 <div class="file-tree">
 	<div class="ft-header">
 		<span class="ft-title">{langLabel} Files</span>
-		<button
-			class="ft-new-btn"
-			onclick={() => playgroundStore.addFile(language === 'python' ? 'main.py' : 'main.c')}
-			title={`Buat file ${fileExt} baru`}
-		>
-			+
-		</button>
+		<div class="ft-header-actions">
+			<button
+				class="ft-new-btn"
+				onclick={addFile}
+				title={`Buat file ${language === 'python' ? '.py' : '.c/.h'} baru`}
+				aria-label="Tambah file baru"
+			>
+				+
+			</button>
+		</div>
 	</div>
 
 	{#if filteredFiles.length === 0}
@@ -86,28 +132,47 @@
 				>
 					<span class="ft-icon">{getFileIcon(file.name)}</span>
 					{#if renamingId === file.id}
-						<input
-							class="ft-rename"
-							bind:value={renameValue}
-							onkeydown={(e) => {
-								if (e.key === 'Enter') commitRename(file.id);
-								if (e.key === 'Escape') renamingId = null;
-							}}
-							onclick={(e) => e.stopPropagation()}
-						/>
+						<span class="ft-rename-wrap">
+							<input
+								bind:this={renameInput}
+								class="ft-rename"
+								class:invalid={!!renameError}
+								value={renameValue}
+								oninput={(e) => {
+									renameValue = e.currentTarget.value;
+									renameError = null;
+								}}
+								onkeydown={(e) => {
+									if (e.key === 'Enter') {
+										e.preventDefault();
+										commitRename(file.id);
+									}
+									if (e.key === 'Escape') {
+										e.preventDefault();
+										cancelRename();
+									}
+								}}
+								onclick={(e) => e.stopPropagation()}
+								aria-label="Nama file baru"
+							/>
+							{#if renameError}
+								<span class="ft-rename-error" role="alert">{renameError}</span>
+							{/if}
+						</span>
 					{:else}
 						<span class="ft-name">{file.name}</span>
 					{/if}
 					{#if file.modified}
 						<span class="ft-dot" title="Belum tersimpan">·</span>
 					{/if}
-					<span class="ft-actions">
+					<span class="ft-row-actions">
 						<button
 							class="ft-action"
 							title="Ubah nama"
+							aria-label={`Ubah nama ${file.name}`}
 							onclick={(e) => {
 								e.stopPropagation();
-								startRename(file.id, file.name);
+								beginRename(file.id, file.name);
 							}}
 						>
 							✎
@@ -115,6 +180,7 @@
 						<button
 							class="ft-action"
 							title="Hapus"
+							aria-label={`Hapus ${file.name}`}
 							onclick={(e) => {
 								e.stopPropagation();
 								playgroundStore.deleteFile(file.id);
@@ -155,6 +221,11 @@
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		color: var(--color-text-muted);
+	}
+
+	.ft-header-actions {
+		display: flex;
+		gap: 0.25rem;
 	}
 
 	.ft-new-btn {
@@ -226,9 +297,16 @@
 		min-width: 0;
 	}
 
-	.ft-rename {
+	.ft-rename-wrap {
 		flex: 1;
 		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.ft-rename {
+		width: 100%;
 		font-size: 0.8rem;
 		padding: 0.15rem 0.3rem;
 		border: 1px solid var(--color-primary);
@@ -238,13 +316,23 @@
 		outline: none;
 	}
 
+	.ft-rename.invalid {
+		border-color: var(--color-danger);
+	}
+
+	.ft-rename-error {
+		font-size: 0.68rem;
+		color: var(--color-danger);
+		line-height: 1.3;
+	}
+
 	.ft-dot {
 		color: var(--color-warning);
 		font-size: 0.9rem;
 		flex-shrink: 0;
 	}
 
-	.ft-actions {
+	.ft-row-actions {
 		display: flex;
 		gap: 0.15rem;
 		flex-shrink: 0;
@@ -252,7 +340,9 @@
 		transition: opacity 0.15s;
 	}
 
-	.ft-item:hover .ft-actions {
+	.ft-item:hover .ft-row-actions,
+	.ft-item:focus-within .ft-row-actions,
+	.ft-item:focus .ft-row-actions {
 		opacity: 1;
 	}
 
@@ -272,11 +362,16 @@
 		color: var(--color-primary);
 	}
 
-	::-webkit-scrollbar {
+	.ft-action:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 1px;
+	}
+
+	.file-tree ::-webkit-scrollbar {
 		width: 6px;
 	}
 
-	::-webkit-scrollbar-thumb {
+	.file-tree ::-webkit-scrollbar-thumb {
 		background: var(--color-border);
 		border-radius: 3px;
 	}

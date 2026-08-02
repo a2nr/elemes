@@ -9,7 +9,13 @@
  */
 
 import type { LoginResponse, ValidateTokenResponse } from '$types/auth';
-import type { CompileRequest, CompileResponse } from '$types/compiler';
+import type {
+	CompileRequest,
+	CompileResponse,
+	SessionPollResponse,
+	SessionStopResponse,
+	StartSessionRequest
+} from '$types/compiler';
 import type { Lesson, LessonContent } from '$types/lesson';
 
 const BASE = '/api';
@@ -25,6 +31,11 @@ async function post<T>(path: string, body: unknown, customFetch = fetch): Promis
 
 async function get<T>(path: string, customFetch = fetch): Promise<T> {
 	const res = await customFetch(`${BASE}${path}`);
+	return res.json() as Promise<T>;
+}
+
+async function del<T>(path: string, customFetch = fetch): Promise<T> {
+	const res = await customFetch(`${BASE}${path}`, { method: 'DELETE' });
 	return res.json() as Promise<T>;
 }
 
@@ -61,6 +72,25 @@ export function getKeyText(filename: string, customFetch = fetch) {
 
 export function compileCode(req: CompileRequest, customFetch = fetch) {
 	return post<CompileResponse>('/compile', req, customFetch);
+}
+
+// ── Interactive session (PTY) ───────────────────────────────────────
+
+export function startCompileSession(req: StartSessionRequest, customFetch = fetch) {
+	return post<SessionPollResponse>('/compile/sessions', req, customFetch);
+}
+
+export function readCompileSession(sessionId: string, cursor: number, customFetch = fetch) {
+	const query = cursor > 0 ? `?cursor=${cursor}` : '';
+	return get<SessionPollResponse>(`/compile/sessions/${sessionId}${query}`, customFetch);
+}
+
+export function sendCompileInput(sessionId: string, text: string, customFetch = fetch) {
+	return post<SessionPollResponse>(`/compile/sessions/${sessionId}/input`, { text }, customFetch);
+}
+
+export function stopCompileSession(sessionId: string, customFetch = fetch) {
+	return del<SessionStopResponse>(`/compile/sessions/${sessionId}`, customFetch);
 }
 
 export interface VelxioCompileRequest {

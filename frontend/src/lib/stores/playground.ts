@@ -3,9 +3,14 @@
  *
  * State untuk route /playground: file tree (C/Python) + console output/input.
  * Mengikuti pola stores lain di proyek (svelte/store writable).
+ *
+ * Lifecycle sesi interaktif:
+ *   idle → queued/compiling/running → exited/error/stopped → idle
+ *   'stopping' = DELETE session sedang berlangsung.
  */
 
 import { writable } from 'svelte/store';
+import type { InteractiveRunStatus } from '$types/compiler';
 
 export interface PlaygroundFile {
 	id: string;
@@ -22,7 +27,8 @@ export interface ConsoleLine {
 	timestamp: number;
 }
 
-export type RunState = 'idle' | 'running';
+/** Status sesi dari sisi UI. 'idle' = tidak ada sesi aktif. */
+export type RunStatus = 'idle' | InteractiveRunStatus | 'stopping';
 
 interface PlaygroundState {
 	files: PlaygroundFile[];
@@ -31,7 +37,15 @@ interface PlaygroundState {
 	consoleInput: string;
 	stdinQueue: string[];
 	consoleVisible: boolean;
-	running: boolean;
+	fileTreeVisible: boolean;
+	/** Status runtime sesi interaktif (bukan sekadar boolean). */
+	runStatus: RunStatus;
+	/** ID sesi interaktif di worker, null saat idle. */
+	runSessionId: string | null;
+	/** Byte cursor output terakhir yang sudah di-append ke console. */
+	outputCursor: number;
+	/** Pesan error runtime/sesi terakhir (null saat tidak ada). */
+	runError: string | null;
 }
 
 const STORAGE_KEY = 'elemes_playground_files_v1';
@@ -89,7 +103,11 @@ function initialState(): PlaygroundState {
 		consoleInput: '',
 		stdinQueue: [],
 		consoleVisible: true,
-		running: false
+		fileTreeVisible: true,
+		runStatus: 'idle',
+		runSessionId: null,
+		outputCursor: 0,
+		runError: null
 	};
 }
 
@@ -98,6 +116,8 @@ function createPlaygroundStore() {
 
 	return {
 		subscribe,
+
+		// ── File management ──────────────────────────────────────────
 
 		addFile: (name: string): string => {
 			const id = generateId();
@@ -156,6 +176,8 @@ function createPlaygroundStore() {
 			});
 		},
 
+		// ── Console ──────────────────────────────────────────────────
+
 		appendConsole: (line: ConsoleLine) => {
 			update((s) => ({
 				...s,
@@ -194,8 +216,61 @@ function createPlaygroundStore() {
 			update((s) => ({ ...s, consoleVisible: !s.consoleVisible }));
 		},
 
-		setRunning: (running: boolean) => {
-			update((s) => ({ ...s, running }));
+		// ── File tree visibility ─────────────────────────────────────
+
+		setFileTreeVisible: (visible: boolean) => {
+			update((s) => ({ ...s, fileTreeVisible: visible }));
+		},
+
+		toggleFileTree: () => {
+			update((s) => ({ ...s, fileTreeVisible: !s.fileTreeVisible }));
+		},
+
+		// ── Interactive session lifecycle ────────────────────────────
+
+		startRunSession: (sessionId: string, status: InteractiveRunStatus) => {
+			update((s) => ({
+				...s,
+				runStatus: status,
+				runSessionId: sessionId,
+				outputCursor: 0,
+				runError: null
+			}));
+		},
+
+		updateRunStatus: (status: RunStatus) => {
+			update((s) => ({ ...s, runStatus: status }));
+		},
+
+		advanceOutputCursor: (cursor: number) => {
+			update((s) => ({
+				...s,
+				outputCursor: Math.max(s.outputCursor, cursor)
+			}));
+		},
+
+		setRunError: (error: string) => {
+			update((s) => ({ ...s, runError: error }));
+		},
+
+		/** Transisi sesi → terminal. Hanya terima status terminal. */
+		finishRun: (status: InteractiveRunStatus, error?: string | null) => {
+			update((s) => ({
+				...s,
+				runStatus: status,
+				runError: error ?? s.runError
+			}));
+		},
+
+		/** Bersihkan lifecycle sesi sepenuhnya (kembali idle). */
+		resetRunSession: () => {
+			update((s) => ({
+				...s,
+				runStatus: 'idle',
+				runSessionId: null,
+				outputCursor: 0,
+				runError: null
+			}));
 		},
 
 		reset: () => {

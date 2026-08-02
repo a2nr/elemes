@@ -2,10 +2,25 @@
 	import { get } from 'svelte/store';
 	import { playgroundStore, type ConsoleLine } from '$stores/playground';
 
+	interface Props {
+		/** Kirim input ke sesi aktif; throw bila gagal (input tidak di-commit). */
+		onSendInput?: (text: string) => Promise<void>;
+		/** Stop sesi aktif (DELETE). */
+		onStop?: () => Promise<void>;
+	}
+
+	let { onSendInput, onStop }: Props = $props();
+
 	let outputEl: HTMLDivElement | undefined = $state();
+	let sending = $state(false);
 
 	const consoleHistory = $derived($playgroundStore.consoleHistory);
 	const consoleVisible = $derived($playgroundStore.consoleVisible);
+	const runStatus = $derived($playgroundStore.runStatus);
+	const isActive = $derived(
+		runStatus === 'queued' || runStatus === 'compiling' || runStatus === 'running'
+	);
+	const isStopping = $derived(runStatus === 'stopping');
 
 	// Auto-scroll ke bawah saat ada output baru
 	$effect(() => {
@@ -16,19 +31,44 @@
 		}
 	});
 
-	function sendInput() {
-		const text = get(playgroundStore).consoleInput.trim();
+	async function sendInput() {
+		if (sending) return;
+		const text = get(playgroundStore).consoleInput;
 		if (!text) return;
-		// Tambah ke antrean stdin (bukan hanya history)
-		playgroundStore.enqueueStdin(text);
-		// Tetap tampilkan di console history sebagai baris input
-		const line: ConsoleLine = { type: 'input', text, timestamp: Date.now() };
-		playgroundStore.appendConsole(line);
-		playgroundStore.setConsoleInput('');
+
+		if (!isActive || !onSendInput) {
+			// Mode antrean (idle/terminal): simpan ke stdinQueue utk Run berikutnya
+			playgroundStore.enqueueStdin(text);
+			const line: ConsoleLine = { type: 'input', text: text.trim(), timestamp: Date.now() };
+			playgroundStore.appendConsole(line);
+			playgroundStore.setConsoleInput('');
+			return;
+		}
+
+		// Mode aktif: kirim ke sesi — history hanya setelah POST berhasil
+		sending = true;
+		try {
+			await onSendInput(text);
+			const line: ConsoleLine = { type: 'input', text, timestamp: Date.now() };
+			playgroundStore.appendConsole(line);
+			playgroundStore.setConsoleInput('');
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : String(err);
+			playgroundStore.appendConsole(consoleErrorLine(`Input gagal dikirim: ${msg}`));
+		} finally {
+			sending = false;
+		}
+	}
+
+	function consoleErrorLine(text: string): ConsoleLine {
+		return { type: 'error', text, timestamp: Date.now() };
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') sendInput();
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			void sendInput();
+		}
 	}
 
 	function getLineColor(type: ConsoleLine['type']): string {
@@ -45,14 +85,29 @@
 				return 'var(--color-text)';
 		}
 	}
+
+	function statusLabel(): string | null {
+		if (isStopping) return '⏹ Menghentikan…';
+		if (isActive) return '⏳ Menjalankan…';
+		return null;
+	}
 </script>
 
 <div class="console-panel" class:collapsed={!consoleVisible}>
 	<div class="console-header">
 		<span class="console-title">Console</span>
 		<div class="console-actions">
-			{#if $playgroundStore.running}
-				<span class="console-running">⏳ Menjalankan…</span>
+			{#if statusLabel()}
+				<span class="console-running">{statusLabel()}</span>
+			{/if}
+			{#if isActive && !isStopping}
+				<button
+					class="console-btn console-stop"
+					onclick={() => void onStop?.()}
+					title="Hentikan program"
+				>
+					⏹ Stop
+				</button>
 			{/if}
 			<button
 				class="console-btn"
@@ -92,9 +147,26 @@
 				value={$playgroundStore.consoleInput}
 				oninput={(e) => playgroundStore.setConsoleInput(e.currentTarget.value)}
 				onkeydown={handleKeydown}
-				placeholder="Ketik input, enter/Kirim untuk antre, lalu Run…"
-				/>
-			<button class="console-send" onclick={sendInput}>Kirim</button>
+				placeholder={
+					isActive
+						? 'Ketik jawaban, Enter untuk mengirim…'
+						: 'Ketik input, Enter untuk mengantre, lalu Run…'
+				}
+			/>
+			{#if isActive && !isStopping}
+				<button class="console-send" onclick={() => void sendInput()} disabled={sending}>
+					{sending ? '…' : 'Kirim'}
+				</button>
+			{:else}
+				<button
+					class="console-send"
+					onclick={() => void sendInput()}
+					disabled={isStopping}
+					title="Antrekan sebagai input untuk Run berikutnya"
+				>
+					Antrekan
+				</button>
+			{/if}
 		</div>
 	{/if}
 </div>
@@ -157,6 +229,11 @@
 	.console-btn:hover {
 		background: var(--color-bg);
 		color: var(--color-primary);
+	}
+
+	.console-stop {
+		color: var(--color-danger);
+		font-size: 0.75rem;
 	}
 
 	.console-output {
@@ -233,15 +310,20 @@
 		transition: opacity 0.15s;
 	}
 
-	.console-send:hover {
+	.console-send:hover:not(:disabled) {
 		opacity: 0.85;
 	}
 
-	::-webkit-scrollbar {
+	.console-send:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.console-panel ::-webkit-scrollbar {
 		width: 6px;
 	}
 
-	::-webkit-scrollbar-thumb {
+	.console-panel ::-webkit-scrollbar-thumb {
 		background: var(--color-border);
 		border-radius: 3px;
 	}

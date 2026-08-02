@@ -2,7 +2,13 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { auth } from '$stores/auth';
 	import { playgroundStore, type ConsoleLine } from '$stores/playground';
-	import { compileCode } from '$services/api';
+	import {
+		startCompileSession,
+		readCompileSession,
+		sendCompileInput,
+		stopCompileSession
+	} from '$services/api';
+	import type { InteractiveRunStatus } from '$types/compiler';
 	import DeployFAB from '$components/DeployFAB.svelte';
 	import CircuitEditor from '$components/CircuitEditor.svelte';
 	import CodeEditor from '$components/CodeEditor.svelte';
@@ -19,9 +25,23 @@
 	const activeFile = $derived(
 		$playgroundStore.files.find((f) => f.id === $playgroundStore.activeFileId) ?? null
 	);
-	const codeLanguage = $derived(
+	const codeLanguage = $derived<'c' | 'python'>(
 		activeFile?.name.toLowerCase().endsWith('.py') ? 'python' : 'c'
 	);
+
+	// ── Interactive session state (lokal; lifecycle di store) ──
+	let pollTimer: ReturnType<typeof setTimeout> | null = null;
+	let generation = 0;
+	const TERMINAL_STATUSES = new Set<InteractiveRunStatus>([
+		'exited',
+		'error',
+		'stopped',
+		'expired'
+	]);
+
+	function consoleLine(type: ConsoleLine['type'], text: string): ConsoleLine {
+		return { type, text, timestamp: Date.now() };
+	}
 
 	function selectCodeLanguage(lang: 'c' | 'python') {
 		const ext = lang === 'python' ? '.py' : '.c';
@@ -34,56 +54,171 @@
 		activeTab = 'code';
 	}
 
-	function consoleLine(type: ConsoleLine['type'], text: string): ConsoleLine {
-		return { type, text, timestamp: Date.now() };
+	// ── Session lifecycle ─────────────────────────────────────────────
+
+	function clearPollTimer() {
+		if (pollTimer) {
+			clearTimeout(pollTimer);
+			pollTimer = null;
+		}
 	}
 
-	// ── Run (console output/input via /api/compile) ──
-	async function runActiveFile() {
-		const file = activeFile;
-		if (!file || $playgroundStore.running) return;
+	function schedulePoll(delayMs: number) {
+		clearPollTimer();
+		pollTimer = setTimeout(() => void pollOnce(), delayMs);
+	}
 
-		const stdin = playgroundStore.consumeStdin();
-		playgroundStore.setRunning(true);
-		playgroundStore.appendConsole(
-			consoleLine('info', `$ run ${file.name} [${codeLanguage}]`)
-		);
-		if (!stdin) {
-			playgroundStore.appendConsole(
-				consoleLine('info', '(tanpa stdin — program yang membaca input akan mendapat EOF)')
-			);
+	function projectFiles(): { files: { name: string; content: string }[]; active_file: string } {
+		const lang = codeLanguage;
+		const visible = lang === 'python' ? /\.py$/i : /\.(c|h)$/i;
+		const files = $playgroundStore.files
+			.filter((f) => visible.test(f.name))
+			.map((f) => ({ name: f.name, content: f.content }));
+		const activeName = activeFile?.name ?? files[0]?.name ?? '';
+		return { files, active_file: activeName };
+	}
+
+	async function startRun() {
+		const s = $playgroundStore;
+		// Abaikan bila masih ada sesi berjalan/berhenti
+		if (s.runStatus !== 'idle' && !TERMINAL_STATUSES.has(s.runStatus as InteractiveRunStatus)) {
+			return;
 		}
+		const { files, active_file } = projectFiles();
+		if (files.length === 0 || !active_file) return;
+
+		// Konsumsi stdin yang diantrekan (prefilled) utk Run ini
+		const stdin = playgroundStore.consumeStdin();
+		const lang = codeLanguage;
+		playgroundStore.appendConsole(
+			consoleLine('info', `$ run project [${lang}]${stdin ? ' (dengan stdin antrean)' : ''}`)
+		);
+
+		generation += 1;
+		const myGen = generation;
+		clearPollTimer();
 
 		try {
-			const res = await compileCode({
-				code: file.content,
-				language: codeLanguage,
-				token: auth.token || undefined,
-				stdin
+			const res = await startCompileSession({
+				language: lang,
+				files,
+				active_file,
+				stdin: stdin || undefined,
+				token: auth.token || undefined
 			});
-
-			if (res.success) {
-				if (res.output) {
-					playgroundStore.appendConsole(consoleLine('output', res.output));
-				}
-				if (res.error) {
-					playgroundStore.appendConsole(consoleLine('error', res.error));
-				}
-				if (!res.output && !res.error) {
-					playgroundStore.appendConsole(consoleLine('info', '(selesai, tanpa output)'));
-				}
-			} else {
+			if (myGen !== generation) return; // sesi baru / unmount
+			if (!res.session_id) {
 				playgroundStore.appendConsole(
-					consoleLine('error', res.error || res.output || 'Gagal menjalankan program')
+					consoleLine('error', res.error || 'Gagal memulai sesi program')
 				);
+				playgroundStore.resetRunSession();
+				return;
 			}
+			playgroundStore.startRunSession(res.session_id, res.status);
+			handlePollResponse(res);
 		} catch (err) {
+			if (myGen !== generation) return;
 			playgroundStore.appendConsole(
 				consoleLine('error', `Error: ${err instanceof Error ? err.message : String(err)}`)
 			);
-		} finally {
-			playgroundStore.setRunning(false);
+			playgroundStore.resetRunSession();
 		}
+	}
+
+	async function pollOnce() {
+		const s = $playgroundStore;
+		const sid = s.runSessionId;
+		if (!sid || TERMINAL_STATUSES.has(s.runStatus as InteractiveRunStatus)) return;
+
+		const myGen = generation;
+		try {
+			const res = await readCompileSession(sid, s.outputCursor);
+			if (myGen !== generation) return;
+			handlePollResponse(res);
+		} catch (err) {
+			if (myGen !== generation) return;
+			// Network hiccup — coba lagi dengan delay lebih panjang, jangan mati diam-diam
+			schedulePoll(1000);
+		}
+	}
+
+	function handlePollResponse(res: {
+		status: InteractiveRunStatus;
+		output: string;
+		cursor: number;
+		truncated?: boolean;
+		exit_code?: number | null;
+		error?: string | null;
+	}) {
+		const s = $playgroundStore;
+		if (res.output) {
+			playgroundStore.appendConsole(consoleLine('output', res.output));
+		}
+		if (res.truncated) {
+			playgroundStore.appendConsole(
+				consoleLine('info', '(⚠ output dipotong — batas 256 KiB)')
+			);
+		}
+		playgroundStore.advanceOutputCursor(res.cursor);
+
+		if (TERMINAL_STATUSES.has(res.status)) {
+			// Terminal — tampilkan sisa error bila ada
+			if (res.error) {
+				playgroundStore.appendConsole(consoleLine('error', res.error));
+			} else if (res.exit_code != null && res.exit_code !== 0) {
+				playgroundStore.appendConsole(
+					consoleLine('error', `(program keluar dengan kode ${res.exit_code})`)
+				);
+			} else if (res.status === 'exited' && !res.output) {
+				playgroundStore.appendConsole(consoleLine('info', '(selesai, tanpa output)'));
+			}
+			playgroundStore.finishRun(res.status, res.error ?? null);
+			// Terminal — release session di worker (best effort)
+			const terminalSid = $playgroundStore.runSessionId;
+			if (terminalSid) void stopCompileSession(terminalSid);
+			return;
+		}
+
+		playgroundStore.updateRunStatus(res.status);
+
+		// Polling adaptif: cepat di awal/berubah, melambat setelah stabil
+		const changed = res.status === 'queued' || res.status === 'compiling';
+		schedulePoll(changed ? 250 : 750);
+	}
+
+	async function sendInputToSession(text: string) {
+		const s = $playgroundStore;
+		if (!s.runSessionId || s.runStatus !== 'running') {
+			// Jatuh ke mode antrean — ConsolePanel menangani sendiri saat idle;
+			// di sini hanya mencegah kirim ke sesi yang tidak aktif.
+			throw new Error('tidak ada sesi aktif');
+		}
+		await sendCompileInput(s.runSessionId, text);
+	}
+
+	async function stopRun() {
+		const sid = $playgroundStore.runSessionId;
+		if (!sid) return;
+		clearPollTimer();
+		playgroundStore.updateRunStatus('stopping');
+		try {
+			await stopCompileSession(sid);
+		} catch {
+			// best effort — sesi worker akan di-sweep sendiri
+		}
+		const s = $playgroundStore;
+		if (s.runSessionId === sid) {
+			playgroundStore.finishRun('stopped', 'program dihentikan oleh pengguna');
+			playgroundStore.resetRunSession();
+		}
+	}
+
+	function switchTab(tab: PlaygroundTab) {
+		if (tab !== 'code' && $playgroundStore.runStatus !== 'idle') {
+			// Stop sesi aktif saat pindah tab
+			void stopRun();
+		}
+		activeTab = tab;
 	}
 
 	// ── Velxio + DeployFAB ──
@@ -127,6 +262,14 @@
 
 	onDestroy(() => {
 		window.removeEventListener('message', handleMessage);
+		generation += 1; // invalidasi polling yang sedang berjalan
+		clearPollTimer();
+		const sid = $playgroundStore.runSessionId;
+		if (sid) {
+			// Best-effort cleanup sesi (keepalive agar tak ter-blokir navigasi)
+			void stopCompileSession(sid);
+			playgroundStore.resetRunSession();
+		}
 	});
 </script>
 
@@ -144,13 +287,13 @@
 <div class="playground-page">
 	<!-- Tab bar -->
 	<div class="pg-tabs">
-		<button class="pg-tab" class:active={activeTab === 'velxio'} onclick={() => activeTab = 'velxio'}>
+		<button class="pg-tab" class:active={activeTab === 'velxio'} onclick={() => switchTab('velxio')}>
 			Arduino
 		</button>
-		<button class="pg-tab" class:active={activeTab === 'flowchart'} onclick={() => activeTab = 'flowchart'}>
+		<button class="pg-tab" class:active={activeTab === 'flowchart'} onclick={() => switchTab('flowchart')}>
 			Flowchart
 		</button>
-		<button class="pg-tab" class:active={activeTab === 'circuit'} onclick={() => activeTab = 'circuit'}>
+		<button class="pg-tab" class:active={activeTab === 'circuit'} onclick={() => switchTab('circuit')}>
 			Circuit
 		</button>
 		<div class="pg-tab-group">
@@ -194,7 +337,24 @@
 			</div>
 		{:else if activeTab === 'code'}
 			<div class="pg-code-wrap">
-				<FileTree language={codeLanguage} onselect={() => activeTab = 'code'} />
+				<!-- File tree shell: tree dilepas dari DOM saat collapsed agar flexbox menghitung ulang -->
+				<div
+					class="pg-file-tree-shell"
+					class:collapsed={!$playgroundStore.fileTreeVisible}
+				>
+					{#if $playgroundStore.fileTreeVisible}
+						<FileTree language={codeLanguage} onselect={() => activeTab = 'code'} />
+					{/if}
+					<button
+						class="pg-file-tree-handle"
+						aria-expanded={$playgroundStore.fileTreeVisible}
+						aria-label={$playgroundStore.fileTreeVisible ? 'Sembunyikan file' : 'Tampilkan file'}
+						title={$playgroundStore.fileTreeVisible ? 'Sembunyikan file' : 'Tampilkan file'}
+						onclick={() => playgroundStore.toggleFileTree()}
+					>
+						{#if $playgroundStore.fileTreeVisible}⟨{:else}⟩{/if}
+					</button>
+				</div>
 
 				<div class="pg-code-main">
 					<div class="pg-code-toolbar">
@@ -203,10 +363,14 @@
 						<div class="pg-toolbar-spacer"></div>
 						<button
 							class="pg-run-btn"
-							onclick={runActiveFile}
-							disabled={$playgroundStore.running || !activeFile}
+							onclick={() => void startRun()}
+							disabled={($playgroundStore.runStatus !== 'idle' &&
+								!['exited', 'error', 'stopped', 'expired'].includes($playgroundStore.runStatus)) ||
+								!activeFile}
 						>
-							{#if $playgroundStore.running}
+							{#if $playgroundStore.runStatus === 'stopping'}
+								⏹ Menghentikan…
+							{:else if ['queued', 'compiling', 'running'].includes($playgroundStore.runStatus)}
 								⏳ Menjalankan…
 							{:else}
 								▶ Run
@@ -234,7 +398,10 @@
 
 	<!-- Console (C/Python tab) -->
 	{#if activeTab === 'code'}
-		<ConsolePanel />
+		<ConsolePanel
+			onSendInput={sendInputToSession}
+			onStop={stopRun}
+		/>
 	{/if}
 
 	<!-- DeployFAB only on Velxio tab -->
@@ -355,6 +522,49 @@
 		display: flex;
 	}
 
+	.pg-file-tree-shell {
+		display: flex;
+		flex-shrink: 0;
+		min-height: 0;
+		width: 230px;
+		transition: width 0.18s ease;
+	}
+
+	.pg-file-tree-shell > :global(.file-tree) {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.pg-file-tree-shell.collapsed {
+		width: 26px;
+	}
+
+	.pg-file-tree-handle {
+		flex-shrink: 0;
+		width: 26px;
+		background: var(--color-bg-secondary);
+		border: none;
+		border-left: 1px solid var(--color-border);
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 0.9rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		transition: background 0.15s, color 0.15s;
+	}
+
+	.pg-file-tree-handle:hover {
+		background: var(--color-bg);
+		color: var(--color-primary);
+	}
+
+	.pg-file-tree-handle:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: -2px;
+	}
+
 	.pg-code-main {
 		flex: 1;
 		min-width: 0;
@@ -455,6 +665,9 @@
 		}
 		.pg-iframe {
 			min-height: 400px;
+		}
+		.pg-file-tree-shell {
+			width: 180px;
 		}
 	}
 </style>
