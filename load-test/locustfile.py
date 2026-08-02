@@ -248,6 +248,113 @@ class ElemesStudent(HttpUser):
                     f"not in output '{output[:50]}'"
                 )
 
+    # ── Task 4b: Interactive Session Python (weight=4) ────────────────
+    # Alur baru playground: Run → prompt → ketik jawaban → Enter → output.
+
+    @task(4)
+    def interactive_session_python(self):
+        """Buat sesi interaktif Python, kirim input, verifikasi output.
+
+        Memakai token (login) agar lolos rate-limit anonymous dan mengukur
+        kapasitas compiler worker (max 50 sesi, 2 compile bersamaan).
+        """
+        code = (
+            'nama = input("Siapa nama kamu? ")\n'
+            'print(f"Halo, {nama}! Selamat belajar pemrograman.")\n'
+        )
+        payload = {
+            'language': 'python',
+            'files': [{'name': 'main.py', 'content': code}],
+            'active_file': 'main.py',
+            'token': self.token,
+        }
+
+        with self.client.post(
+            f'{API}/compile/sessions',
+            json=payload,
+            name='/compile/sessions [Python interactive]',
+            catch_response=True,
+            timeout=30,
+        ) as resp:
+            data = safe_json(resp)
+            if resp.status_code not in (200, 202) or not data.get('session_id'):
+                resp.failure(
+                    f"Session create failed: HTTP {resp.status_code} "
+                    f"{data.get('error', '')}"
+                )
+                return
+            session_id = data['session_id']
+
+        # Poll sampai prompt muncul (menandakan program menunggu input)
+        cursor = 0
+        prompt_seen = False
+        for _ in range(40):  # 40 x 0.5s = 20s maks
+            time.sleep(0.5)
+            with self.client.get(
+                f"{API}/compile/sessions/{session_id}",
+                params={'cursor': cursor},
+                name='/compile/sessions/{id} [poll]',
+                catch_response=True,
+                timeout=10,
+            ) as resp:
+                poll = safe_json(resp)
+                if resp.status_code != 200:
+                    resp.failure(f"Poll failed: HTTP {resp.status_code}")
+                    break
+                cursor = poll.get('cursor', cursor)
+                if 'Siapa nama kamu?' in poll.get('output', ''):
+                    prompt_seen = True
+                    break
+
+        if not prompt_seen:
+            self.client.delete(
+                f"{API}/compile/sessions/{session_id}",
+                name='/compile/sessions/{id} [cleanup]',
+            )
+            return
+
+        # Kirim input (tanpa newline — worker menambahkannya)
+        with self.client.post(
+            f"{API}/compile/sessions/{session_id}/input",
+            json={'text': 'Budi'},
+            name='/compile/sessions/{id}/input',
+            catch_response=True,
+            timeout=10,
+        ) as resp:
+            if resp.status_code != 200:
+                resp.failure(f"Input failed: HTTP {resp.status_code}")
+
+        # Poll sampai selesai; verifikasi output
+        for _ in range(40):
+            time.sleep(0.5)
+            with self.client.get(
+                f"{API}/compile/sessions/{session_id}",
+                params={'cursor': cursor},
+                name='/compile/sessions/{id} [poll]',
+                catch_response=True,
+                timeout=10,
+            ) as resp:
+                poll = safe_json(resp)
+                if resp.status_code != 200:
+                    resp.failure(f"Poll failed: HTTP {resp.status_code}")
+                    break
+                cursor = poll.get('cursor', cursor)
+                status = poll.get('status')
+                if status in ('exited', 'error', 'stopped'):
+                    output = poll.get('output', '')
+                    if 'Halo, Budi!' not in output:
+                        resp.failure(
+                            f"Output mismatch (status={status}): "
+                            f"{output[-120:]!r}"
+                        )
+                    break
+
+        # Cleanup session (best-effort)
+        self.client.delete(
+            f"{API}/compile/sessions/{session_id}",
+            name='/compile/sessions/{id} [cleanup]',
+        )
+
     # ── Task 5: Verify Arduino Lesson Structure (weight=2) ─────────────
 
     @task(2)

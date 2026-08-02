@@ -62,6 +62,15 @@ def detect_lesson_type(content: str) -> str:
     return 'c'
 
 
+def find_lesson_file(content_dir: str, slug: str) -> str | None:
+    """Cari file .md dengan slug (basename) di content_dir secara rekursif."""
+    target = f'{slug}.md'
+    for root, _dirs, files in os.walk(content_dir):
+        if target in files:
+            return os.path.join(root, target)
+    return None
+
+
 def parse_lesson(filepath: str) -> dict:
     """Parse a single lesson markdown file and extract test data."""
     with open(filepath, 'r', encoding='utf-8') as f:
@@ -121,6 +130,22 @@ def parse_lesson(filepath: str) -> dict:
         data['expected_wiring'] = expected_wiring
 
     return data
+
+
+def scan_all_lessons(content_dir: str) -> list[str]:
+    """Scan recursively for lesson slugs (basename without .md).
+
+    Konten tersimpan di subfolder (dasar/, arduino/, circuit/), sedangkan
+    API lesson memakai slug tanpa folder (find_lesson_file mencari di semua
+    folder). Sub-home.md bukan lesson, di-skip.
+    """
+    slugs = []
+    for root, _dirs, files in os.walk(content_dir):
+        for f in sorted(files):
+            if not f.endswith('.md') or f in ('home.md', 'sub-home.md'):
+                continue
+            slugs.append(f[:-3])
+    return sorted(set(slugs))
 
 
 def get_ordered_slugs(content_dir: str) -> list[str]:
@@ -239,21 +264,23 @@ def main():
 
     # 1. Get ordered lesson slugs
     ordered_slugs = get_ordered_slugs(content_dir)
+    all_slugs = scan_all_lessons(content_dir)
     if not ordered_slugs:
-        # Fallback: scan directory
-        ordered_slugs = [
-            f.replace('.md', '')
-            for f in sorted(os.listdir(content_dir))
-            if f.endswith('.md') and f not in ('home.md', 'sub-home.md')
-        ]
+        # Fallback: recursive scan (konten di subfolder)
+        ordered_slugs = all_slugs
+    else:
+        # Gabungkan: slug dari home.md (urutan) + slug hasil scan yang belum ada
+        for s in all_slugs:
+            if s not in ordered_slugs:
+                ordered_slugs.append(s)
 
     print(f"  📚 Found {len(ordered_slugs)} lessons:")
 
     # 2. Parse each lesson
     lessons = []
     for slug in ordered_slugs:
-        filepath = os.path.join(content_dir, f'{slug}.md')
-        if not os.path.exists(filepath):
+        filepath = find_lesson_file(content_dir, slug)
+        if not filepath:
             print(f"     ⚠  {slug}.md not found, skipping")
             continue
 
