@@ -15,6 +15,7 @@ from extensions import limiter
 compile_bp = Blueprint('compile', __name__)
 
 COMPILER_WORKER_URL = os.environ.get('COMPILER_WORKER_URL', 'http://127.0.0.1:8080/execute')
+COMPILER_WORKER_BASE_URL = os.environ.get('COMPILER_WORKER_BASE_URL', 'http://127.0.0.1:8080')
 VELXIO_COMPILER_URL = os.environ.get('VELXIO_COMPILER_URL', 'http://127.0.0.1:80/api/compile/')
 ANON_QUEUE_DIR = "/tmp/elemes_anon_queue"
 
@@ -145,6 +146,142 @@ def compile_code():
         return jsonify({'success': False, 'output': '', 'error': f'Compiler service unavailable: {re}'})
     except Exception as e:
         return jsonify({'success': False, 'output': '', 'error': f'An error occurred: {e}'})
+
+def _anon_session_slot_path(session_id):
+    """Path untuk slot anonymous per session (release saat session selesai)."""
+    import re as _re
+    safe = _re.sub(r'[^A-Za-z0-9_-]', '_', session_id)
+    return os.path.join(ANON_QUEUE_DIR, f"sess-{safe}")
+
+def _touch_anon_session_slot(session_id):
+    """Refresh mtime slot — session aktif menahan slot (bukan dilepas saat create)."""
+    fpath = _anon_session_slot_path(session_id)
+    try:
+        if os.path.exists(fpath):
+            now = time.time()
+            os.utime(fpath, (now, now))
+    except (OSError, IOError):
+        pass
+
+def _release_anon_session_slot(session_id):
+    """Release slot anonymous setelah session terminal/stopped."""
+    release_anon_slot(_anon_session_slot_path(session_id))
+
+@compile_bp.route('/compile/sessions', methods=['POST'])
+@limiter.limit("1 per 2 minutes", exempt_when=is_logged_in)
+def create_compile_session():
+    """Buat sesi interaktif di worker (PTY) — proxy ke worker /sessions."""
+    try:
+        data = request.get_json(force=True) if request.is_json else {}
+        if not isinstance(data, dict):
+            data = {}
+        language = str(data.get('language', ''))
+        files = data.get('files')
+        active_file = str(data.get('active_file', '') or '')
+        stdin = str(data.get('stdin', '') or '')
+        token = str(data.get('token', '') or '').strip()
+
+        user_is_logged_in = False
+        if token:
+            if not validate_token(token):
+                return jsonify({'success': False, 'output': '', 'error': 'Unauthorized: Invalid token'}), 401
+            user_is_logged_in = True
+
+        if not language or not isinstance(files, list) or not files:
+            return jsonify({'success': False, 'output': '', 'error': 'No code provided'}), 400
+
+        slot_fpath = None
+        if not user_is_logged_in:
+            slot_fpath = acquire_anon_slot()
+            if not slot_fpath:
+                return jsonify({
+                    'success': False,
+                    'output': '',
+                    'error': 'tunggu beberapa saat untuk kompilasi kembali, atau lakukan request token ke guru'
+                }), 429
+
+        try:
+            response = requests.post(
+                COMPILER_WORKER_BASE_URL + '/sessions',
+                json={
+                    'language': language,
+                    'files': files,
+                    'active_file': active_file,
+                    'stdin': stdin,
+                },
+                timeout=30
+            )
+            body = response.json()
+            session_id = body.get('session_id') if isinstance(body, dict) else None
+            if slot_fpath and session_id:
+                # Slot anonymous di-hold selama session: rename slot file → sess-<id>
+                target = _anon_session_slot_path(session_id)
+                try:
+                    if os.path.exists(slot_fpath):
+                        os.replace(slot_fpath, target)
+                        slot_fpath = None
+                except (OSError, IOError):
+                    pass
+            return jsonify(body), response.status_code
+        except requests.exceptions.RequestException as re:
+            return jsonify({'success': False, 'output': '', 'error': f'Compiler service unavailable: {re}'}), 502
+        finally:
+            if slot_fpath:
+                release_anon_slot(slot_fpath)
+    except Exception as e:
+        return jsonify({'success': False, 'output': '', 'error': f'An error occurred: {e}'}), 500
+
+@compile_bp.route('/compile/sessions/<session_id>', methods=['GET'])
+def get_compile_session(session_id):
+    """Poll delta output session interaktif — proxy ke worker."""
+    try:
+        cursor = request.args.get('cursor', '0')
+        params = {'cursor': cursor} if cursor else {}
+        response = requests.get(
+            COMPILER_WORKER_BASE_URL + '/sessions/' + session_id,
+            params=params,
+            timeout=15
+        )
+        body = response.json()
+        if isinstance(body, dict):
+            status = body.get('status')
+            if status in ('exited', 'error', 'stopped', 'expired'):
+                # Session selesai — release slot anonymous bila ada
+                _release_anon_session_slot(session_id)
+            else:
+                _touch_anon_session_slot(session_id)
+        return jsonify(body), response.status_code
+    except requests.exceptions.RequestException as re:
+        return jsonify({'success': False, 'output': '', 'error': f'Compiler service unavailable: {re}'}), 502
+
+@compile_bp.route('/compile/sessions/<session_id>/input', methods=['POST'])
+@limiter.limit("10 per minute", exempt_when=is_logged_in)
+def send_compile_session_input(session_id):
+    """Kirim input ke proses interaktif — proxy ke worker."""
+    try:
+        data = request.get_json(force=True) if request.is_json else {}
+        text = str((data or {}).get('text', ''))
+        response = requests.post(
+            COMPILER_WORKER_BASE_URL + '/sessions/' + session_id + '/input',
+            json={'text': text},
+            timeout=15
+        )
+        return jsonify(response.json()), response.status_code
+    except requests.exceptions.RequestException as re:
+        return jsonify({'success': False, 'output': '', 'error': f'Compiler service unavailable: {re}'}), 502
+
+@compile_bp.route('/compile/sessions/<session_id>', methods=['DELETE'])
+def stop_compile_session(session_id):
+    """Stop sesi interaktif — proxy ke worker."""
+    try:
+        response = requests.delete(
+            COMPILER_WORKER_BASE_URL + '/sessions/' + session_id,
+            timeout=15
+        )
+        _release_anon_session_slot(session_id)
+        return jsonify(response.json()), response.status_code
+    except requests.exceptions.RequestException as re:
+        return jsonify({'success': False, 'output': '', 'error': f'Compiler service unavailable: {re}'}), 502
 
 def _hex_to_binary(hex_content):
     """Parse Intel HEX string into raw binary bytes."""

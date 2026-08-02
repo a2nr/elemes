@@ -11,8 +11,9 @@ WORKDIR /app
 RUN pip install --no-cache-dir flask gunicorn
 
 COPY app.py .
+COPY session_manager.py .
 
 EXPOSE 8080
 
-# Run with 4 workers to handle concurrent requests
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--timeout", "30", "app:app"]
+# A1 config: single process + 32 threads (shared session registry)
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--worker-class", "gthread", "--workers", "1", "--threads", "32", "--timeout", "30", "--graceful-timeout", "10", "app:app"]
