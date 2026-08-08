@@ -185,3 +185,14 @@ Dokumen ini mengonsolidasi 4 file plan awal yang sudah superseded:
 - `plan-embed-rawhtml.md` — plan final pendekatan raw HTML + bleach.
 
 Konsolidasi dilakukan agar pembaca masa depan tidak perlu membaca 4 file perjalanan; cukup 1 dokumen koheren yang menceritakan konteks, keputusan, dan hasil akhir.
+
+---
+
+## 8. Catatan Platform
+
+| Platform | Cara dapat embed code | Catatan |
+|----------|----------------------|---------|
+| Canva | Share → Embed → Copy. URL sudah include `?embed`. | Wajib `?embed` — tanpa itu Canva menolak di-iframe. |
+| YouTube | Share → Embed → Copy. URL pakai `youtube.com/embed/VIDEO_ID`. | |
+| Google Docs | File → Share → Publish to web → Embed → Copy. URL pakai `/preview`. | |
+| Figma | Share → Get embed code → Copy. URL pakai `figma.com/embed?...`. | |

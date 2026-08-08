@@ -4,6 +4,14 @@
 Guru cukup menyiapkan file konfigurasi dan konten materi dalam format Markdown,
 lalu menjalankan container untuk deploy.
 
+Fitur utama:
+- **Playground Interaktif** — tab Velxio (Arduino simulator), Flowchart, Circuit, dan Code dengan run sesi PTY, stdinQueue, dan FileTree collapsible
+- **Embed Konten** — sisipkan iframe Canva, YouTube, Google Docs, Figma langsung dari markdown
+- **Kuis Interaktif** — Flashcard & Pilihan Ganda dengan randomisasi, skor, dan pembahasan
+- **Slide** — carousel presentasi interaktif dari markdown dengan fullscreen mode
+- **Flowchart** — editor flowchart interaktif dengan evaluasi frontend
+- **Velxio BLE/USB Deployer** — flashing firmware Arduino via BLE (Chrome Android) atau USB (Web Serial API), dengan serial monitor inline
+
 ## Struktur Folder
 
 Setelah setup, struktur folder utama (parent folder) akan terlihat seperti ini:
@@ -18,6 +26,7 @@ project/
 ├── assets/               # Gambar untuk materi (opsional)
 │   └── gambar.png
 ├── tokens_siswa.csv      # Data token siswa (auto-generated)
+├── backups/              # Hasil ./elemes.sh dbbackup (dump PostgreSQL)
 ├── state/                # State Tailscale (auto-generated)
 └── elemes/               # Folder engine LMS (JANGAN DIUBAH)
     ├── elemes.sh          # Script untuk menjalankan LMS
@@ -390,6 +399,28 @@ atau langsung di `http://localhost:3000`.
 | `./elemes.sh runbuild` | Build ulang & jalankan container |
 | `./elemes.sh stop` | Hentikan container |
 | `./elemes.sh generatetoken` | Generate/update `tokens_siswa.csv` |
+| `./elemes.sh dbupgrade` | Jalankan migrasi schema (alembic upgrade head) |
+| `./elemes.sh dbstatus` | Cek versi schema database |
+| `./elemes.sh dbimport` | Impor `tokens.csv` → PostgreSQL (idempotent; `--dry-run` = simulasi) |
+| `./elemes.sh synclessons` | Sinkronisasi daftar lesson dari `home.md` → DB |
+| `./elemes.sh dbverify` | Verifikasi parity CSV ↔ PostgreSQL |
+| `./elemes.sh dbbackup` | Backup database → `backups/elemes_<ts>.sql` |
+| `./elemes.sh dbrestore` | Restore backup terbaru dari `backups/` |
+| `./elemes.sh dbexport` | Ekspor snapshot PG → `pg_snapshot.csv` (tanpa token mentah) |
+
+## Database & Penyimpanan (PostgreSQL)
+
+Sejak migrasi Agustus 2026, progress siswa & data token disimpan di **PostgreSQL**
+melalui SQLAlchemy + Alembic (migrasi schema), menggantikan read-modify-write
+langsung ke CSV. Token hanya disimpan sebagai **HMAC-SHA256 digest**
+(pepper: `TOKEN_PEPPER` di `.env` — jangan hilangkan, semua token bergantung padanya).
+
+- Backend aktif dipilih lewat `STORAGE_BACKEND` (default `postgresql`; `csv`
+  hanya untuk rollback transisi).
+- `tokens_siswa.csv` tetap menjadi *source of truth* input guru — edit CSV lalu
+  jalankan `./elemes.sh dbimport` untuk sinkron ke database.
+- **Backup rutin wajib**: `./elemes.sh dbbackup` (dump ke `backups/`).
+- Panduan lengkap (arsitektur, alur migrasi, rollback): `docs/11-database-migration.md`.
 
 ## Contoh Siap Pakai
 
@@ -434,7 +465,13 @@ Buka file `tokens_siswa.csv` dan cari nama siswa untuk melihat token-nya.
 
 **Q: Bagaimana melihat progress siswa?**
 Login menggunakan token guru (baris pertama di CSV). Dashboard progress
-akan otomatis muncul.
+akan otomatis muncul. Data dibaca dari PostgreSQL.
+
+**Q: Bagaimana backup/restore database?**
+Jalankan `./elemes.sh dbbackup` — dump PostgreSQL tersimpan di
+`backups/elemes_<timestamp>.sql`. Restore: `./elemes.sh dbrestore`
+(memakai backup terbaru). Untuk mengubah data siswa, edit
+`tokens_siswa.csv` lalu `./elemes.sh dbimport`.
 
 **Q: Apakah harus pakai Tailscale?**
 Tidak. Tailscale opsional untuk akses remote. Tanpa Tailscale, LMS
@@ -447,7 +484,7 @@ atau `button_input_arduino.md`. Pastikan `componentId` dan `pinName`
 di `EXPECTED_WIRING` sesuai dengan tabel referensi pin di atas.
 
 **Q: Materi Arduino bisa tanpa wiring?**
-Ya. Jika hanya ingin evaluasi kode + serial output, cukup sertakan
+Ya. Jika hanya evaluasi kode + serial output, cukup sertakan
 `VELXIO_CIRCUIT` dengan `components: []` kosong dan hilangkan blok
 `EXPECTED_WIRING`. Contoh: `hello_serial_arduino.md`.
 
@@ -455,6 +492,43 @@ Ya. Jika hanya ingin evaluasi kode + serial output, cukup sertakan
 Tidak harus. Evaluasi bersifat *lenient*: koneksi yang diharapkan harus ada,
 tapi siswa boleh menambahkan kabel ekstra. Pin GND juga dinormalisasi
 (GND.1 = GND.2 = GND).
+
+**Q: Bagaimana cara membuat slide presentasi?**
+Gunakan blok `---slide-start---` dan `---slide-end---` di materi markdown.
+Setiap slide bisa berisi teks, gambar, code fence, dan embed (Canva/YouTube/Figma).
+Contoh: `rangkaian_dasar.md`.
+
+**Q: Bagaimana membuat flowchart interaktif?**
+Gunakan blok `` ```flowchart `` di materi markdown. Flowchart mendukung
+node, edge, obstacle-aware routing, dan evaluasi frontend.
+Contoh: `flowchart.md`.
+
+**Q: Bagaimana cara embed konten (Canva, YouTube, Google Docs, Figma)?**
+Gunakan fence ```embed dengan raw HTML embed code dari platform:
+
+````markdown
+```embed
+<div style="position: relative; width: 100%; padding-top: 56.25%;">
+  <iframe loading="lazy" src="https://www.canva.com/design/.../view?embed" allowfullscreen></iframe>
+</div>
+```
+````
+
+Canva wajib URL dengan `?embed`. Lihat `docs/06-embed-content.md` untuk detail.
+
+**Q: Bagaimana membuat kuis?**
+Gunakan blok `---QUIZ_FLASHCARD---` dengan format Flashcard atau Pilihan Ganda.
+Lihat `docs/07-quiz-authoring.md` untuk panduan lengkap.
+
+**Q: Apakah ada playground interaktif untuk mencoba kode?**
+Ya. Route `/playground` menyediakan tab Velxio (Arduino simulator), Flowchart,
+Circuit, dan Code. Fitur run sesi PTY mendukung Python `input()` dan C `scanf()`.
+FileTree collapsible mendukung filter per bahasa (C/Python).
+
+**Q: Bagaimana cara deploy firmware via USB (bukan BLE)?**
+Gunakan browser Chrome desktop. DeployTab mendukung auto-detect:
+Chrome desktop → USB (Web Serial API), mobile → BLE (Web Bluetooth).
+Pilih tab Deploy, klik "Deploy" — firmware akan di-flash via kabel USB.
 
 ## Persyaratan Sistem
 

@@ -1,0 +1,118 @@
+"""
+Model SQLAlchemy 2.0 — source of truth schema migrasi CSV→PostgreSQL.
+
+users           — identitas + role eksplisit (teacher/student)
+access_tokens   — hash token (HMAC-SHA256 + pepper), bukan plaintext
+lessons         — registry materi (konten tetap Markdown; DB hanya metadata)
+student_progress— status per (user, lesson), unik; skor terstruktur utk state 'scored'
+"""
+
+from datetime import datetime
+from uuid import uuid4
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from services.database import Base
+
+
+def _uuid() -> str:
+    return str(uuid4())
+
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (CheckConstraint("role IN ('teacher','student')", name="ck_users_role"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(10), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    tokens: Mapped[list["AccessToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    progress: Mapped[list["StudentProgress"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class AccessToken(Base):
+    __tablename__ = "access_tokens"
+    __table_args__ = (UniqueConstraint("token_hash", name="uq_access_tokens_token_hash"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="tokens")
+
+
+class Lesson(Base):
+    __tablename__ = "lessons"
+    __table_args__ = (UniqueConstraint("slug", name="uq_lessons_slug"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    progress: Mapped[list["StudentProgress"]] = relationship(back_populates="lesson")
+
+
+class StudentProgress(Base):
+    __tablename__ = "student_progress"
+    __table_args__ = (
+        UniqueConstraint("user_id", "lesson_id", name="uq_student_progress_user_lesson"),
+        CheckConstraint(
+            "state IN ('not_started','completed','scored')", name="ck_student_progress_state"
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    lesson_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False
+    )
+    state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="not_started", server_default="not_started"
+    )
+    score_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="progress")
+    lesson: Mapped["Lesson"] = relationship(back_populates="progress")

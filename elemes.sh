@@ -189,7 +189,7 @@ verify)
   echo ""
 
   echo "🔍 Memeriksa CMD tiap container..."
-  for container in "lms-dev_elemes_1" "lms-dev_elemes-frontend_1" "lms-dev_velxio_1"; do
+  for container in "lms-dev_elemes_1" "lms-dev_elemes-frontend_1" "lms-dev_velxio_1" "lms-dev_postgres_1"; do
     if podman ps --format "{{.Names}}" | grep -q "$container"; then
       CMD=$(podman inspect "$container" --format '{{.Config.Cmd}}' 2>/dev/null)
       ENTRYPOINT=$(podman inspect "$container" --format '{{.Config.Entrypoint}}' 2>/dev/null)
@@ -205,6 +205,71 @@ verify)
     fi
   done
   ;;
+dbupgrade)
+  echo "🗄️  Menjalankan migrasi database (alembic upgrade head)..."
+  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 python -m alembic upgrade head
+  ;;
+dbstatus)
+  echo "🗄️  Versi schema database (alembic current & heads):"
+  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 python -m alembic current
+  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 python -m alembic heads
+  ;;
+dbimport)
+  DRY_RUN=""
+  if [ "$2" == "--dry-run" ]; then
+    DRY_RUN="--dry-run"
+    echo "🧪 Dry-run impor CSV → PostgreSQL (tanpa menulis)..."
+  else
+    echo "📥 Mengimpor tokens.csv → PostgreSQL (idempotent)..."
+  fi
+  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 \
+    python scripts/migrate_csv_to_postgres.py --csv tokens.csv $DRY_RUN
+  ;;
+synclessons)
+  echo "🔄 Sinkronisasi registry lesson (Markdown → tabel lessons)..."
+  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 python -c "
+from services.database import SessionLocal
+from services.lesson_registry import sync_lesson_registry
+db = SessionLocal()
+try:
+    print(sync_lesson_registry(db))
+finally:
+    db.close()
+"
+  ;;
+dbverify)
+  echo "🔎 Verifikasi parity CSV ↔ PostgreSQL (wajib lulus sebelum cutover)..."
+  podman exec -w /app -e PYTHONPATH=/app lms-dev_elemes_1 \
+    python scripts/verify_database_migration.py --csv tokens.csv
+  ;;
+dbbackup)
+  echo "💾 Membackup database PostgreSQL → backups/"
+  set -a; source "$PARENT_DIR/.env" 2>/dev/null; set +a
+  mkdir -p "$PARENT_DIR/backups"
+  OUT="$PARENT_DIR/backups/elemes_$(date +%Y%m%d_%H%M%S).sql"
+  podman exec lms-dev_postgres_1 pg_dump \
+    -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" > "$OUT"
+  echo "✅ Backup selesai: $OUT"
+  ;;
+dbrestore)
+  set -a; source "$PARENT_DIR/.env" 2>/dev/null; set +a
+  LATEST=$(ls -t "$PARENT_DIR"/backups/elemes_*.sql 2>/dev/null | head -1)
+  if [ -z "$LATEST" ]; then
+    echo "❌ Tidak ada backup di backups/elemes_*.sql"
+    exit 1
+  fi
+  echo "♻️  Restore backup: $LATEST"
+  podman exec -i lms-dev_postgres_1 psql \
+    -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" < "$LATEST"
+  echo "✅ Restore selesai. Jalankan ./elemes.sh synclessons bila perlu."
+  ;;
+dbexport)
+  echo "📤 Ekspor snapshot PostgreSQL → pg_snapshot.csv (tanpa token mentah)"
+  podman exec -w /app -e PYTHONPATH=/app lms-dev_elemes_1 \
+    python scripts/export_postgres_to_csv.py --out /tmp/pg_snapshot.csv
+  podman cp lms-dev_elemes_1:/tmp/pg_snapshot.csv "$PARENT_DIR/pg_snapshot.csv"
+  echo "✅ Snapshot: $PARENT_DIR/pg_snapshot.csv"
+  ;;
 *)
   echo "💡 Cara Penggunaan elemes.sh:"
   echo "  ./elemes.sh init           # Inisialisasi konfigurasi, folder, & data tokens"
@@ -216,6 +281,15 @@ verify)
   echo "  ./elemes.sh exportall      # Build & Export semua image LMS (Backend, Frontend, Velxio) jadi satu file tar"
   echo "  ./elemes.sh importall      # Import image dari file tar (untuk deployment di VPS)"
   echo "  ./elemes.sh verify         # Verifikasi image dan konfigurasi container"
+  echo "  ./elemes.sh dbupgrade      # Jalankan migrasi schema (alembic upgrade head)"
+  echo "  ./elemes.sh dbstatus       # Lihat versi schema database"
+  echo "  ./elemes.sh dbimport       # Impor tokens.csv → PostgreSQL (idempotent)"
+  echo "  ./elemes.sh dbimport --dry-run  # Simulasi impor tanpa menulis"
+  echo "  ./elemes.sh synclessons    # Sinkronisasi daftar lesson Markdown → DB"
+  echo "  ./elemes.sh dbverify       # Verifikasi parity CSV ↔ PostgreSQL"
+  echo "  ./elemes.sh dbbackup       # Backup database → backups/elemes_<ts>.sql"
+  echo "  ./elemes.sh dbrestore      # Restore backup terbaru dari backups/"
+  echo "  ./elemes.sh dbexport       # Ekspor snapshot PG → pg_snapshot.csv"
   echo "  ./elemes.sh loadtest       # Menjalankan utilitas simulasi Load Test (Locust)"
   ;;
 esac

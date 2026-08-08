@@ -8,6 +8,7 @@
 	}
 
 	interface StudentProgress {
+		id: string;
 		nama_siswa: string;
 		completed_count: number;
 		[key: string]: string | number;
@@ -43,7 +44,7 @@
 		}
 	}
 
-	async function handleReset(studentToken: string, lessonName: string, studentName: string) {
+	async function handleReset(studentId: string, lessonName: string, studentName: string) {
 		if (!window.confirm(`Apakah Anda yakin ingin me-reset progres kuis "${lessonName}" untuk siswa "${studentName}"?`)) {
 			return;
 		}
@@ -54,7 +55,7 @@
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					teacher_token: $authToken,
-					student_token: studentToken,
+					student_id: studentId,
 					lesson_name: lessonName
 				})
 			});
@@ -122,9 +123,9 @@
 									{/if}
 
 									{#if status && status !== 'not_started'}
-										<button 
-											class="btn-reset-mini" 
-											onclick={() => handleReset(student.token as string, key, student.nama_siswa)}
+										<button
+											class="btn-reset-mini"
+											onclick={() => handleReset(student.id as string, key, student.nama_siswa)}
 											title="Reset Progres"
 										>
 											↻

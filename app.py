@@ -48,6 +48,11 @@ def create_app():
 
     # ── Startup tasks ─────────────────────────────────────────────────
     initialize_tokens_file(get_lesson_names())
+    # Sync metadata lesson ke PostgreSQL (auto-skip bila DB belum aktif).
+    # Idempotent; kegagalan hanya di-log — tidak mematikan app.
+    from services.lesson_registry import maybe_sync_on_startup
+
+    maybe_sync_on_startup()
 
     return app
 

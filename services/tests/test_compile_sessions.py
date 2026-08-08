@@ -13,6 +13,7 @@ import pytest
 # Skip seluruh modul bila flask tidak tersedia (host tanpa deps backend)
 pytest.importorskip("flask")
 
+import os  # noqa: E402
 from unittest.mock import patch  # noqa: E402
 
 from routes.compile import (  # noqa: E402
@@ -64,9 +65,10 @@ def test_create_session_forwards_files_without_token(client, monkeypatch):
         return fake
 
     monkeypatch.setattr("routes.compile.requests.post", fake_post)
+    monkeypatch.setattr("routes.compile.validate_token", lambda t: t == "valid-token")
 
     resp = client.post(
-        "/api/compile/sessions",
+        "/compile/sessions",
         json={**_files_payload(), "token": "valid-token"},
     )
     assert resp.status_code == 202
@@ -81,7 +83,7 @@ def test_create_session_forwards_files_without_token(client, monkeypatch):
 def test_create_session_rejects_invalid_token(client, monkeypatch):
     monkeypatch.setattr("routes.compile.validate_token", lambda t: t == "valid-token")
     resp = client.post(
-        "/api/compile/sessions",
+        "/compile/sessions",
         json={**_files_payload(), "token": "bad-token"},
     )
     assert resp.status_code == 401
@@ -89,7 +91,7 @@ def test_create_session_rejects_invalid_token(client, monkeypatch):
 
 
 def test_create_session_requires_files(client):
-    resp = client.post("/api/compile/sessions", json={"language": "c", "files": []})
+    resp = client.post("/compile/sessions", json={"language": "c", "files": []})
     assert resp.status_code == 400
 
 
@@ -104,14 +106,14 @@ def test_create_session_anonymous_acquires_slot(client, monkeypatch):
     monkeypatch.setattr("routes.compile.requests.post", fake_post)
     monkeypatch.setattr("os.replace", lambda src, dst: None)
 
-    resp = client.post("/api/compile/sessions", json=_files_payload())
+    resp = client.post("/compile/sessions", json=_files_payload())
     assert resp.status_code == 202
     assert resp.get_json()["session_id"] == "sess-anon"
 
 
 def test_create_session_anonymous_full_429(client, monkeypatch):
     monkeypatch.setattr("routes.compile.acquire_anon_slot", lambda: None)
-    resp = client.post("/api/compile/sessions", json=_files_payload())
+    resp = client.post("/compile/sessions", json=_files_payload())
     assert resp.status_code == 429
     assert "tunggu beberapa saat" in resp.get_json()["error"]
 
@@ -129,7 +131,7 @@ def test_get_session_forwards_cursor_and_releases_on_terminal(client, monkeypatc
     monkeypatch.setattr("routes.compile.requests.get", fake_get)
     monkeypatch.setattr("routes.compile._release_anon_session_slot", lambda sid: None)
 
-    resp = client.get("/api/compile/sessions/sess-1?cursor=5")
+    resp = client.get("/compile/sessions/sess-1?cursor=5")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "exited"
     assert calls["params"] == {"cursor": "5"}
@@ -141,7 +143,7 @@ def test_get_session_touches_slot_when_active(client, monkeypatch):
     touched = []
     monkeypatch.setattr("routes.compile._touch_anon_session_slot", lambda sid: touched.append(sid))
 
-    resp = client.get("/api/compile/sessions/sess-1")
+    resp = client.get("/compile/sessions/sess-1")
     assert resp.status_code == 200
     assert touched == ["sess-1"]
 
@@ -157,7 +159,7 @@ def test_send_input_forwards_text(client, monkeypatch):
 
     monkeypatch.setattr("routes.compile.requests.post", fake_post)
 
-    resp = client.post("/api/compile/sessions/sess-1/input", json={"text": "anggoro"})
+    resp = client.post("/compile/sessions/sess-1/input", json={"text": "anggoro"})
     assert resp.status_code == 200
     assert calls["url"].endswith("/sessions/sess-1/input")
     assert calls["json"] == {"text": "anggoro"}
@@ -169,7 +171,7 @@ def test_stop_session_releases_slot(client, monkeypatch):
     released = []
     monkeypatch.setattr("routes.compile._release_anon_session_slot", lambda sid: released.append(sid))
 
-    resp = client.delete("/api/compile/sessions/sess-1")
+    resp = client.delete("/compile/sessions/sess-1")
     assert resp.status_code == 200
     assert resp.get_json()["status"] == "stopped"
     assert released == ["sess-1"]
@@ -178,12 +180,14 @@ def test_stop_session_releases_slot(client, monkeypatch):
 def test_worker_unavailable_returns_502(client, monkeypatch):
     import requests as _requests
 
+    monkeypatch.setattr("routes.compile.validate_token", lambda t: t == "valid-token")
+
     def boom(*a, **k):
         raise _requests.exceptions.ConnectionError("refused")
 
     monkeypatch.setattr("routes.compile.requests.post", boom)
 
-    resp = client.post("/api/compile/sessions", json={**_files_payload(), "token": "valid-token"})
+    resp = client.post("/compile/sessions", json={**_files_payload(), "token": "valid-token"})
     assert resp.status_code == 502
     assert "Compiler service unavailable" in resp.get_json()["error"]
 
@@ -192,9 +196,13 @@ def test_worker_unavailable_returns_502(client, monkeypatch):
 
 
 def test_anon_session_slot_path_sanitizes():
+    # Semua karakter non [A-Za-z0-9_-] di-underscore — termasuk titik & slash,
+    # sehingga path traversal tidak mungkin terbentuk.
     assert _anon_session_slot_path("abc-123").endswith("sess-abc-123")
-    assert "/" not in _anon_session_slot_path("../evil")
-    assert _anon_session_slot_path("../evil").endswith("sess-.._evil")
+    safe = os.path.basename(_anon_session_slot_path("../evil"))
+    assert "/" not in safe
+    assert ".." not in safe
+    assert safe == "sess-___evil"
 
 
 def test_routes_registered():

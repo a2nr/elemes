@@ -11,11 +11,18 @@ from flask import Blueprint, request, jsonify, Response
 from services.token_service import (
     validate_token,
     update_student_progress,
+    reset_student_progress,
     get_all_students_progress,
 )
 from services.lesson_service import get_lessons_with_learning_objectives
+from services.token_hashing import hash_token
 
 progress_bp = Blueprint('progress', __name__)
+
+
+def _masked(token: str) -> str:
+    """Awalan token untuk log — jangan pernah log token mentah."""
+    return f"{token[:6]}..." if token else "(kosong)"
 
 
 @progress_bp.route('/track-progress', methods=['POST'])
@@ -27,7 +34,10 @@ def track_progress():
         lesson_name = data.get('lesson_name', '').strip()
         status = data.get('status', 'completed').strip()
 
-        logging.info(f"Received track-progress request: token={token}, lesson_name={lesson_name}, status={status}")
+        logging.info(
+            "Received track-progress request: token_digest=%s, lesson_name=%s, status=%s",
+            hash_token(token)[:16], lesson_name, status,
+        )
 
         if not token or not lesson_name:
             return jsonify({'success': False, 'message': 'Token and lesson name are required'})
@@ -38,10 +48,16 @@ def track_progress():
 
         updated = update_student_progress(token, lesson_name, status)
         if updated:
-            logging.info(f"Progress updated successfully for token {token}, lesson {lesson_name}")
+            logging.info(
+                "Progress updated successfully for student=%s, lesson=%s",
+                student_info.get('student_name'), lesson_name,
+            )
             return jsonify({'success': True, 'message': 'Progress updated successfully'})
         else:
-            logging.warning(f"Failed to update progress for token {token}, lesson {lesson_name}")
+            logging.warning(
+                "Failed to update progress for student=%s, lesson=%s",
+                student_info.get('student_name'), lesson_name,
+            )
             return jsonify({'success': False, 'message': 'Failed to update progress'})
 
     except Exception as e:
@@ -51,24 +67,32 @@ def track_progress():
 
 @progress_bp.route('/reset-progress', methods=['POST'])
 def reset_progress():
-    """Reset student progress for a lesson (Teacher only)."""
+    """Reset progress siswa via student_id (Teacher only).
+
+    Kontrak keamanan: teacher TIDAK perlu (dan tidak boleh) memegang token
+    siswa — cukup id anonim dari payload report.
+    """
     try:
         data = request.get_json()
         teacher_token = data.get('teacher_token', '').strip()
-        student_token = data.get('student_token', '').strip()
+        student_id = data.get('student_id', '').strip()
         lesson_name = data.get('lesson_name', '').strip()
 
-        if not teacher_token or not student_token or not lesson_name:
+        if not teacher_token or not student_id or not lesson_name:
             return jsonify({'success': False, 'message': 'All fields are required'}), 400
 
-        # Validate teacher token
+        # Validasi teacher token
         teacher_info = validate_token(teacher_token)
         if not teacher_info or not teacher_info.get('is_teacher'):
             return jsonify({'success': False, 'message': 'Unauthorized (Teacher only)'}), 401
 
         # Perform reset (set to not_started)
-        updated = update_student_progress(student_token, lesson_name, 'not_started')
+        updated = reset_student_progress(student_id, lesson_name)
         if updated:
+            logging.info(
+                "Progress reset oleh teacher=%s untuk student_id=%s, lesson=%s",
+                teacher_info.get('student_name'), _masked(student_id), lesson_name,
+            )
             return jsonify({'success': True, 'message': 'Progress reset successfully'})
         else:
             return jsonify({'success': False, 'message': 'Failed to reset progress'})

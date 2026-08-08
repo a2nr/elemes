@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:18-alpine
+    network_mode: service:elemes-ts
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-elemes}
+      - POSTGRES_USER=${POSTGRES_USER:-elemes}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-elemes} -d ${POSTGRES_DB:-elemes}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    depends_on:
+      - elemes-ts
+
   elemes-ts:
     image: docker.io/tailscale/tailscale:latest
     hostname: ${ELEMES_HOST}
@@ -26,7 +45,7 @@ services:
     network_mode: service:elemes-ts
     volumes:
       - ../content:/app/content:ro
-      - ../tokens_siswa.csv:/app/tokens.csv:rw
+      - ../tokens_siswa.csv:/app/tokens.csv:ro
       - ../assets:/app/assets:ro
     env_file:
       - ../.env
@@ -34,9 +53,13 @@ services:
       - COMPILER_WORKER_URL=http://127.0.0.1:8080/execute
       - COMPILER_WORKER_BASE_URL=http://127.0.0.1:8080
       - VELXIO_COMPILER_URL=http://127.0.0.1:80/api/compile/
+      - DATABASE_URL=${DATABASE_URL}
+      - TOKEN_PEPPER=${TOKEN_PEPPER}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-postgresql}
     restart: unless-stopped
     depends_on:
       - elemes-ts
+      - postgres
     # production
     command: gunicorn --config gunicorn.conf.py "app:create_app()"
     # debug
@@ -98,5 +121,6 @@ services:
       - elemes-ts
 
 volumes:
+  postgres-data:
   velxio-data:
   velxio-arduino-libs:

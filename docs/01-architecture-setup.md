@@ -14,6 +14,7 @@ Tailscale Funnel (elemes-ts)
     ├── /assets/            → Flask Backend (elemes :5000)
     ├── /velxio/api/compile → Flask Backend (Rate-limited Proxy :5000)
     ├── /velxio/            → Velxio Arduino Simulator (velxio :80)
+    ├── /playground         → Interactive Playground (SvelteKit)
     │
     ▼
 SvelteKit Frontend (elemes-frontend :3000)
@@ -21,6 +22,8 @@ SvelteKit Frontend (elemes-frontend :3000)
   ├── CodeMirror 6 editor (lazy-loaded)
   ├── CircuitJS simulator (iframe, GWT-compiled) — mode "circuit"
   ├── Velxio Arduino simulator (iframe, React) — mode "velxio"
+  ├── Interactive Playground (route /playground) — PTY sessions, FileTree, stdinQueue
+  ├── Embed pipeline (```embed fence → bleach sanitize → iframe render)
   ├── API proxy: /api/* → Flask
   └── PWA manifest
     │

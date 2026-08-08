@@ -1,8 +1,8 @@
-# 05. Velxio BLE Deployer — Dokumentasi Implementasi
+# 05. Velxio BLE/USB Deployer — Dokumentasi Implementasi
 
 **Versi:** 3.2
-**Tanggal:** 19 Juli 2026
-**Status:** ✅ **SELESAI + USB DEPLOYER FIX (v3.2)** — Re-deploy fix, serial terminal, baud dropdown, LED patterns, event-based Arduino detection, get_sync timing & fail-fast reliability
+**Tanggal:** 4 Agustus 2026
+**Status:** ✅ **SELESAI + USB DEPLOYER + get_sync FIX (v3.2)** — Re-deploy fix, serial terminal, baud dropdown, LED patterns, event-based Arduino detection, get_sync timing & fail-fast reliability, USB deployer via Web Serial API (desktop Chrome)
 
 ---
 
@@ -48,7 +48,8 @@ Webapp Serial Monitor
 | **Serial terminal inline** (v3.1) | ✅ **DONE** | Serial terminal tampil saat paired (bukan gated di deploy success) + baud dropdown (9600/19200/38400) |
 | **LED blink patterns** (v3.1) | ✅ **DONE** | IDLE slow blink (1s), RECEIVING medium (200ms), FLASHING fast (100ms) |
 || **Arduino event-based** (v3.1) | ✅ **DONE** | Hybrid event+1s poll via CherryUSB `usbh_event_handler_t` — disconnect ~200ms |
-|| **USB Deployer (get_sync fix)** (v3.2) | ✅ **SELESAI** | DTR 50ms+100ms, CDC drain, fail-fast, STK_SYNC_RETRIES 20 |
+|| **USB Deployer** (v3.2) | ✅ **SELESAI** | Web Serial API (Chrome desktop), auto-detect, STK500v1 via USB CDC | 4/8 |
+||| **USB Deployer get_sync fix** (v3.2) | ✅ **SELESAI** | DTR 50ms+100ms, CDC drain, fail-fast, STK_SYNC_RETRIES 20 | 8/8 |
 
 ---
 
