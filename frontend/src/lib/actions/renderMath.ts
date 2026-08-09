@@ -5,7 +5,7 @@ export async function autoRenderMath(node: HTMLElement) {
 	if (!browser) return;
 
 	try {
-		const renderMathInElement = (await import('katex/dist/contrib/auto-render')).default;
+		const renderMathInElement = (await import('katex/contrib/auto-render')).default;
 		await import('katex/dist/katex.min.css');
 
 		// 1. First, handle the standard delimiters

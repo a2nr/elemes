@@ -11,8 +11,8 @@ import { evaluateCircuitSubmission, processLanguageEvaluation } from '$services/
 import { getVelxioState, initVelxioBridge } from '$services/velxio-manager';
 import { VelxioBridge } from '$services/velxio-bridge';
 import type { LessonContent } from '$types/lesson';
-import type { CodeEditor } from '$components/CodeEditor.svelte';
-import type { CircuitEditor } from '$components/CircuitEditor.svelte';
+import type CodeEditor from '$components/CodeEditor.svelte';
+import type CircuitEditor from '$components/CircuitEditor.svelte';
 import type { DeployState } from '$types/deployer';
 import type { QuizQuestion, QuizAnswer } from '$types/quiz';
 import {
@@ -71,7 +71,7 @@ export class LessonManager {
 	circuitEditor = $state<CircuitEditor | null>(null);
 	flowchartTab = $state<any>(null);
 
-	get slug() { return get(page).params.slug; }
+	get slug(): string { return get(page).params.slug ?? ''; }
 	
 	isVelxio = $derived(this.data?.active_tabs?.includes('velxio') ?? false);
 	isFlowchart = $derived(this.data?.active_tabs?.includes('flowchart') ?? false);
@@ -379,7 +379,7 @@ export class LessonManager {
 		this.activeTab = 'output';
 		try {
 			const circuitText = this.circuitEditor.getCircuitText();
-			const res = evaluateCircuitSubmission(simApi, circuitText, this.isHybrid, this.data, () => this.checkAllPassed());
+			const res = evaluateCircuitSubmission(simApi, circuitText, this.isHybrid ?? false, this.data, () => this.checkAllPassed());
 			if (res.error) {
 				Object.assign(this.circuitOut, { error: res.error, success: false, loading: false });
 				return;

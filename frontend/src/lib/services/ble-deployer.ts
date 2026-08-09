@@ -8,6 +8,98 @@ import {
 	type DeployProgress, type BLEACKResponse
 } from '$types/deployer';
 
+/* Ambient declarations for Web Bluetooth API (not in TS lib.dom.d.ts). */
+/* Minimal subset needed by BLEHardwareDeployer.                        */
+/* Wrapped in declare global because the file is a module (has imports) */
+/* and we need these types to be globally visible.                      */
+declare global {
+	interface Navigator {
+		readonly bluetooth: Bluetooth;
+	}
+
+	interface Bluetooth {
+		requestDevice(options: RequestDeviceOptions): Promise<BluetoothDevice>;
+	}
+
+	interface RequestDeviceOptions {
+		filters?: BluetoothLEScanFilter[];
+		optionalServices?: BluetoothServiceUUID[];
+		acceptAllDevices?: boolean;
+	}
+
+	interface BluetoothLEScanFilter {
+		name?: string;
+		namePrefix?: string;
+		services?: BluetoothServiceUUID[];
+		manufacturerId?: number;
+	}
+
+	type BluetoothServiceUUID = string | number;
+
+	interface BluetoothDevice {
+		readonly id: string;
+		readonly name?: string;
+		readonly gatt?: BluetoothRemoteGATTServer;
+		addEventListener(
+			type: 'gattserverdisconnected',
+			listener: (this: BluetoothDevice, ev: Event) => void
+		): void;
+		removeEventListener(
+			type: 'gattserverdisconnected',
+			listener: (this: BluetoothDevice, ev: Event) => void
+		): void;
+	}
+
+	interface BluetoothRemoteGATTServer {
+		readonly connected: boolean;
+		readonly device: BluetoothDevice;
+		readonly mtu: number;
+		connect(): Promise<BluetoothRemoteGATTServer>;
+		disconnect(): void;
+		requestMTU(size: number): Promise<BluetoothRemoteGATTServer>;
+		getPrimaryService(service: BluetoothServiceUUID): Promise<BluetoothRemoteGATTService>;
+		getPrimaryServices(service?: BluetoothServiceUUID): Promise<BluetoothRemoteGATTService[]>;
+	}
+
+	interface BluetoothRemoteGATTService {
+		readonly device: BluetoothDevice;
+		readonly uuid: string;
+		readonly isPrimary: boolean;
+		getCharacteristic(characteristic: BluetoothServiceUUID): Promise<BluetoothRemoteGATTCharacteristic>;
+		getCharacteristics(characteristic?: BluetoothServiceUUID): Promise<BluetoothRemoteGATTCharacteristic[]>;
+	}
+
+	interface BluetoothRemoteGATTCharacteristic extends EventTarget {
+		readonly service: BluetoothRemoteGATTService;
+		readonly uuid: string;
+		readonly properties: BluetoothCharacteristicProperties;
+		readonly value: DataView | null;
+		readValue(): Promise<DataView>;
+		writeValue(value: BufferSource): Promise<void>;
+		writeValueWithResponse(value: BufferSource): Promise<void>;
+		writeValueWithoutResponse(value: BufferSource): Promise<void>;
+		startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>;
+		stopNotifications(): Promise<BluetoothRemoteGATTCharacteristic>;
+		addEventListener(
+			type: 'characteristicvaluechanged',
+			listener: (this: BluetoothRemoteGATTCharacteristic, ev: Event) => void
+		): void;
+		removeEventListener(
+			type: 'characteristicvaluechanged',
+			listener: (this: BluetoothRemoteGATTCharacteristic, ev: Event) => void
+		): void;
+	}
+
+	interface BluetoothCharacteristicProperties {
+		readonly read: boolean;
+		readonly write: boolean;
+		readonly notify: boolean;
+		readonly indicate: boolean;
+		readonly writeWithoutResponse: boolean;
+		readonly broadcast: boolean;
+	}
+}
+
 let _ackNotificationCount = 0;
 function logAck(tag: string, msg: string) {
 	console.log(`[BLE-ACK#${++_ackNotificationCount}] ${tag}: ${msg}`);

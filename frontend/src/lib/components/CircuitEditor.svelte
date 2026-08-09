@@ -127,6 +127,7 @@
 	$effect(() => {
 		if (simApi && ready && storageKey) {
 			const interval = setInterval(() => {
+				if (!simApi) return;
 				const currentText = simApi.exportCircuit();
 				const saved = localStorage.getItem(storageKey);
 				if (currentText && currentText !== saved && currentText.trim().length > 10) {

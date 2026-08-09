@@ -186,7 +186,7 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 </svelte:head>
 
 {#if pageData.lesson}
-	{#key pageData.lesson.filename}
+	{#key mgr.slug}
 		<div class="lesson-layout" class:single-col={float.floating || mgr.isMobile}>
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div class="lesson-content" bind:this={contentEl} use:noSelect use:renderMath
@@ -326,7 +326,6 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 								storageKey={mgr.flowchartStorageKey}
 								initialData={mgr.data?.initial_flowchart}
 								onRun={mgr.handleRun.bind(mgr)}
-								onReset={mgr.handleReset.bind(mgr)}
 								compiling={mgr.compiling}
 							/>
 						</div>
@@ -343,7 +342,7 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 						</div>
 					{/if}
 
-					{#if !mgr.data?.active_tabs?.length || mgr.data.active_tabs.includes('c') || mgr.data.active_tabs.includes('python')}
+					{#if mgr.data && (!mgr.data.active_tabs?.length || mgr.data.active_tabs.includes('c') || mgr.data.active_tabs.includes('python'))}
 						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'editor'}>
 							<CodeTab
 								data={mgr.data}
