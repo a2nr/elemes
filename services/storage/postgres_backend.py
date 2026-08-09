@@ -11,6 +11,7 @@ from sqlalchemy import select
 from services import repositories as repo
 from services.database import SessionLocal
 from services.models import User
+from services.progress_status import format_progress_status, parse_progress_status
 from services.repositories import (
     count_completed_lessons,
     find_user_by_raw_token,
@@ -32,30 +33,16 @@ def calculate_student_completion(student_data, all_lessons):
 
 
 def _status_to_string(progress) -> str:
-    """Render progress DB ke format kontrak lama: 'completed' | 'not_started' | '3/4'."""
-    if progress is None:
-        return ""
-    if progress.state == "scored":
-        return f"{progress.score_earned}/{progress.score_total}"
-    return progress.state
+    """Render progress DB ke kontrak legacy (helper bersama progress_status)."""
+    return format_progress_status(progress)
 
 
 def _parse_status(status: str):
     """Normalisasi status input → (state, score_earned, score_total) | None."""
-    status = (status or "").strip()
-    if status in ("", "not_started"):
-        return ("not_started", None, None)
-    if status == "completed":
-        return ("completed", None, None)
-    parts = status.split("/")
-    if len(parts) == 2:
-        try:
-            earned, total = int(parts[0]), int(parts[1])
-        except ValueError:
-            return None
-        if total > 0 and 0 <= earned <= total:
-            return ("scored", earned, total)
-    return None
+    try:
+        return parse_progress_status(status)
+    except ValueError:
+        return None
 
 
 def validate_token(token):
@@ -192,7 +179,15 @@ def get_all_students_progress(all_lessons_func):
                     'description': 'Lesson information not available',
                 })
 
-        users = list(db.scalars(select(User).order_by(User.created_at)))
+        # Normalisasi: report hanya siswa (teacher tidak pernah muncul sebagai row),
+        # urutan deterministik (created_at, id) agar stable untuk UI/export.
+        users = list(
+            db.scalars(
+                select(User)
+                .where(User.role == "student")
+                .order_by(User.created_at, User.id)
+            )
+        )
         students = []
         for user in users:
             rows = {p.lesson_id: p for p in list_progress_for_user(db, user_id=user.id)}

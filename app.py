@@ -39,12 +39,14 @@ def create_app():
     from routes.lessons import lessons_bp
     from routes.progress import progress_bp
     from routes.help import help_bp
+    from routes.student_management import student_management_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(compile_bp)
     app.register_blueprint(lessons_bp)
     app.register_blueprint(progress_bp)
     app.register_blueprint(help_bp)
+    app.register_blueprint(student_management_bp)
 
     # ── Startup tasks ─────────────────────────────────────────────────
     initialize_tokens_file(get_lesson_names())

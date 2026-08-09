@@ -390,6 +390,55 @@ cd elemes
 LMS akan berjalan dan bisa diakses melalui Tailscale (jika dikonfigurasi)
 atau langsung di `http://localhost:3000`.
 
+### 9. Kelola Siswa via Round-Trip CSV (Export → Edit → Import)
+
+Halaman **Laporan Progress** (`/progress`) menyediakan workflow bulat untuk
+menambah atau memulihkan siswa tanpa menyentuh database secara manual:
+
+1. **Export CSV** — unduh siswa terpilih (atau seluruh siswa bila tidak ada
+   yang dipilih) beserta progress. Kolom `token` **selalu kosong** — token
+   tidak pernah diekspor.
+2. **Edit CSV** — ubah nama/progress siswa yang sudah ada, atau tambahkan
+   baris siswa baru (dengan `student_id` kosong + token).
+3. **Import CSV** — preview lalu konfirmasi. Import **all-or-nothing**: satu
+   saja baris bermasalah membuat seluruh file ditolak tanpa perubahan.
+
+Format CSV round-trip:
+
+```csv
+student_id;token;nama_siswa;hello_world;variabel
+7eab651c-5eb1-4eb8-8fd2-17fd77aec6df;;Nama Siswa 1;completed;3/4
+;TOKEN_87654321;Siswa Baru;not_started;completed
+```
+
+- Baris dengan `student_id` terisi (hasil export): token **boleh kosong** —
+  siswa yang sudah ada **dipulihkan/di-update** (nama & progress diperbarui)
+  dan **token lama dipertahankan**. Jangan mengisi token baru pada baris
+  seperti ini — import ditolak.
+- Baris dengan `student_id` kosong = **siswa baru**: token **wajib diisi**
+  (8–128 karakter); server membuat UUID baru.
+- `student_id` yang terisi tapi tidak dikenal di database ditolak (tidak ada
+  pembuatan user dengan UUID sembarangan); teacher tidak pernah bisa diubah
+  lewat import siswa.
+- Status progress: kosong/`not_started` = belum mulai, `completed` = selesai,
+  `<earned>/<total>` = skor.
+- Kolom lesson lain wajib merupakan lesson yang masih aktif; kolom lesson yang
+  tidak dikenal/duplikat membuat file ditolak.
+
+#### Delimiter CSV
+
+- **Export** dari aplikasi selalu memakai delimiter **titik koma (`;`)** dan
+  encoding UTF-8 dengan BOM — contoh di atas adalah format canonical.
+- **Import** menerima dua delimiter: **titik koma (`;`)** maupun
+  **koma (`,`)**, agar file yang disimpan dari Excel/LibreOffice/Google
+  Sheets (yang umumnya memakai koma) bisa langsung dipreview dan diimpor.
+  Deteksi delimiter dilakukan dari header (kolom wajib `student_id`, `token`,
+  `nama_siswa` harus muncul sebagai kolom terpisah), bukan dari isi file.
+- Delimiter lain (mis. tab) atau header campuran yang tidak bisa dipetakan ke
+  schema ditolak dengan pesan yang jelas — jangan mengganti delimiter secara
+  manual dengan find-and-replace, karena itu merusak nilai ber-quote yang
+  mengandung koma/titik koma.
+
 ## Perintah `elemes.sh`
 
 | Perintah | Fungsi |

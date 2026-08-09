@@ -6,6 +6,7 @@ Kontrak route progress:
 """
 
 import logging
+import os
 
 import pytest
 
@@ -101,3 +102,36 @@ def test_raw_token_not_in_logs(client, caplog):
             json={"token": STUDENT_TOKEN, "lesson_name": "hello_world", "status": "completed"},
         )
     assert STUDENT_TOKEN not in caplog.text
+
+
+@pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata")
+def test_pg_report_student_only(client):
+    """Report PostgreSQL hanya memuat role student — teacher tidak pernah row."""
+    from services import repositories as repo
+    from services.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        repo.upsert_lesson(db, slug="hello_world", title="Hello World", order_index=0)
+        teacher = repo.create_user(db, display_name="Pak Guru", role="teacher")
+        repo.create_access_token(db, user_id=teacher.id, raw_token=TEACHER_TOKEN)
+        s1 = repo.create_user(db, display_name="Budi Santoso", role="student")
+        repo.create_access_token(db, user_id=s1.id, raw_token=STUDENT_TOKEN)
+        s2 = repo.create_user(db, display_name="Siti Aminah", role="student")
+        repo.create_access_token(db, user_id=s2.id, raw_token="TOKEN_SISWA_002")
+        db.commit()
+    finally:
+        db.close()
+
+    client.set_cookie("student_token", TEACHER_TOKEN)
+    resp = client.get("/progress-report.json")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    names = [st["nama_siswa"] for st in data["students"]]
+    assert "Pak Guru" not in names
+    assert set(names) == {"Budi Santoso", "Siti Aminah"}
+    # field yang dipertahankan untuk frontend
+    for st in data["students"]:
+        assert st["id"]
+        assert "completed_count" in st
+        assert "hello_world" in st

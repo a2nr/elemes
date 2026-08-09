@@ -81,7 +81,7 @@ services:
     #   - 3000:3000
     network_mode: service:elemes-ts
     environment:
-      - ORIGIN=http://localhost:3000
+      - ORIGIN=${ORIGIN:-http://localhost:3000}
       - API_BACKEND=http://127.0.0.1:5000
       - PUBLIC_APP_BAR_TITLE=${APP_BAR_TITLE}
       - PUBLIC_COPYRIGHT_TEXT=${COPYRIGHT_TEXT}

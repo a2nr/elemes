@@ -136,6 +136,87 @@ podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 \
   python -m pytest services/tests -q
 ```
 
+Suite round-trip siswa (`test_student_roundtrip.py`, `test_repositories.py`,
+`test_student_management_routes.py`) dijalankan pada **DB test terpisah**
+(`elemes_test`):
+
+```bash
+podman exec -w /app -e PYTHONPATH=services \
+  -e DATABASE_URL="$DATABASE_URL_TEST" \
+  lms-dev_elemes_1 python -m pytest services/tests/test_student_roundtrip.py \
+    services/tests/test_repositories.py services/tests/test_student_management_routes.py -q
+```
+
+> Jangan pernah menjalankan integration test dengan `DATABASE_URL` produksi —
+> fixture conftest me-TRUNCATE semua tabel sebelum tiap test.
+
+## 9. Manajemen Siswa: Round-Trip CSV (export → edit → import)
+
+Sejak Agustus 2026, halaman `/progress` memakai **satu format CSV round-trip**
+untuk export dan import siswa, menggantikan rancangan "download template":
+
+```csv
+student_id;token;nama_siswa;<lesson_slugs...>
+```
+
+### Export (`POST /students/export-csv`, teacher-only)
+
+- Export siswa **terpilih** bila ada selection; **seluruh siswa** bila selection
+  kosong. Teacher tidak pernah ikut.
+- Kolom `token` **selalu kosong** — PostgreSQL hanya menyimpan
+  `HMAC-SHA256(token, TOKEN_PEPPER)` dan **tidak ada recovery/export token**.
+- Encoding UTF-8 BOM, delimiter `;`, filename `data_siswa_YYYYMMDD_HHMMSS.csv`.
+- Duplicate/malformed/unknown/teacher ID pada selection membuat seluruh
+  request gagal.
+
+### Import (`/students/import/preview` & `/students/import`, teacher-only)
+
+- **Create + restore/update, all-or-nothing**: seluruh row divalidasi dulu;
+  satu saja baris bermasalah → seluruh file ditolak tanpa write.
+- Baris dengan `student_id` terisi = siswa existing: user wajib sudah ada dan
+  ber-role student. Token **boleh kosong** (hasil export) → user & token lama
+  **dipertahankan**, nama & progress diperbarui (restore/update, bukan
+  create). Mengisi token pada baris existing ditolak sebagai konflik/ambigu.
+- Baris dengan `student_id` kosong = siswa baru: token wajib non-kosong;
+  dibuatkan user + access-token digest. `student_id` terisi yang tidak dikenal
+  ditolak (tidak ada create-with-ID diam-diam); teacher tidak pernah bisa
+  diubah lewat import siswa.
+- Setelah siswa dihapus, UUID lama tidak bisa langsung dipakai ulang untuk
+  create (ditolak sebagai ID tak dikenal) — buat baris baru dengan
+  `student_id` kosong agar UUID baru dibuat server.
+- Progress `completed`/`<earned>/<total>` diterapkan via `set_progress()`;
+  `not_started`/kosong tetap sparse (tidak ada row), dan progress lama yang
+  tidak ada di CSV tidak dihapus (merge, bukan snapshot penuh).
+- Upload diproses in-memory; preview/response/log **tidak pernah** memuat
+  token plaintext maupun hash.
+- File CSV berisi token yang diisi guru adalah **satu-satunya salinan
+  plaintext** token.
+
+### Bulk delete (`POST /students/bulk-delete`, teacher-only)
+
+- Menerima 1–1000 UUID; seluruh target divalidasi sebelum delete pertama
+  (duplicate/malformed/unknown/teacher ID → zero delete).
+- Menghapus permanen user + cascade token & progress; lesson tidak terpengaruh.
+- Setelah commit, siswa tidak lagi ada; UUID lama tidak bisa dipakai ulang
+  oleh importer (ditolak sebagai ID tak dikenal). Untuk memperbarui
+  nama/progress tanpa menghapus, cukup re-import hasil export (token kosong);
+  untuk menambah siswa baru, gunakan baris dengan `student_id` kosong.
+
+### Berkas kunci
+
+- `services/student_roundtrip.py` — parser/serializer murni (schema + validasi).
+- `services/progress_status.py` — parse/format status legacy bersama
+  (dipakai importer & `postgres_backend` agar tidak divergen).
+- `services/repositories.py` — `list_students_for_export`, `preview_student_import`,
+  `run_student_import`, `delete_students`, `create_user(user_id=...)`.
+- `routes/student_management.py` — 4 endpoint teacher-only (cookie HttpOnly
+  `student_token` + validasi Origin).
+- Frontend: selection berbasis UUID, dialog import preview, dialog bulk delete
+  (`src/routes/progress/+page.svelte` + komponen di `src/lib/components/`).
+
+Out of scope: mengganti token siswa existing lewat import, export/recovery
+  token, vault, soft delete, dan import format lama (`dbexport`/CSV migrasi).
+
 - Kontrak suite (`test_token_service_contract.py`, `test_auth_routes.py`,
   `test_progress_routes.py`) dijalankan terhadap **kedua** backend.
 - Test integrasi (`test_repositories.py`, `test_csv_importer.py`,

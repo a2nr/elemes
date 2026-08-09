@@ -1,6 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { auth, authIsTeacher, authToken } from '$stores/auth';
+	import { get } from 'svelte/store';
+	import { authIsTeacher, authToken } from '$stores/auth';
+	import { studentSelection } from '$stores/studentSelection';
+	import { exportStudentsCsv, triggerBlobDownload } from '$services/studentManagement';
+	import StudentImportDialog from '$lib/components/StudentImportDialog.svelte';
+	import BulkDeleteStudentsDialog from '$lib/components/BulkDeleteStudentsDialog.svelte';
 
 	interface LessonHeader {
 		filename: string;
@@ -17,6 +21,11 @@
 	let students = $state<StudentProgress[]>([]);
 	let lessons = $state<LessonHeader[]>([]);
 	let loading = $state(true);
+	let exportBusy = $state(false);
+	let exportError = $state('');
+	let importOpen = $state(false);
+	let deleteOpen = $state(false);
+	let headerCheckbox = $state<HTMLInputElement | undefined>();
 
 	// Reactively load data when auth is ready
 	$effect(() => {
@@ -37,6 +46,7 @@
 			const data = await res.json();
 			students = data.students ?? [];
 			lessons = data.lessons ?? [];
+			studentSelection.setAvailable(students.map((s) => s.id));
 		} catch {
 			// API not available
 		} finally {
@@ -70,6 +80,64 @@
 		}
 	}
 
+	async function handleExport() {
+		if (exportBusy) return;
+		exportBusy = true;
+		exportError = '';
+		try {
+			const { blob, filename } = await exportStudentsCsv(get(studentSelection.selected), fetch);
+			triggerBlobDownload(blob, filename);
+		} catch (err) {
+			exportError = err instanceof Error ? err.message : 'Gagal mengekspor CSV.';
+		} finally {
+			exportBusy = false;
+		}
+	}
+
+	function handleImported() {
+		importOpen = false;
+		studentSelection.clear();
+		loadData();
+	}
+
+	function handleDeleted() {
+		deleteOpen = false;
+		studentSelection.clear();
+		loadData();
+	}
+
+	function handleHeaderCheckbox() {
+		if (get(studentSelection.allSelected)) {
+			studentSelection.clear();
+		} else {
+			studentSelection.selectAll();
+		}
+	}
+
+	// Reaktif: baca store via prefix $ (Svelte 5 runes).
+	// CATATAN: get() dari svelte/store TIDAK ter-track oleh $derived (hanya snapshot
+	// sekali) sehingga tombol delete/counter tidak pernah ter-update. Prefix $ membungkus
+	// store ke $.store_get yang terdaftar ke sistem reaktivitas runes.
+	const {
+		selected: selectedStore,
+		count: countStore,
+		allSelected: allSelectedStore,
+		someSelected: someSelectedStore
+	} = studentSelection;
+	const selectedIds = $derived($selectedStore);
+	const selectionCount = $derived($countStore);
+	const allSelected = $derived($allSelectedStore);
+	const someSelected = $derived($someSelectedStore);
+
+	// Indeterminate state untuk checkbox header
+	$effect(() => {
+		if (headerCheckbox) {
+			headerCheckbox.indeterminate = someSelected && !allSelected;
+		}
+	});
+
+	const selectedStudents = $derived(students.filter((s) => selectedIds.includes(s.id)));
+
 	const totalLessons = $derived(lessons.length);
 </script>
 
@@ -83,65 +151,142 @@
 	<p class="loading">Memuat data...</p>
 {:else if !$authIsTeacher}
 	<p class="empty">Anda tidak memiliki akses ke halaman ini.</p>
-{:else if students.length === 0}
-	<p class="empty">Belum ada data siswa.</p>
 {:else}
 	<div class="summary-bar">
 		<span><strong>{students.length}</strong> siswa</span>
 		<span><strong>{totalLessons}</strong> pelajaran</span>
-		<a href="/api/progress-report/export-csv?token={encodeURIComponent($authToken)}" class="btn btn-secondary btn-sm">
-			Export CSV
-		</a>
+
+		{#if selectionCount > 0}
+			<span class="selection-count">
+				<strong>{selectionCount}</strong> siswa dipilih
+			</span>
+		{/if}
+
+		<div class="actions">
+			{#if exportError}
+				<span class="error-inline">{exportError}</span>
+			{/if}
+
+			<button
+				class="btn btn-sm btn-secondary"
+				onclick={handleExport}
+				disabled={exportBusy}
+				title="Unduh CSV siswa (token kosong) untuk diedit dan diimpor ulang — tetap tersedia saat belum ada siswa (header-only)"
+			>
+				{#if exportBusy}
+					Mengekspor…
+				{:else if selectionCount > 0}
+					&#8595; Export {selectionCount} Siswa
+				{:else}
+					&#8595; Export CSV
+				{/if}
+			</button>
+
+			<button
+				class="btn btn-sm btn-secondary"
+				onclick={() => (importOpen = true)}
+				title="Import CSV — siswa baru dibuat, siswa existing dipulihkan/di-update"
+			>
+				&#8593; Import CSV
+			</button>
+
+			<button
+				class="btn btn-sm btn-danger"
+				onclick={() => (deleteOpen = true)}
+				disabled={selectionCount === 0}
+				title="Hapus siswa terpilih beserta token dan progress"
+			>
+				&#128465; Hapus {selectionCount} Siswa
+			</button>
+
+			<a href="/api/progress-report/export-csv?token={encodeURIComponent($authToken)}" class="btn btn-sm btn-secondary">
+				Export Laporan
+			</a>
+		</div>
 	</div>
 
-	<div class="table-wrapper">
-		<table>
-			<thead>
-				<tr>
-					<th class="sticky-col">Nama Siswa</th>
-					{#each lessons as lesson}
-						<th title={lesson.filename}>{lesson.title}</th>
-					{/each}
-					<th>Selesai</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each students as student}
+	{#if students.length === 0}
+		<p class="empty">Belum ada data siswa. Gunakan <strong>Import CSV</strong> untuk menambah siswa pertama.</p>
+	{:else}
+		<div class="table-wrapper">
+			<table>
+				<thead>
 					<tr>
-						<td class="sticky-col student-name">{student.nama_siswa}</td>
+						<th class="checkbox-col">
+							<input
+								type="checkbox"
+								bind:this={headerCheckbox}
+								checked={allSelected}
+								onchange={handleHeaderCheckbox}
+								aria-label="Pilih semua siswa"
+							/>
+						</th>
+						<th class="sticky-col">Nama Siswa</th>
 						{#each lessons as lesson}
-							{@const key = lesson.filename.replace('.md', '')}
-							{@const status = student[key]}
-							<td class="status-cell">
-								<div class="cell-content">
-									{#if status === 'completed'}
-										<span class="badge done">&#10003;</span>
-									{:else if status && status !== 'not_started'}
-										<span class="badge score">{status}</span>
-									{:else}
-										<span class="badge empty">&mdash;</span>
-									{/if}
-
-									{#if status && status !== 'not_started'}
-										<button
-											class="btn-reset-mini"
-											onclick={() => handleReset(student.id as string, key, student.nama_siswa)}
-											title="Reset Progres"
-										>
-											↻
-										</button>
-									{/if}
-								</div>
-							</td>
+							<th title={lesson.filename}>{lesson.title}</th>
 						{/each}
-						<td class="completion-count">
-							{student.completed_count}/{totalLessons}
-						</td>
+						<th>Selesai</th>
 					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+				</thead>
+				<tbody>
+					{#each students as student}
+						{@const isChecked = selectedIds.includes(student.id as string)}
+						<tr class:selected={isChecked}>
+							<td class="checkbox-col">
+								<input
+									type="checkbox"
+									checked={isChecked}
+									onchange={() => studentSelection.toggle(student.id as string)}
+									aria-label={`Pilih ${student.nama_siswa}`}
+								/>
+							</td>
+							<td class="sticky-col student-name">{student.nama_siswa}</td>
+							{#each lessons as lesson}
+								{@const key = lesson.filename.replace('.md', '')}
+								{@const status = student[key]}
+								<td class="status-cell">
+									<div class="cell-content">
+										{#if status === 'completed'}
+											<span class="badge done">&#10003;</span>
+										{:else if status && status !== 'not_started'}
+											<span class="badge score">{status}</span>
+										{:else}
+											<span class="badge empty">&mdash;</span>
+										{/if}
+
+										{#if status && status !== 'not_started'}
+											<button
+												class="btn-reset-mini"
+												onclick={() => handleReset(student.id as string, key, student.nama_siswa)}
+												title="Reset Progres"
+											>
+												↻
+											</button>
+										{/if}
+									</div>
+								</td>
+							{/each}
+							<td class="completion-count">
+								{student.completed_count}/{totalLessons}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	{/if}
+
+	<StudentImportDialog
+		open={importOpen}
+		onClose={() => (importOpen = false)}
+		onImported={handleImported}
+	/>
+	<BulkDeleteStudentsDialog
+		open={deleteOpen}
+		studentNames={selectedStudents.map((s) => ({ id: s.id as string, nama_siswa: s.nama_siswa }))}
+		onClose={() => (deleteOpen = false)}
+		onDeleted={handleDeleted}
+	/>
 {/if}
 
 <style>
@@ -158,6 +303,7 @@
 	.summary-bar {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 1.5rem;
 		margin-bottom: 1rem;
 		padding: 0.75rem 1rem;
@@ -165,15 +311,50 @@
 		border-radius: var(--radius);
 		font-size: 0.9rem;
 	}
-	.summary-bar .btn-sm {
+	.selection-count {
+		color: var(--color-primary);
+	}
+	.actions {
 		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+	.error-inline {
+		color: var(--color-danger);
+		font-size: 0.8rem;
+	}
+
+	.btn-sm {
 		padding: 0.3rem 0.75rem;
 		font-size: 0.8rem;
+		border-radius: var(--radius);
+		cursor: pointer;
+		text-decoration: none;
+		transition: all 0.15s;
+	}
+	.btn-secondary {
 		background: var(--color-bg);
 		border: 1px solid var(--color-border);
 		color: var(--color-text);
-		border-radius: var(--radius);
-		text-decoration: none;
+	}
+	.btn-secondary:hover:not(:disabled) {
+		border-color: var(--color-primary);
+		color: var(--color-primary);
+	}
+	.btn-danger {
+		background: var(--color-bg);
+		border: 1px solid var(--color-danger);
+		color: var(--color-danger);
+	}
+	.btn-danger:hover:not(:disabled) {
+		background: var(--color-danger);
+		color: #fff;
+	}
+	.btn-sm:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 
 	.table-wrapper {
@@ -198,6 +379,17 @@
 		font-size: 0.8rem;
 		position: sticky;
 		top: 0;
+	}
+	.checkbox-col {
+		width: 2.2rem;
+		padding: 0.5rem 0.25rem;
+	}
+	.checkbox-col input {
+		cursor: pointer;
+		accent-color: var(--color-primary);
+	}
+	tr.selected td {
+		background: color-mix(in srgb, var(--color-primary) 6%, var(--color-bg));
 	}
 	.sticky-col {
 		position: sticky;
