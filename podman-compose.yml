@@ -45,7 +45,6 @@ services:
     network_mode: service:elemes-ts
     volumes:
       - ../content:/app/content:ro
-      - ../tokens_siswa.csv:/app/tokens.csv:ro
       - ../assets:/app/assets:ro
     env_file:
       - ../.env

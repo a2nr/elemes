@@ -1,12 +1,13 @@
 # Migrasi Database: CSV → PostgreSQL
 
-> Status: **SELESAI — live di PostgreSQL** (`STORAGE_BACKEND=postgresql`, cutover Agustus 2026).
-> CSV tetap dipelihara sebagai backup read-only (`/app/tokens.csv`, mount `:ro`).
-> Dokumen ini menjelaskan arsitektur, alur migrasi, operasional, dan rollback.
+> Status: **SELESAI — live di PostgreSQL** (cutover Agustus 2026).
+> Backend CSV sudah **dicabut** dan `tokens_siswa.csv` **tidak lagi menjadi
+> source of truth** — PostgreSQL adalah satu-satunya backend penyimpanan.
+> Dokumen ini menjelaskan arsitektur, riwayat migrasi, dan operasional.
 
 ## 1. Kenapa migrasi?
 
-Penyimpanan lama `tokens_siswa.csv` (satu baris = satu siswa, satu kolom per lesson):
+Penyimpanan lama berbasis file CSV (satu baris = satu siswa, satu kolom per lesson):
 
 | Masalah | Dampak |
 |---|---|
@@ -38,18 +39,20 @@ Flask routes (auth, progress, lessons, compile)
 services/token_service.py  ← facade, kontrak publik
         │
         ▼
-services/storage/  (dipilih via STORAGE_BACKEND)
-   ├── csv_backend.py       → tokens_siswa.csv  (transisi/rollback)
+services/storage/  (backend tunggal — CSV sudah dicabut)
    └── postgres_backend.py  → repositories → SQLAlchemy → PostgreSQL
 ```
 
 - `services/models.py` — `users`, `access_tokens` (token_hash unik),
   `lessons` (registry metadata), `student_progress` (unique user+lesson).
 - `migrations/` — Alembic; `0001_initial_schema.py` (hand-written, deterministik).
-- `services/csv_importer.py` — import idempotent CSV → PG
+- ~~`services/csv_importer.py`~~ — import idempotent CSV → PG
   (`3/4` legacy → `state=scored, score_earned=3, score_total=4`).
+  **File dihapus pasca cutover** — migrasi CSV hanya satu kali; siswa baru
+  ditambahkan via Import CSV di webapp (`student_roundtrip`).
 - `services/lesson_registry.py` — sync daftar lesson dari `home.md`
-  (lesson hilang → `is_active=false`, **bukan dihapus**).
+  (lesson hilang → `is_active=false`, **bukan dihapus**). Sync ini berjalan
+  **otomatis** setiap kali aplikasi start.
 
 ### Keamanan token
 
@@ -57,68 +60,55 @@ services/storage/  (dipilih via STORAGE_BACKEND)
   HMAC-SHA256(token, TOKEN_PEPPER)` — deterministik untuk lookup, tak reversibel.
 - Pepper (`TOKEN_PEPPER`) di `.env`, **di luar database**. Hilang =
   semua token invalid (regenerate & import ulang).
-- Report & export **tidak menyertakan token mentah**; reset guru memakai
-  `student_id` anonim (`user.id` di PG, sha256(token) di CSV).
+- Report & export **tidak menyertakan token mentah**; reset memakai
+  `student_id` anonim (`user.id` di PG).
 
-## 4. Alur migrasi (production)
+## 4. Alur migrasi (Agustus 2026 — selesai)
 
-```bash
-cd elemes
+Cutover CSV → PostgreSQL **sudah selesai** dan tidak bisa diulang atau
+di-rollback (backend CSV dicabut). Alur yang dijalankan saat itu, untuk
+referensi:
 
-# 1. Set variabel di ../.env (lihat .env.example):
-#    POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD (strong!)
-#    DATABASE_URL=postgresql+psycopg://<user>:<pass>@127.0.0.1:5432/<db>
-#    TOKEN_PEPPER=<random 48 hex>      # JANGAN hilangkan — hash bergantung padanya
-#    STORAGE_BACKEND=csv               # tetap csv selama transisi
+1. Tambahkan variabel database di `../.env` (lihat `.env.example`):
+   `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` (strong!),
+   `DATABASE_URL=postgresql+psycopg://<user>:<pass>@127.0.0.1:5432/<db>`,
+   `TOKEN_PEPPER=<random 48 hex>` (JANGAN hilangkan — hash bergantung padanya),
+   `STORAGE_BACKEND=postgresql`.
+2. `./elemes.sh runclearbuild` — build image (SQLAlchemy, Alembic, psycopg) + start postgres.
+3. `./elemes.sh dbupgrade` — buat schema.
+4. Impor data siswa dari CSV lama (script `scripts/migrate_csv_to_postgres.py`).
+5. `./elemes.sh dbbackup` — backup pertama.
 
-# 2. Build ulang image (deps baru: SQLAlchemy, alembic, psycopg) + start postgres
-./elemes.sh runclearbuild
-
-# 3. Buat schema + import data (idempotent — aman dijalankan ulang)
-./elemes.sh dbupgrade
-./elemes.sh synclessons
-./elemes.sh dbimport            # lihat laporan
-./elemes.sh dbimport --dry-run  # simulasi tanpa menulis
-
-# 4. PARITY CHECK — wajib lulus sebelum cutover
-./elemes.sh dbverify
-
-# 5. Cek versi schema & backup pertama
-./elemes.sh dbstatus
-./elemes.sh dbbackup
-
-# 6. Cutover: ubah STORAGE_BACKEND=postgresql di ../.env, lalu
-./elemes.sh run     # restart service dengan backend baru
-```
-
-Setelah cutover, CSV tetap ada di `/app/tokens.csv` sebagai **backup
-read-only** — tapi tidak lagi dibaca oleh aplikasi.
+Sekarang langkah-langkah itu sudah **otomatis**: `runbuild`/`run`/`runclearbuild`
+menjalankan migrasi schema + bootstrap akun guru saat start, dan daftar lesson
+disinkronkan otomatis dari `home.md`. Tidak ada lagi file CSV token yang dibaca
+aplikasi — token & progress hanya ada di PostgreSQL.
 
 ## 5. Operasional harian
 
 | Perintah | Fungsi |
 |---|---|
-| `./elemes.sh dbupgrade` | Jalankan migrasi schema (alembic upgrade head) |
+| `./elemes.sh dbupgrade` | Jalankan migrasi schema (alembic upgrade head) — juga otomatis saat start |
 | `./elemes.sh dbstatus` | Versi schema aktif & head |
-| `./elemes.sh dbimport` | Impor/refresh data dari CSV (idempotent) |
-| `./elemes.sh synclessons` | Sinkronisasi daftar lesson dari `home.md` |
-| `./elemes.sh dbverify` | Parity check CSV ↔ PG |
+| `./elemes.sh teacher` | Buat/update akun guru canonical (upsert; prompt nama & token tersembunyi) |
 | `./elemes.sh dbbackup` | `pg_dump` → `backups/elemes_<ts>.sql` |
 | `./elemes.sh dbrestore` | Restore backup terbaru |
-| `./elemes.sh dbexport` | Snapshot PG → `pg_snapshot.csv` (tanpa token) |
 
-## 6. Rollback (kembali ke CSV)
+Sinkronisasi daftar lesson dari `home.md` berjalan **otomatis** setiap kali
+aplikasi start — tidak ada perintah sinkronisasi manual.
 
-Selama transisi, `STORAGE_BACKEND=csv` → aplikasi memakai CSV lagi.
-CSV tidak berubah oleh operasi PG (write PG tidak menyentuh CSV).
-Catatan: progress yang masuk lewat PG selama periode postgresql
-**tidak** otomatis balik ke CSV — jalankan `dbexport` dulu bila perlu.
+## 6. Rollback
+
+Tidak ada rollback ke backend CSV — backend CSV sudah **dicabut** dan
+`STORAGE_BACKEND` hanya menerima `postgresql`. Pemulihan data dilakukan lewat
+backup: `./elemes.sh dbbackup` (rutin) dan `./elemes.sh dbrestore`.
 
 ## 7. Load test endpoint database
 
 ```bash
 cd elemes/load-test
-python content_parser.py --content-dir ../../content --tokens-file ../../tokens_siswa.csv
+# (set DATABASE_URL dulu bila ingin token sintetis di-seed ke PostgreSQL)
+python content_parser.py --content-dir ../../content --num-tokens 50
 locust -f locustfile_db.py    # set host ke URL Elemes
 ```
 
@@ -128,7 +118,7 @@ progress-report + export-csv (guru).
 ## 8. Test
 
 ```bash
-# Unit & kontrak (host): backend aktif default = csv tanpa DATABASE_URL
+# Unit & kontrak (host): backend aktif = postgresql (butuh DATABASE_URL ter-set)
 PYTHONPATH=services python -m pytest services/tests -q
 
 # Integrasi (butuh DATABASE_URL + postgres hidup): jalankan di container
@@ -215,15 +205,17 @@ student_id;token;nama_siswa;<lesson_slugs...>
   (`src/routes/progress/+page.svelte` + komponen di `src/lib/components/`).
 
 Out of scope: mengganti token siswa existing lewat import, export/recovery
-  token, vault, soft delete, dan import format lama (`dbexport`/CSV migrasi).
+  token, vault, soft delete, dan import format lama (CSV migrasi).
 
 - Kontrak suite (`test_token_service_contract.py`, `test_auth_routes.py`,
-  `test_progress_routes.py`) dijalankan terhadap **kedua** backend.
-- Test integrasi (`test_repositories.py`, `test_csv_importer.py`,
-  `test_lesson_registry.py`) otomatis skip bila `DATABASE_URL` tidak diset.
+  `test_progress_routes.py`) dijalankan terhadap **PostgreSQL** (backend CSV
+  sudah dicabut).
+- Test integrasi (`test_repositories.py`, `test_lesson_registry.py`,
+  `test_teacher_bootstrap.py`, dan suite kontrak di atas) otomatis skip bila
+  `DATABASE_URL` tidak diset.
 - Isolasi antar test (DB bersama): conftest punya fixture `autouse` yang TRUNCATE
-  semua tabel sebelum tiap test; `TOKENS_FILE`/`CONTENT_DIR` di-**PAKSA** ke fixture
+  semua tabel sebelum tiap test; `CONTENT_DIR` di-**PAKSA** ke fixture
   (jangan `setdefault` — env container membawa path produksi). Integration test
   dijalankan di DB terpisah (mis. `elemes_test`): `CREATE DATABASE` + `alembic upgrade`.
-- Script di `/app/scripts` (dbverify/dbexport) butuh `PYTHONPATH=/app` (bukan
-  `services`) agar `from services...` resolve — sudah di-apply di `elemes.sh`.
+- Script di `/app/scripts` (mis. `bootstrap_teacher.py`) butuh `PYTHONPATH=/app`
+  (bukan `services`) agar `from services...` resolve — sudah di-apply di `elemes.sh`.

@@ -31,7 +31,7 @@ SvelteKit Frontend (elemes-frontend :3000)
 Flask API Backend (elemes :5000)
   ├── Code compilation (Proxied to Compiler Worker)
   ├── Arduino Proxy (/velxio-compile → Velxio :80)
-  ├── Token authentication (CSV)
+  ├── Token authentication (PostgreSQL)
   ├── Progress tracking
   └── Lesson content parsing (markdown)
     │
@@ -69,12 +69,15 @@ project/
 │   └── ...
 ├── assets/               # Gambar untuk materi (opsional)
 │   └── gambar.png
-├── tokens_siswa.csv      # Data token siswa (auto-generated)
+├── backups/              # PostgreSQL dumps (./elemes.sh dbbackup)
 ├── state/                # State Tailscale (auto-generated)
 └── elemes/               # Folder engine LMS (JANGAN DIUBAH)
     ├── elemes.sh          # Script untuk menjalankan LMS
     └── ...
 ```
+
+> Akun siswa & guru tersimpan di **PostgreSQL** (container `postgres`) — tidak
+> ada file CSV token. Akun guru dikelola via `./elemes.sh teacher`.
 
 ## Setup and Execution
 
@@ -85,7 +88,7 @@ The primary entry point for managing the system is the `elemes.sh` script locate
    cd elemes
    ./elemes.sh init
    ```
-   Generates `.env`, `content/`, and `tokens_siswa.csv` from examples. Safe to run multiple times.
+   Generates `.env`, `content/`, `assets/`, and `state/` from examples (no token files — accounts live in PostgreSQL). Safe to run multiple times.
 
 2. **Configuration:**
    Edit `../.env` to set branding and Tailscale configuration:
@@ -94,7 +97,9 @@ The primary entry point for managing the system is the `elemes.sh` script locate
    COPYRIGHT_TEXT=SMK Nusantara @ 2025
    PAGE_TITLE_SUFFIX=SMK Nusantara
    CONTENT_DIR=content
-   TOKENS_FILE=tokens.csv
+   TEACHER_NAME=Guru LMS    # default teacher display name
+   TEACHER_TOKEN=           # teacher token for non-interactive first-run bootstrap
+                            # (leave empty to create the account later via ./elemes.sh teacher)
    ELEMES_HOST=lms-smk-nusantara
    TS_AUTHKEY=tskey-auth-xxxx
    ```
@@ -106,12 +111,25 @@ The primary entry point for managing the system is the `elemes.sh` script locate
    ./elemes.sh stop      # Stop all containers
    ```
 
-4. **Managing Users (Tokens):**
-   To update columns in the CSV based on available lessons:
+4. **Managing Users:**
+   The system keeps a **single canonical teacher account** (used to access the
+   `/progress` dashboard). Create or update it with:
    ```bash
-   ./elemes.sh generatetoken
+   ./elemes.sh teacher
    ```
-   Then manually edit `tokens_siswa.csv` (using semicolon `;` delimiter) to add student rows. The first data row is always the teacher token.
+   It prompts for a display name (Enter = `TEACHER_NAME` from `.env`, default
+   "Guru LMS") and a hidden token via stdin. It upserts the account: creates it
+   when none exists, updates the name **and rotates the token** when the account
+   exists, and only updates the name when the token is unchanged (idempotent).
+
+   Student accounts are managed from the `/progress` page via round-trip CSV
+   (export → edit → import).
+
+   **Automatic first-run:** `runbuild` / `run` / `runclearbuild` automatically
+   run schema migrations (`alembic upgrade head`) on startup, and bootstrap the
+   teacher account when `TEACHER_TOKEN` is set in `.env`. If `TEACHER_TOKEN` is
+   empty, the app starts without a teacher account — the operator just runs
+   `./elemes.sh teacher`.
 
 ## Security Overview
 

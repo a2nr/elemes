@@ -57,7 +57,8 @@ def sync_lesson_registry(db: Session) -> dict:
 
 def maybe_sync_on_startup():
     """Auto-sync saat app init (storage PostgreSQL). Error DB hanya di-log —
-    aplikasi tetap jalan; sinkronisasi bisa diulang via `elemes.sh synclessons`."""
+    aplikasi tetap jalan; sync berjalan lagi saat startup berikutnya
+    (command manual `synclessons` sudah dihapus)."""
     from services.database import SessionLocal  # lazy: tanpa DB tidak dipanggil
 
     if SessionLocal is None:

@@ -11,8 +11,6 @@ from flask import Flask
 from flask_cors import CORS
 
 from extensions import limiter
-from services.lesson_service import get_lesson_names
-from services.token_service import initialize_tokens_file
 
 # Configure logging once at module level
 logging.basicConfig(
@@ -49,7 +47,6 @@ def create_app():
     app.register_blueprint(student_management_bp)
 
     # ── Startup tasks ─────────────────────────────────────────────────
-    initialize_tokens_file(get_lesson_names())
     # Sync metadata lesson ke PostgreSQL (auto-skip bila DB belum aktif).
     # Idempotent; kegagalan hanya di-log — tidak mematikan app.
     from services.lesson_registry import maybe_sync_on_startup

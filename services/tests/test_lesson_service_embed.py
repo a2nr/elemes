@@ -1,5 +1,5 @@
 import pytest
-from lesson_service import _process_embed_embeds
+from services.lesson_service import _process_embed_embeds
 
 
 def test_embed_canva_html():

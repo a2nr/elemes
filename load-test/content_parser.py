@@ -5,15 +5,16 @@ Content Parser for Locust E2E Test Generation.
 Scans the content/ directory, parses lesson markdown files,
 extracts test-relevant data, and writes test_data.json.
 
-Also injects a LOCUST_TEST token into tokens_siswa.csv if not present.
+Token siswa sintetis (LOCUST_TEST_*) di-seed langsung ke PostgreSQL bila
+DATABASE_URL tersedia — tidak lagi menyentuh tokens_siswa.csv (backend CSV
+sudah dicabut).
 
 Usage (from elemes/load-test/):
     python content_parser.py
-    python content_parser.py --content-dir ../../content --tokens-file ../../tokens_siswa.csv --num-tokens 50
+    python content_parser.py --content-dir ../../content --num-tokens 50
 """
 
 import argparse
-import csv
 import json
 import os
 import re
@@ -169,81 +170,65 @@ def get_ordered_slugs(content_dir: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Token injection
+# Token sintetis & seeding ke PostgreSQL
 # ---------------------------------------------------------------------------
 
-def ensure_test_tokens(tokens_file: str, lesson_slugs: list[str], num_tokens: int) -> list[str]:
+def ensure_test_tokens(num_tokens: int) -> list[str]:
+    """Generate N synthetic Locust tokens (LOCUST_TEST_<hex>).
+
+    Murni sintetis — tidak lagi menyentuh tokens_siswa.csv (backend CSV
+    sudah dicabut; akun siswa dikelola di PostgreSQL).
     """
-    Ensure a specified number of test tokens exist in tokens_siswa.csv.
-    Returns a list of token strings.
+    return [f"LOCUST_TEST_{uuid.uuid4().hex[:8]}" for _ in range(num_tokens)]
+
+
+def seed_tokens_to_db(tokens: list[str]) -> int:
+    """Seed student users + access tokens ke PostgreSQL (bila DATABASE_URL ada).
+
+    Idempotent: token yang sudah ada tidak dibuat ulang. Mengembalikan jumlah
+    user baru; 0 bila DB tidak tersedia. Akun guru TIDAK pernah dibuat di sini
+    — akun guru dikelola via ./elemes.sh teacher / TEACHER_TOKEN.
     """
-    existing_tokens = []
-    rows = []
-    fieldnames = []
-
-    if os.path.exists(tokens_file):
-        with open(tokens_file, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f, delimiter=';')
-            fieldnames = reader.fieldnames or []
-            rows = list(reader)
-
-        for row in rows:
-            if row.get('token', '').startswith('LOCUST_TEST_'):
-                existing_tokens.append(row['token'])
-
-    if not fieldnames:
-        fieldnames = ['token', 'nama_siswa'] + lesson_slugs
-
-    tokens_to_return = existing_tokens[:num_tokens]
-    
-    if len(tokens_to_return) < num_tokens:
-        needed = num_tokens - len(tokens_to_return)
-        new_tokens = []
-        for i in range(needed):
-            token = f"LOCUST_TEST_{uuid.uuid4().hex[:8]}"
-            new_tokens.append(token)
-            
-            new_row = {'token': token, 'nama_siswa': f"Locust Bot {len(tokens_to_return) + i + 1}"}
-            for slug in lesson_slugs:
-                if slug not in fieldnames:
-                     fieldnames.append(slug)
-                new_row[slug] = 'not_started'
-            rows.append(new_row)
-            
-        with open(tokens_file, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
-            writer.writeheader()
-            writer.writerows(rows)
-            
-        print(f"  ✚  Injected {len(new_tokens)} new test tokens.")
-        tokens_to_return.extend(new_tokens)
-    else:
-        print(f"  ♻  Reusing {num_tokens} existing test tokens.")
-
-    return tokens_to_return
+    try:
+        from services import repositories as repo
+        from services.database import SessionLocal
+    except Exception:
+        return 0
+    if SessionLocal is None:
+        return 0
+    db = SessionLocal()
+    created = 0
+    try:
+        for idx, token in enumerate(tokens, start=1):
+            if repo.find_user_by_raw_token(db, token) is not None:
+                continue
+            user = repo.create_user(db, display_name=f"Locust Bot {idx}", role="student")
+            repo.create_access_token(db, user_id=user.id, raw_token=token)
+            created += 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        return 0
+    finally:
+        db.close()
+    return created
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+def _get_teacher_token() -> str:
+    """Teacher token dari env TEACHER_TOKEN.
 
-def _get_teacher_token(tokens_file: str) -> str:
-    """Get the teacher token (first data row)."""
-    if not os.path.exists(tokens_file):
-        return ""
-    with open(tokens_file, 'r', newline='', encoding='utf-8') as f:
-        reader = csv.DictReader(f, delimiter=';')
-        for row in reader:
-            return row.get('token', '')
-    return ""
+    Raw token guru tidak dapat direkonstruksi dari DB (hanya HMAC digest
+    tersimpan), jadi caller harus memasoknya via --teacher-token / env.
+    """
+    return os.environ.get("TEACHER_TOKEN", "")
 
 
 def main():
     parser = argparse.ArgumentParser(description='Parse content/ for Locust test generation')
     parser.add_argument('--content-dir', default='../../content',
                         help='Path to content directory (default: ../../content)')
-    parser.add_argument('--tokens-file', default='../../tokens_siswa.csv',
-                        help='Path to tokens CSV (default: ../../tokens_siswa.csv)')
+    parser.add_argument('--teacher-token', default=os.environ.get('TEACHER_TOKEN', ''),
+                        help='Token guru asli (default: env TEACHER_TOKEN)')
     parser.add_argument('--num-tokens', type=int, default=50,
                         help='Number of test tokens to generate (default: 50)')
     parser.add_argument('--output', default='test_data.json',
@@ -251,13 +236,11 @@ def main():
     args = parser.parse_args()
 
     content_dir = os.path.abspath(args.content_dir)
-    tokens_file = os.path.abspath(args.tokens_file)
 
     print(f"\n{'='*60}")
     print(f"  Elemes Content Parser for Locust E2E Testing")
     print(f"{'='*60}")
     print(f"  Content dir : {content_dir}")
-    print(f"  Tokens file : {tokens_file}")
     print(f"  Num tokens  : {args.num_tokens}")
     print(f"  Output      : {args.output}")
     print()
@@ -296,15 +279,21 @@ def main():
         compilable = '✓ compile' if lesson.get('compilable') else '✗ compile'
         print(f"     {icon} {slug} [{lesson['type']}] {compilable}")
 
-    # 3. Inject test tokens
+    # 3. Generate test tokens (sintetis) + seed ke PostgreSQL
     print()
-    tokens = ensure_test_tokens(tokens_file, ordered_slugs, args.num_tokens)
+    tokens = ensure_test_tokens(args.num_tokens)
+    seeded = seed_tokens_to_db(tokens)
+    if seeded:
+        print(f"  🌱  Seeded {seeded} student accounts ke PostgreSQL.")
+    else:
+        print("  ⚠  Token sintetis TIDAK di-seed ke DB (DATABASE_URL tidak tersedia).")
+        print("     Login Locust akan gagal kecuali akun dibuat manual via DB/teacher command.")
 
     # 4. Build output
     test_data = {
         'generated_by': 'content_parser.py',
         'tokens': tokens,
-        'teacher_token': _get_teacher_token(tokens_file),
+        'teacher_token': args.teacher_token or _get_teacher_token(),
         'lessons': lessons,
         'stats': {
             'total': len(lessons),

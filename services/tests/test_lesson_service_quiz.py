@@ -1,6 +1,6 @@
 import pytest
 
-from lesson_service import _parse_flashcards
+from services.lesson_service import _parse_flashcards
 
 
 def test_mcq_multiline_prompt_code_fence_and_paragraph():

@@ -15,7 +15,9 @@ source ./env/bin/activate
 pip install -r requirements.txt
 
 # 2. Generate test data dari content/ (konten ada di subfolder dasar/, arduino/, circuit/)
-python content_parser.py --content-dir ../../content --tokens-file ../../tokens_siswa.csv --num-tokens 50
+#    Token sintetis LOCUST_TEST_* otomatis di-seed ke PostgreSQL bila env DATABASE_URL ter-set
+export DATABASE_URL=postgresql+psycopg://elemes:<password>@127.0.0.1:5432/elemes
+python content_parser.py --content-dir ../../content --num-tokens 50
 
 # 3. Jalankan Locust (opsional: set VELXIO_HOST jika Velxio bukan di localhost:8001)
 export VELXIO_HOST=http://localhost:8001
@@ -28,7 +30,7 @@ Buka **http://localhost:8089**, masukkan URL backend Elemes (misalnya `http://lo
 
 | File | Fungsi |
 |------|--------|
-| `content_parser.py` | Parse `content/**/*.md` (rekursif subfolder) → `test_data.json` + inject token `LOCUST_TEST_*` ke CSV |
+| `content_parser.py` | Parse `content/**/*.md` (rekursif subfolder) → `test_data.json` + seed token `LOCUST_TEST_*` ke PostgreSQL |
 | `locustfile.py` | Locust script (task weighted) yang baca `test_data.json` |
 | `test_data.json` | Auto-generated, **jangan di-commit** |
 | `requirements.txt` | Dependency (`locust`) |
@@ -86,7 +88,7 @@ locust -f locustfile.py --worker --master-host <IP_MASTER>
 Setiap kali ada lesson baru di `content/`, cukup jalankan ulang:
 
 ```bash
-python content_parser.py --content-dir ../../content --tokens-file ../../tokens_siswa.csv
+python content_parser.py --content-dir ../../content --num-tokens 50
 ```
 
 `test_data.json` akan di-update otomatis dan Locust langsung test lesson baru.
@@ -98,7 +100,8 @@ Verifikasi cepat alur interaktif tanpa browser — jalan di dalam container back
 ```bash
 podman cp elemes/load-test/e2e_session_check.py lms-dev_elemes_1:/tmp/
 podman exec -e E2E_TOKEN=<token_siswa> lms-dev_elemes_1 python3 /tmp/e2e_session_check.py
-# Contoh token: LOCUST_TEST_xxxx (ambil dari tokens_siswa.csv)
+# Contoh token: LOCUST_TEST_xxxx — token sintetis yang di-seed ke PostgreSQL
+# oleh content_parser.py (jalankan langkah 2 dengan DATABASE_URL ter-set).
 ```
 
 Tanpa `E2E_TOKEN` skrip tetap jalan tapi hanya 2 create session (anon rate limit 1/2 menit).

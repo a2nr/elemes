@@ -1,9 +1,24 @@
 """
 Kontrak route autentikasi. Token asli siswa tetap dipakai untuk login;
 response dan log tidak boleh mengekspos credential.
+
+Integrasi PostgreSQL (butuh DATABASE_URL) — backend CSV sudah dicabut.
 """
 
+import os
+
+import pytest
+
 from services.tests.conftest import STUDENT_TOKEN, TEACHER_TOKEN
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata"
+)
+
+
+@pytest.fixture(autouse=True)
+def _seed(seed_demo_users):
+    yield
 
 
 def test_login_success_sets_httponly_cookie(client):

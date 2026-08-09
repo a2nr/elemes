@@ -31,7 +31,7 @@ SvelteKit Frontend (elemes-frontend :3000)
 Flask API Backend (elemes :5000)
   ├── Code compilation (Proxied to Compiler Worker)
   ├── Arduino Proxy (/velxio-compile → Velxio :80)
-  ├── Token authentication (CSV)
+  ├── Token authentication (PostgreSQL)
   ├── Progress tracking
   └── Lesson content parsing (markdown)
     │
@@ -73,19 +73,19 @@ lms-c/
 │   ├── rangkaian_dasar.md       # Lesson Circuit
 │   └── led_blink_arduino.md     # Lesson Arduino/Velxio
 ├── assets/                      # Gambar untuk lesson
-├── tokens_siswa.csv             # Data siswa & progress
+├── backups/                     # Dump PostgreSQL (./elemes.sh dbbackup)
 ├── state/                       # Tailscale runtime state
 ├── .env                         # Environment variables
 │
 └── elemes/                      # Semua kode aplikasi
     ├── app.py                   # Flask create_app() factory
-    ├── config.py                # CONTENT_DIR, TOKENS_FILE
+    ├── config.py                # CONTENT_DIR, DATABASE_URL, TOKEN_PEPPER, dll
     ├── Dockerfile               # Flask container
     ├── gunicorn.conf.py         # Production WSGI
     ├── requirements.txt         # Python deps
     ├── podman-compose.yml       # 4 services (elemes, frontend, velxio, ts)
-    ├── elemes.sh                # CLI: init, run, runbuild, stop, generatetoken
-    ├── generate_tokens.py       # Utility: generate CSV tokens
+    ├── elemes.sh                # CLI: init, run, runbuild, stop, teacher, dbbackup/dbrestore, dll
+    ├── scripts/bootstrap_teacher.py  # Bootstrap akun guru (dipakai elemes.sh teacher & first-run)
     ├── proposal.md              # Proposal integrasi Velxio (referensi arsitektur)
     │
     ├── config/
@@ -104,7 +104,7 @@ lms-c/
     │   └── progress.py          # /track-progress, /progress-report.json, export-csv
     │
     ├── services/                # Business logic
-    │   ├── token_service.py     # CSV token CRUD
+    │   ├── token_service.py     # Facade token & progress (PostgreSQL)
     │   └── lesson_service.py    # Markdown parsing + rendering
     │
     ├── frontend/                # SvelteKit (Svelte 5)
@@ -236,9 +236,27 @@ cd elemes/
 # Rebuild tanpa cache
 ./elemes.sh runclearbuild
 
-# Generate token siswa dari content
-./elemes.sh generatetoken
+# Buat/update akun guru (upsert; prompt nama & token tersembunyi)
+./elemes.sh teacher
 ```
+
+### Akun Guru & First-Run Otomatis
+
+- **Migrasi schema**: `runbuild`, `run`, dan `runclearbuild` otomatis
+  menjalankan `alembic upgrade head` saat start (`db_init`), jadi tidak perlu
+  perintah migrasi manual.
+- **Bootstrap non-interaktif**: bila `TEACHER_TOKEN` terisi di `.env`, akun
+  guru canonical langsung di-bootstrap saat first-run. Bila kosong, aplikasi
+  tetap start tanpa guru — operator tinggal `./elemes.sh teacher`.
+- **`./elemes.sh teacher`** — upsert **satu akun guru canonical** di
+  PostgreSQL: prompt nama (default `TEACHER_NAME` di `.env`, Enter untuk
+  pakai) + token tersembunyi via stdin (tidak muncul di layar/process
+  list/shell history). Belum ada guru → dibuat; sudah ada → nama diperbarui
+  dan token lama **di-revoke** (jumlah guru tetap 1); token sama dengan yang
+  aktif → hanya nama diperbarui (idempotent).
+- **Token guru tidak dapat dipulihkan dari DB** — hanya HMAC-SHA256 digest
+  yang tersimpan. Simpan `TEACHER_TOKEN` di tempat aman; hilang berarti
+  rotasi token baru via `./elemes.sh teacher`.
 
 - **Frontend:** http://localhost:3000 (dev)
 - **Tailscale:** https://{ELEMES_HOST}.{tailnet}.ts.net

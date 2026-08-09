@@ -4,6 +4,5 @@ __pycache__/
 state/
 config/
 documentation.md
-generate_tokens.py
 podman-compose.yml
 .dockerignore

@@ -2,7 +2,7 @@
 Database layer — engine & session SQLAlchemy.
 
 - Engine dibuat hanya bila DATABASE_URL tersedia (agar aplikasi tetap bisa
-  berjalan dengan STORAGE_BACKEND=csv / dev tanpa PostgreSQL).
+  berjalan di dev tanpa PostgreSQL).
 - Skema TIDAK dibuat via create_all di produksi — memakai Alembic
   (elemes.sh db upgrade).
 """

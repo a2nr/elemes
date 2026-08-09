@@ -3,6 +3,8 @@ Kontrak route progress:
 - perilaku tracking/report yang dipertahankan;
 - kontrak security BARU yang belum terpenuhi implementasi CSV (RED):
   report tanpa raw token, reset via student_id, log tanpa raw token.
+
+Integrasi PostgreSQL (butuh DATABASE_URL) — backend CSV sudah dicabut.
 """
 
 import logging
@@ -11,6 +13,15 @@ import os
 import pytest
 
 from services.tests.conftest import STUDENT_TOKEN, TEACHER_TOKEN
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata"
+)
+
+
+@pytest.fixture(autouse=True)
+def _seed(seed_demo_users):
+    yield
 
 
 def test_track_progress_updates(client):
@@ -59,16 +70,20 @@ def test_report_contains_no_raw_access_token(client):
 
 
 def test_reset_progress_by_student_id(client):
-    """RED lama (student_token) diganti kontrak baru: reset via student_id anonim."""
-    import hashlib
+    """Kontrak baru: reset via student_id anonim (user.id), bukan student_token."""
+    from services import repositories as repo
+    from services import token_service as ts
+    from services.database import SessionLocal
 
-    from services.storage import active_backend_name
+    # pastikan ada progress yang bisa di-reset
+    assert ts.update_student_progress(STUDENT_TOKEN, "hello_world", "completed") is True
 
-    if active_backend_name() == "csv":
-        student_id = hashlib.sha256(STUDENT_TOKEN.encode()).hexdigest()
-    else:
-        # PG: student_id = user.id; diuji di test integrasi (butuh DB hidup)
-        pytest.skip("reset by user.id diuji pada test integrasi PostgreSQL")
+    db = SessionLocal()
+    try:
+        budi = repo.find_user_by_raw_token(db, STUDENT_TOKEN)
+        student_id = budi.id
+    finally:
+        db.close()
 
     resp = client.post(
         "/reset-progress",
@@ -104,25 +119,13 @@ def test_raw_token_not_in_logs(client, caplog):
     assert STUDENT_TOKEN not in caplog.text
 
 
-@pytest.mark.skipif(not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata")
 def test_pg_report_student_only(client):
-    """Report PostgreSQL hanya memuat role student — teacher tidak pernah row."""
-    from services import repositories as repo
-    from services.database import SessionLocal
+    """Report PostgreSQL hanya memuat role student — teacher tidak pernah row.
 
-    db = SessionLocal()
-    try:
-        repo.upsert_lesson(db, slug="hello_world", title="Hello World", order_index=0)
-        teacher = repo.create_user(db, display_name="Pak Guru", role="teacher")
-        repo.create_access_token(db, user_id=teacher.id, raw_token=TEACHER_TOKEN)
-        s1 = repo.create_user(db, display_name="Budi Santoso", role="student")
-        repo.create_access_token(db, user_id=s1.id, raw_token=STUDENT_TOKEN)
-        s2 = repo.create_user(db, display_name="Siti Aminah", role="student")
-        repo.create_access_token(db, user_id=s2.id, raw_token="TOKEN_SISWA_002")
-        db.commit()
-    finally:
-        db.close()
-
+    Data (Pak Guru/Budi/Siti + lesson hello_world) berasal dari fixture
+    `seed_demo_users` — tidak di-seed ulang di sini karena token_hash
+    deterministik (HMAC+pepper) menabrak unique constraint.
+    """
     client.set_cookie("student_token", TEACHER_TOKEN)
     resp = client.get("/progress-report.json")
     assert resp.status_code == 200

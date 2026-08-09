@@ -1,13 +1,59 @@
 """
 Kontrak persistence token/progress — mengunci perilaku yang HARUS dipertahankan
-ketika storage diganti dari CSV ke PostgreSQL.
+setelah cutover penuh ke PostgreSQL (backend CSV sudah dicabut).
 
-Bagian ini dijalankan terhadap storage aktif (awalnya CSV). Setelah Task 9,
-suite yang sama dijalankan terhadap kedua backend.
+Suite ini berjalan TERHADAP PostgreSQL nyata (butuh DATABASE_URL). Seeding
+dilakukan via repositories langsung — bukan lewat file CSV.
+
+Semantik PG yang dikunci di sini:
+- lesson tanpa record progress → "" (blank = belum mulai), bukan "not_started".
+- skor terstruktur → status "3/4".
 """
+
+import os
+
+import pytest
 
 from services import token_service as ts
 from services.tests.conftest import STUDENT2_TOKEN, STUDENT_TOKEN, TEACHER_TOKEN
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata"
+)
+
+
+@pytest.fixture(autouse=True)
+def _seed_database():
+    """Reset + seed data uji: 1 guru, 2 siswa, 3 lesson, progress Budi."""
+    from sqlalchemy import text
+
+    from services import repositories as repo
+    from services.database import SessionLocal
+    from services.models import Lesson
+
+    db = SessionLocal()
+    try:
+        db.execute(
+            text(
+                "TRUNCATE student_progress, access_tokens, lessons, users "
+                "RESTART IDENTITY CASCADE"
+            )
+        )
+        teacher = repo.create_user(db, display_name="Pak Guru", role="teacher")
+        repo.create_access_token(db, user_id=teacher.id, raw_token=TEACHER_TOKEN)
+        budi = repo.create_user(db, display_name="Budi Santoso", role="student")
+        repo.create_access_token(db, user_id=budi.id, raw_token=STUDENT_TOKEN)
+        siti = repo.create_user(db, display_name="Siti Aminah", role="student")
+        repo.create_access_token(db, user_id=siti.id, raw_token=STUDENT2_TOKEN)
+        for idx, slug in enumerate(["hello_world", "quiz_test", "variabel"]):
+            db.add(Lesson(slug=slug, title=slug.replace("_", " ").title(), order_index=idx))
+        db.commit()
+
+        # progress Budi (seperti baris CSV lama)
+        ts.update_student_progress(STUDENT_TOKEN, "hello_world", "completed")
+        ts.update_student_progress(STUDENT_TOKEN, "quiz_test", "3/4")
+    finally:
+        db.close()
 
 
 def test_valid_token_returns_student_info():
@@ -27,18 +73,16 @@ def test_unknown_token_rejected():
     assert ts.validate_token("TOKEN_TIDAK_ADA") is None
 
 
-def test_teacher_role_is_first_data_row_only():
+def test_teacher_role_is_explicit_in_db():
     assert ts.is_teacher_token(TEACHER_TOKEN) is True
     assert ts.is_teacher_token(STUDENT_TOKEN) is False
 
 
 def test_missing_progress_is_effectively_not_started():
-    # Kolom lesson yang tidak pernah tercatat tidak boleh dianggap completed.
+    # Siswa tanpa record progress: semua lesson blank ("") — bukan completed.
     progress = ts.get_student_progress(STUDENT2_TOKEN)
     assert progress is not None
-    # hello_world = not_started (kolom ada, nilainya not_started)
-    assert progress["hello_world"] == "not_started"
-    # quiz_test = blank → falsy
+    assert progress["hello_world"] == ""
     assert not progress["quiz_test"]
 
 

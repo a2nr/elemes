@@ -1,11 +1,9 @@
 """
-Storage backends — seleksi backend aktif berdasarkan STORAGE_BACKEND.
+Storage backend — PostgreSQL adalah satu-satunya backend aktif.
 
-- 'csv'        : penyimpanan lama (tokens_siswa.csv), untuk transisi/rollback.
-- 'postgresql' : source of truth baru (users/tokens/lessons/progress).
-
-Default: 'postgresql' bila DATABASE_URL tersedia, selain itu 'csv'.
-Kedua backend mengimplementasikan kontrak yang sama (lihat token_service facade).
+Backend CSV (tokens_siswa.csv) sudah dicabut setelah cutover penuh ke
+PostgreSQL. Nilai STORAGE_BACKEND selain 'postgresql' ditolak eksplisit
+(fail-loud), bukan di-rollback diam-diam ke perilaku lama.
 """
 
 import os
@@ -13,21 +11,16 @@ import os
 
 def active_backend_name() -> str:
     explicit = os.environ.get("STORAGE_BACKEND", "").strip().lower()
-    if explicit:
-        return explicit
-    from services.database import SessionLocal
-
-    return "postgresql" if SessionLocal is not None else "csv"
+    if explicit and explicit != "postgresql":
+        raise ValueError(
+            f"STORAGE_BACKEND={explicit!r} tidak didukung lagi; "
+            "satu-satunya backend yang tersedia adalah 'postgresql'."
+        )
+    return "postgresql"
 
 
 def get_backend_module():
-    name = active_backend_name()
-    if name == "postgresql":
-        from services.storage import postgres_backend
+    active_backend_name()  # validasi nilai env
+    from services.storage import postgres_backend
 
-        return postgres_backend
-    if name == "csv":
-        from services.storage import csv_backend
-
-        return csv_backend
-    raise ValueError(f"STORAGE_BACKEND tidak dikenal: {name!r}")
+    return postgres_backend

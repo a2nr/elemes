@@ -25,7 +25,6 @@ project/
 │   └── ...
 ├── assets/               # Gambar untuk materi (opsional)
 │   └── gambar.png
-├── tokens_siswa.csv      # Data token siswa (auto-generated)
 ├── backups/              # Hasil ./elemes.sh dbbackup (dump PostgreSQL)
 ├── state/                # State Tailscale (auto-generated)
 └── elemes/               # Folder engine LMS (JANGAN DIUBAH)
@@ -37,7 +36,7 @@ project/
 
 ```bash
 cd elemes
-./elemes.sh init      # Generate .env, content/, dan tokens dari contoh
+./elemes.sh init      # Generate .env, content/, assets/, dan state/ dari contoh
 ```
 
 Output:
@@ -45,14 +44,15 @@ Output:
 ```
 === Elemes Quick Start ===
 
-[buat] .env  (edit sesuai kebutuhan)
+[buat] .env  (edit sesuai kebutuhan, termasuk TEACHER_NAME / TEACHER_TOKEN)
 [buat] content/  (4 materi)
-[buat] tokens_siswa.csv  (edit untuk tambah siswa)
+[buat] assets/  (untuk gambar/media)
+[buat] state/  (untuk Tailscale)
 
 Selesai! Langkah selanjutnya:
   1. Edit ../.env sesuai kebutuhan
   2. Edit ../content/home.md untuk daftar materi
-  3. Edit ../tokens_siswa.csv untuk data siswa
+  3. Jalankan ./elemes.sh teacher untuk membuat akun guru
   4. Jalankan:  ./elemes.sh runbuild
 ```
 
@@ -68,9 +68,13 @@ APP_BAR_TITLE=Pemrograman C - SMK Nusantara
 COPYRIGHT_TEXT=SMK Nusantara @ 2025
 PAGE_TITLE_SUFFIX=SMK Nusantara
 
-# Lokasi file
+# Lokasi konten (dipakai di dalam container)
 CONTENT_DIR=content
-TOKENS_FILE=tokens.csv
+
+# Akun guru (bootstrap canonical)
+TEACHER_NAME=Guru LMS    # Nama default guru (dipakai ./elemes.sh teacher & first-run)
+TEACHER_TOKEN=           # Token guru untuk first-run non-interaktif (opsional);
+                         # kosongkan untuk prompt manual via ./elemes.sh teacher
 
 # Tailscale (opsional, untuk akses remote)
 ELEMES_HOST=lms-smk-nusantara
@@ -337,31 +341,40 @@ Sistem dilengkapi fitur keamanan untuk menjaga stabilitas:
 - **Proteksi Login**: Percobaan login salah akan ditahan (**tarpitting**) selama 1.5 detik untuk mencegah brute-force.
 - **Anti Copy-Paste**: Mencegah siswa menyalin konten materi atau menempel kode dari luar (bisa dikonfigurasi).
 
-### 6. Generate Token Siswa
+### 6. Kelola Akun Guru
 
-Setelah materi siap, generate file `tokens_siswa.csv`:
+Aplikasi memakai **satu akun guru** (canonical) untuk mengakses dashboard
+Laporan Progress (`/progress`). Buat atau update akun guru dengan:
 
 ```bash
 cd elemes
-./elemes.sh generatetoken
+./elemes.sh teacher
 ```
 
-File `tokens_siswa.csv` akan dibuat di parent folder. Edit file ini untuk
-menambahkan siswa:
-
-```csv
-token;nama_siswa;hello_world;variables;conditions
-TOKEN_GURU_001;Pak Guru;not_started;not_started;not_started
-TOKEN_SISWA_001;Budi Santoso;not_started;not_started;not_started
-TOKEN_SISWA_002;Siti Aminah;not_started;not_started;not_started
-```
+Perintah ini akan:
+- Meminta **nama guru** — tekan Enter untuk memakai default dari
+  `TEACHER_NAME` di `.env` (default: `Guru LMS`).
+- Meminta **token guru** secara tersembunyi (via stdin — tidak muncul di
+  layar, process list, maupun shell history).
+- **Upsert** satu akun canonical di PostgreSQL: belum ada guru → dibuat;
+  sudah ada → nama diperbarui **dan token dirotasi** (token lama langsung
+  tidak berlaku); token sama dengan yang aktif → hanya nama yang diperbarui
+  (idempotent).
 
 > **Catatan:**
-> - Kolom dipisahkan dengan **titik koma** (`;`), bukan koma.
-> - Baris **pertama data** (setelah header) dianggap sebagai **token guru**.
-> - Token bisa berupa string apa saja yang unik per siswa.
-> - File ini bisa diedit menggunakan spreadsheet (LibreOffice Calc, Excel).
->   Saat membuka di Excel/Calc, pilih delimiter **titik koma**.
+> - Token guru disimpan sebagai **HMAC-SHA256 digest** — tidak pernah dalam
+>   bentuk plaintext dan tidak bisa dilihat kembali. Jangan bagikan token
+>   guru ke siswa.
+> - Akun siswa dikelola lewat halaman Laporan Progress (export → edit →
+>   import CSV) — lihat bagian 9 — atau langsung di PostgreSQL.
+
+#### First-Run Otomatis
+
+`./elemes.sh runbuild`, `run`, dan `runclearbuild` otomatis menjalankan
+migrasi schema database (`alembic upgrade head`) saat start. Bila
+`TEACHER_TOKEN` di `.env` terisi, akun guru juga di-bootstrap otomatis
+(non-interaktif). Bila `TEACHER_TOKEN` kosong, aplikasi tetap start tanpa
+akun guru — operator tinggal menjalankan `./elemes.sh teacher` kapan saja.
 
 ### 7. (Opsional) Tambahkan Gambar
 
@@ -443,33 +456,32 @@ student_id;token;nama_siswa;hello_world;variabel
 
 | Perintah | Fungsi |
 |----------|--------|
-| `./elemes.sh init` | Setup awal: generate `.env`, `content/`, `tokens_siswa.csv` dari contoh |
-| `./elemes.sh run` | Jalankan container |
+| `./elemes.sh init` | Setup awal: generate `.env`, `content/`, `assets/`, `state/` dari contoh |
+| `./elemes.sh run` | Jalankan container (termasuk migrasi schema & bootstrap guru otomatis) |
 | `./elemes.sh runbuild` | Build ulang & jalankan container |
 | `./elemes.sh stop` | Hentikan container |
-| `./elemes.sh generatetoken` | Generate/update `tokens_siswa.csv` |
+| `./elemes.sh teacher` | Buat/update akun guru (upsert; prompt nama & token tersembunyi) |
 | `./elemes.sh dbupgrade` | Jalankan migrasi schema (alembic upgrade head) |
 | `./elemes.sh dbstatus` | Cek versi schema database |
-| `./elemes.sh dbimport` | Impor `tokens.csv` → PostgreSQL (idempotent; `--dry-run` = simulasi) |
-| `./elemes.sh synclessons` | Sinkronisasi daftar lesson dari `home.md` → DB |
-| `./elemes.sh dbverify` | Verifikasi parity CSV ↔ PostgreSQL |
 | `./elemes.sh dbbackup` | Backup database → `backups/elemes_<ts>.sql` |
 | `./elemes.sh dbrestore` | Restore backup terbaru dari `backups/` |
-| `./elemes.sh dbexport` | Ekspor snapshot PG → `pg_snapshot.csv` (tanpa token mentah) |
 
 ## Database & Penyimpanan (PostgreSQL)
 
 Sejak migrasi Agustus 2026, progress siswa & data token disimpan di **PostgreSQL**
-melalui SQLAlchemy + Alembic (migrasi schema), menggantikan read-modify-write
-langsung ke CSV. Token hanya disimpan sebagai **HMAC-SHA256 digest**
-(pepper: `TOKEN_PEPPER` di `.env` — jangan hilangkan, semua token bergantung padanya).
+— satu-satunya backend — melalui SQLAlchemy + Alembic (migrasi schema). Backend
+CSV (`tokens_siswa.csv`, `STORAGE_BACKEND=csv`) sudah **dicabut**: file CSV token
+tidak lagi dibuat, dibaca, maupun menjadi *source of truth*.
 
-- Backend aktif dipilih lewat `STORAGE_BACKEND` (default `postgresql`; `csv`
-  hanya untuk rollback transisi).
-- `tokens_siswa.csv` tetap menjadi *source of truth* input guru — edit CSV lalu
-  jalankan `./elemes.sh dbimport` untuk sinkron ke database.
-- **Backup rutin wajib**: `./elemes.sh dbbackup` (dump ke `backups/`).
-- Panduan lengkap (arsitektur, alur migrasi, rollback): `docs/11-database-migration.md`.
+- Akun siswa & guru tersimpan di PostgreSQL (container `postgres`); akun guru
+  dikelola via `./elemes.sh teacher` atau bootstrap otomatis `TEACHER_TOKEN`.
+- Token hanya disimpan sebagai **HMAC-SHA256 digest** (pepper: `TOKEN_PEPPER`
+  di `.env` — jangan hilangkan, semua token bergantung padanya).
+- Daftar lesson disinkronkan **otomatis** dari `content/home.md` ke database
+  setiap kali aplikasi start (tidak ada perintah sinkronisasi manual).
+- **Backup rutin wajib**: `./elemes.sh dbbackup` (dump ke `backups/`);
+  restore via `./elemes.sh dbrestore`.
+- Panduan lengkap (arsitektur, riwayat migrasi): `docs/11-database-migration.md`.
 
 ## Contoh Siap Pakai
 
@@ -486,7 +498,6 @@ examples/
 │   ├── hello_serial_arduino.md    # Arduino: Serial Monitor (tanpa wiring)
 │   ├── button_input_arduino.md    # Arduino: Button + LED input/output
 │   └── traffic_light_arduino.md   # Arduino: Lampu lalu lintas 3 LED
-└── tokens_siswa.csv               # Data siswa contoh (1 guru + 3 siswa)
 ```
 
 ### Jenis Materi
@@ -503,24 +514,28 @@ examples/
 **Q: Bagaimana menambah materi baru?**
 Buat file `.md` baru di `content/`, lalu tambahkan link-nya di `content/home.md`
 (di bagian daftar topik DAN bagian `----Available_Lessons----`).
-Jalankan `./elemes.sh generatetoken` untuk update kolom di CSV.
+Daftar lesson disinkronkan otomatis ke database saat aplikasi start — tidak
+perlu perintah manual.
 
 **Q: Bagaimana menambah siswa baru?**
-Edit `tokens_siswa.csv`, tambahkan baris baru dengan token unik dan nama siswa.
-Kolom pelajaran diisi `not_started`.
+Buka halaman **Laporan Progress** (`/progress`), Export CSV, tambahkan baris
+baru (`student_id` kosong + token unik + nama siswa), lalu Import. Detail
+format ada di bagian 9.
 
 **Q: Siswa lupa token-nya?**
-Buka file `tokens_siswa.csv` dan cari nama siswa untuk melihat token-nya.
+Token tidak bisa dilihat kembali — hanya digest HMAC yang tersimpan. Buatkan
+siswa baru dengan token baru via halaman `/progress` (Import CSV, baris dengan
+`student_id` kosong), lalu hapus akun lama lewat bulk delete.
 
 **Q: Bagaimana melihat progress siswa?**
-Login menggunakan token guru (baris pertama di CSV). Dashboard progress
+Login menggunakan token guru (kelola via `./elemes.sh teacher`). Dashboard progress
 akan otomatis muncul. Data dibaca dari PostgreSQL.
 
 **Q: Bagaimana backup/restore database?**
 Jalankan `./elemes.sh dbbackup` — dump PostgreSQL tersimpan di
 `backups/elemes_<timestamp>.sql`. Restore: `./elemes.sh dbrestore`
-(memakai backup terbaru). Untuk mengubah data siswa, edit
-`tokens_siswa.csv` lalu `./elemes.sh dbimport`.
+(memakai backup terbaru). Untuk mengubah data siswa, gunakan halaman
+`/progress` (export → edit → import CSV).
 
 **Q: Apakah harus pakai Tailscale?**
 Tidak. Tailscale opsional untuk akses remote. Tanpa Tailscale, LMS
@@ -582,5 +597,4 @@ Pilih tab Deploy, klik "Deploy" — firmware akan di-flash via kabel USB.
 ## Persyaratan Sistem
 
 - [Podman](https://podman.io/) dan `podman-compose`
-- Python 3 (untuk `generatetoken`)
 - Koneksi internet (saat build pertama kali untuk download image)

@@ -7,7 +7,8 @@ Menargetkan endpoint yang persistence-nya berubah:
   - /api/progress-report.json          (report guru — baca semua siswa)
 
 Data token diambil dari test_data.json (hasilkan dulu:
-  python content_parser.py --content-dir ../../content --tokens-file ../../tokens_siswa.csv)
+  python content_parser.py --content-dir ../../content --num-tokens 50
+  → token sintetis LOCUST_TEST_* di-seed ke PostgreSQL bila DATABASE_URL ter-set)
 
 Usage (dari elemes/load-test/):
   locust -f locustfile_db.py

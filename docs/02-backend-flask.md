@@ -37,7 +37,7 @@ The backend is built with Flask, providing API endpoints for the SvelteKit front
 
 ### Progress Tracking (`routes/progress.py`)
 - `def track_progress():` (POST `/track-progress`)
-  Accepts `lesson_name` and `status`. Updates the CSV file via `token_service.update_student_progress()`.
+  Accepts `lesson_name` and `status`. Persists progress to PostgreSQL via `token_service.update_student_progress()`.
 - `def api_progress_report():` (GET `/progress-report.json`)
   Returns a matrix of all student progress. Requires a teacher token.
 - `def export_progress_csv():` (GET `/progress-report/export-csv`)
@@ -46,12 +46,19 @@ The backend is built with Flask, providing API endpoints for the SvelteKit front
 ## Services
 
 ### Token Service (`services/token_service.py`)
-Manages reads and writes to the `tokens_siswa.csv` file.
-- `def _load_tokens_safely() -> Tuple[Dict[str, dict], List[str]]:` Reads CSV data safely.
-- `def validate_token(token):` Returns `True` if the token exists.
-- `def is_teacher_token(token):` Returns `True` if the token belongs to the first row (the teacher).
+Facade over the single active storage backend — PostgreSQL, via
+`services/storage/postgres_backend.py`. The legacy CSV backend and its helpers
+(`initialize_tokens_file`, `_load_tokens_safely`) have been **removed**.
+- `def validate_token(token):` Returns `{'student_name', 'is_teacher'}` or `None` for a valid token.
+- `def is_teacher_token(token):` Returns `True` if the token belongs to the teacher account.
 - `def get_student_progress(token):` Returns a dictionary of lesson progress for a specific token.
-- `def update_student_progress(token, lesson_name, status="completed"):` Writes progress back to the CSV.
+- `def update_student_progress(token, lesson_name, status="completed"):` Persists progress to PostgreSQL.
+- `def get_teacher_token():` Returns the active teacher token (implemented in `postgres_backend`).
+- `def reset_student_progress(student_id, lesson_name):` Resets progress by anonymous `student_id` (never the raw token).
+
+Student tokens are stored **only as an HMAC-SHA256 digest** in the
+`access_tokens` table (peppered with `TOKEN_PEPPER` from `.env`) — raw tokens
+are never persisted and cannot be recovered or exported.
 
 ### Lesson Service (`services/lesson_service.py`)
 Parses Markdown files to extract content and configuration.
