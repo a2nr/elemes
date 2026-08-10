@@ -332,7 +332,7 @@ dbbackup)
   # --clean --if-exists: dump berisi DROP ... IF EXISTS supaya restore
   # ke DB yang sudah berisi data TIDAK bentrok (fix: dbrestore sebelumnya
   # gagal diam-diam karena CREATE TABLE/COPY kena duplicate key).
-  podman exec lms-dev_postgres_1 pg_dump \
+  compose_exec postgres pg_dump \
     -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" \
     --clean --if-exists > "$OUT"
   echo "✅ Backup selesai: $OUT"
@@ -347,10 +347,10 @@ dbrestore)
   echo "♻️  Restore backup: $LATEST"
   # Reset schema dulu — backup lama (tanpa --clean) tidak berisi DROP,
   # sehingga restore ke DB berisi data bakal bentrok duplicate key.
-  podman exec lms-dev_postgres_1 psql \
+  compose_exec postgres psql \
     -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" \
     -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" >/dev/null
-  podman exec -i lms-dev_postgres_1 psql \
+  compose_exec postgres psql \
     -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" < "$LATEST"
   echo "✅ Restore selesai. Bila daftar lesson kosong, jalankan ./elemes.sh run."
   ;;
