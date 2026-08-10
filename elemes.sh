@@ -247,30 +247,71 @@ verify)
   echo "🔍 === Memverifikasi Image Container ==="
   echo ""
 
-  echo "📋 Image yang tersedia:"
-  podman images | grep -E "lms-c-(backend|frontend|velxio)" || echo "   ⚠️  Tidak ada image lms-c yang ditemukan"
-  echo ""
+  # 1) Service -> image tag dari compose config. Resolusi via podman-compose
+  #    sehingga TIDAK tergantung nama direktori parent / PROJECT_NAME.
+  declare -A SERVICE_IMAGE_TAG
+  COMPOSE_CONFIG=$(run_compose_out config 2>/dev/null)
+  while IFS= read -r svc; do
+    [ -z "$svc" ] && continue
+    SERVICE_IMAGE_TAG["$svc"]=$(printf '%s\n' "$COMPOSE_CONFIG" | awk -v s="$svc" '
+      $0 ~ "^  " s ":" { in_svc=1; next }
+      in_svc && /^  [A-Za-z0-9_.-]+:$/ && $0 !~ "^  " s ":$" { in_svc=0 }
+      in_svc && /^    image:/ { sub(/^    image: */, ""); gsub(/[" ]/, "", $0); print; exit }
+    ')
+  done < <(run_compose_out config --services 2>/dev/null)
 
-  echo "📋 Container yang sedang berjalan:"
-  podman ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}" | grep -E "lms-dev" || echo "   ⚠️  Tidak ada container yang berjalan"
-  echo ""
-
-  echo "🔍 Memeriksa CMD tiap container..."
-  for container in "lms-dev_elemes_1" "lms-dev_elemes-frontend_1" "lms-dev_velxio_1" "lms-dev_postgres_1"; do
-    if podman ps --format "{{.Names}}" | grep -q "$container"; then
-      CMD=$(podman inspect "$container" --format '{{.Config.Cmd}}' 2>/dev/null)
-      ENTRYPOINT=$(podman inspect "$container" --format '{{.Config.Entrypoint}}' 2>/dev/null)
-      IMAGE=$(podman inspect "$container" --format '{{.Image}}' 2>/dev/null)
-      echo "  ✅ $container"
-      echo "     Image: $IMAGE"
-      echo "     Entrypoint: $ENTRYPOINT"
-      echo "     Cmd: $CMD"
-      echo ""
-    else
-      echo "  ⚠️  $container tidak ditemukan"
-      echo ""
-    fi
+  echo "📋 Service yang didefinisikan di podman-compose.yml:"
+  for svc in "${!SERVICE_IMAGE_TAG[@]}"; do
+    printf "   %s → %s\n" "$svc" "${SERVICE_IMAGE_TAG[$svc]:-<tanpa image:>}"
   done
+  echo ""
+
+  # 2) Container milik project ini (ditemukan via label io.podman.compose.project)
+  #    + deteksi image STALE: ImageID container != ImageID tag saat ini.
+  echo "📋 Container project '$PROJECT_NAME':"
+  CONTAINERS=$(podman ps -a \
+    --filter "label=io.podman.compose.project=$PROJECT_NAME" \
+    --format '{{.Names}}|{{.Image}}|{{.ImageID}}|{{.Status}}|{{.Labels}}' 2>/dev/null)
+  if [ -z "$CONTAINERS" ]; then
+    echo "   ⚠️  Tidak ada container untuk project '$PROJECT_NAME' (jalankan ./elemes.sh run dulu)"
+  else
+    while IFS='|' read -r cname cimage cid cstatus clabels; do
+      svc=$(printf '%s' "$clabels" | sed -n 's/.*com.docker.compose.service[:=]\([^ ,}]*\).*/\1/p')
+      tag="${SERVICE_IMAGE_TAG[$svc]:-unknown}"
+      stale=""
+      if [ -n "$tag" ]; then
+        tag_iid=$(podman images "$tag" --noheading --format '{{.ID}}' 2>/dev/null | head -1)
+        if [ -n "$tag_iid" ] && [ -n "$cid" ] && [ "${cid:0:12}" != "${tag_iid:0:12}" ]; then
+          stale=" ⚠️ STALE (container:$cid != image:$tag_iid)"
+        fi
+      fi
+      printf "   • %s\n" "$cname"
+      printf "     image: %s  (status: %s)%s\n" "$cimage" "$cstatus" "$stale"
+    done <<< "$CONTAINERS"
+  fi
+  echo ""
+
+  # 3) CMD/Entrypoint tiap service (ditemukan via label project + service)
+  echo "🔍 Memeriksa CMD/Entrypoint tiap service..."
+  while IFS= read -r svc; do
+    [ -z "$svc" ] && continue
+    cid=$(podman ps -a \
+      --filter "label=io.podman.compose.project=$PROJECT_NAME" \
+      --filter "label=com.docker.compose.service=$svc" \
+      --format '{{.ID}}' 2>/dev/null | head -1)
+    if [ -n "$cid" ]; then
+      CMD=$(podman inspect "$cid" --format '{{.Config.Cmd}}' 2>/dev/null)
+      ENTRYPOINT=$(podman inspect "$cid" --format '{{.Config.Entrypoint}}' 2>/dev/null)
+      IMAGE=$(podman inspect "$cid" --format '{{.Image}}' 2>/dev/null)
+      echo "   ✅ $svc ($cid)"
+      echo "      Image: $IMAGE"
+      echo "      Entrypoint: $ENTRYPOINT"
+      echo "      Cmd: $CMD"
+    else
+      echo "   ⚠️  $svc tidak ditemukan (container belum dibuat)"
+    fi
+    echo ""
+  done < <(run_compose_out config --services 2>/dev/null)
   ;;
 dbupgrade)
   echo "🗄️  Menjalankan migrasi database (alembic upgrade head)..."
