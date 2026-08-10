@@ -274,16 +274,20 @@ verify)
   ;;
 dbupgrade)
   echo "🗄️  Menjalankan migrasi database (alembic upgrade head)..."
-  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 python -m alembic upgrade head
+  compose_exec -w /app -e PYTHONPATH=services elemes python -m alembic upgrade head
   ;;
 dbstatus)
   echo "🗄️  Versi schema database (alembic current & heads):"
-  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 python -m alembic current
-  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 python -m alembic heads
+  compose_exec -w /app -e PYTHONPATH=services elemes python -m alembic current
+  compose_exec -w /app -e PYTHONPATH=services elemes python -m alembic heads
   ;;
 teacher)
   echo "👤 === Manajemen Akun Guru (upsert satu akun canonical) ==="
-  if ! podman ps --format '{{.Names}}' | grep -q '^lms-dev_elemes_1$'; then
+  # Cek container service elemes via label filter (bukan nama container hard-coded)
+  if ! podman ps \
+    --filter "label=io.podman.compose.project=$PROJECT_NAME" \
+    --filter "label=com.docker.compose.service=elemes" \
+    --format '{{.Names}}' 2>/dev/null | grep -q .; then
     echo "❌ Container backend belum berjalan. Jalankan ./elemes.sh run dulu."
     exit 1
   fi
@@ -317,8 +321,8 @@ teacher)
 
   # Upsert via bootstrap_teacher: buat bila belum ada, UPDATE bila sudah ada
   # (jumlah akun guru selalu tetap satu; token lama di-revoke saat rotasi).
-  printf '%s\n' "$TOKEN_INPUT" | podman exec -i -w /app -e PYTHONPATH=/app \
-    lms-dev_elemes_1 python scripts/bootstrap_teacher.py "$NAME"
+  printf '%s\n' "$TOKEN_INPUT" | compose_exec -w /app -e PYTHONPATH=/app \
+    elemes python scripts/bootstrap_teacher.py "$NAME"
   ;;
 dbbackup)
   echo "💾 Membackup database PostgreSQL → backups/"
