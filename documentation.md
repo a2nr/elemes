@@ -264,10 +264,12 @@ cd elemes/
 ### Logs
 
 ```bash
-podman logs elemes           # Flask API
-podman logs elemes-frontend  # SvelteKit
-podman logs velxio           # Velxio simulator
-podman logs elemes-ts        # Tailscale
+# Nama container mengikuti folder deploy (PROJECT_NAME = basename folder
+# parent, mis. lms-dev / sinau-c) — pakai podman-compose + nama service:
+podman-compose -p <PROJECT_NAME> logs elemes           # Flask API
+podman-compose -p <PROJECT_NAME> logs elemes-frontend  # SvelteKit
+podman-compose -p <PROJECT_NAME> logs velxio           # Velxio simulator
+podman-compose -p <PROJECT_NAME> logs elemes-ts        # Tailscale
 ```
 
 ---

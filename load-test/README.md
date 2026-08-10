@@ -98,10 +98,17 @@ python content_parser.py --content-dir ../../content --num-tokens 50
 Verifikasi cepat alur interaktif tanpa browser — jalan di dalam container backend:
 
 ```bash
-podman cp elemes/load-test/e2e_session_check.py lms-dev_elemes_1:/tmp/
-podman exec -e E2E_TOKEN=<token_siswa> lms-dev_elemes_1 python3 /tmp/e2e_session_check.py
+# Nama container mengikuti folder deploy (PROJECT_NAME = basename folder
+# parent, mis. lms-dev → lms-dev_elemes_1) — resolve via label project+service,
+# jangan hard-code nama container:
+ELEMES_CTN=$(podman ps -q \
+  --filter "label=io.podman.compose.project=<PROJECT_NAME>" \
+  --filter "label=com.docker.compose.service=elemes")
+podman cp elemes/load-test/e2e_session_check.py "$ELEMES_CTN":/tmp/
+podman exec -e E2E_TOKEN=<token_siswa> "$ELEMES_CTN" python3 /tmp/e2e_session_check.py
 # Contoh token: LOCUST_TEST_xxxx — token sintetis yang di-seed ke PostgreSQL
 # oleh content_parser.py (jalankan langkah 2 dengan DATABASE_URL ter-set).
+# <PROJECT_NAME> = nama folder deploy (mis. lms-dev / sinau-c).
 ```
 
 Tanpa `E2E_TOKEN` skrip tetap jalan tapi hanya 2 create session (anon rate limit 1/2 menit).

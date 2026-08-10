@@ -121,9 +121,14 @@ progress-report + export-csv (guru).
 # Unit & kontrak (host): backend aktif = postgresql (butuh DATABASE_URL ter-set)
 PYTHONPATH=services python -m pytest services/tests -q
 
-# Integrasi (butuh DATABASE_URL + postgres hidup): jalankan di container
-podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 \
+# Integrasi (butuh DATABASE_URL + postgres hidup): jalankan di dalam container
+# service `elemes` via podman-compose. Nama container mengikuti PROJECT_NAME
+# (= basename folder parent: lms-dev → lms-dev_elemes_1) — jangan hard-code
+# nama container, cukup sebut nama service:
+podman-compose -p <PROJECT_NAME> exec -T -w /app -e PYTHONPATH=services elemes \
   python -m pytest services/tests -q
+# <PROJECT_NAME> = nama folder deploy (mis. lms-dev / sinau-c); elemes.sh
+# menghitungnya otomatis dari basename folder parent.
 ```
 
 Suite round-trip siswa (`test_student_roundtrip.py`, `test_repositories.py`,
@@ -131,9 +136,10 @@ Suite round-trip siswa (`test_student_roundtrip.py`, `test_repositories.py`,
 (`elemes_test`):
 
 ```bash
-podman exec -w /app -e PYTHONPATH=services \
+podman-compose -p <PROJECT_NAME> exec -T -w /app \
+  -e PYTHONPATH=services \
   -e DATABASE_URL="$DATABASE_URL_TEST" \
-  lms-dev_elemes_1 python -m pytest services/tests/test_student_roundtrip.py \
+  elemes python -m pytest services/tests/test_student_roundtrip.py \
     services/tests/test_repositories.py services/tests/test_student_management_routes.py -q
 ```
 
