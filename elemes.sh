@@ -30,6 +30,29 @@ run_compose() {
   fi
 }
 
+# Variant of run_compose that NEVER suppresses output. Wajib dipakai oleh helper
+# yang stdout/stderr-nya harus sampai ke pemanggil (output exec, config, ps).
+run_compose_out() {
+  # Ensure we are in the script directory so podman-compose finds the yaml file
+  cd "$SCRIPT_DIR" || exit
+  podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@"
+}
+
+# Jalankan perintah di dalam container service TANPA menyusun nama container.
+# Opsi podman-compose exec (-w, -e, -u, ...) WAJIB ditulis SEBELUM nama service:
+#   compose_exec elemes python -m alembic upgrade head
+#   compose_exec -w /app -e PYTHONPATH=services elemes python -c '...'
+# -T menonaktifkan pseudo-TTY (podman-compose exec mengalokasikan TTY secara
+# default) sehingga perintah yang di-pipe/redirect berjalan tanpa TTY.
+compose_exec() {
+  run_compose_out exec -T "$@"
+}
+
+# Restart service container berdasarkan nama service.
+compose_restart() {
+  run_compose_out restart "$@"
+}
+
 # First-run/health DB: tunggu PostgreSQL, migrasi schema (idempotent), lalu
 # bootstrap akun guru otomatis bila TEACHER_TOKEN di .env tidak kosong.
 db_init() {
