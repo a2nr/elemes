@@ -182,25 +182,25 @@ run)
   ;;
 exportall)
   echo "📦 === Mengekspor Semua Image (Pre-Compiled Bundle) ==="
-  TAR_FILE="lms-c-precompiled.tar"
+  TAR_FILE="lms-precompiled.tar"
   cd "$SCRIPT_DIR" || exit
 
   echo "🏗️  1. Mem-build Backend Elemes..."
-  podman build -t lms-c-backend:latest -f Dockerfile .
+  podman build -t lms-backend:latest -f Dockerfile .
 
   echo "🏗️  2. Mem-build Frontend Elemes (SvelteKit)..."
-  podman build -t lms-c-frontend:latest -f frontend/Dockerfile frontend/
+  podman build -t lms-frontend:latest -f frontend/Dockerfile frontend/
 
   echo "🏗️  3. Mem-build Velxio Simulator..."
-  podman build -t lms-c-velxio:latest -f velxio/Dockerfile.standalone --build-arg ENABLE_ESP32=${ENABLE_ESP32:-0} velxio/
+  podman build -t lms-velxio:latest -f velxio/Dockerfile.standalone --build-arg ENABLE_ESP32=${ENABLE_ESP32:-0} velxio/
 
   echo ""
   echo "🔍 Memverifikasi image yang berhasil di-build..."
-  podman images | grep -E "lms-c-(backend|frontend|velxio)"
+  podman images | grep -E "lms-(backend|frontend|velxio)"
   echo ""
 
   echo "💾 Menyatukan semua image menjadi 1 file tar: $TAR_FILE..."
-  podman save lms-c-backend:latest lms-c-frontend:latest lms-c-velxio:latest >"$TAR_FILE"
+  podman save lms-backend:latest lms-frontend:latest lms-velxio:latest >"$TAR_FILE"
 
   if [ $? -eq 0 ]; then
     FILESIZE=$(du -h "$TAR_FILE" | cut -f1)
@@ -212,21 +212,23 @@ exportall)
     echo "   2. Load image:  podman load -i $TAR_FILE"
     echo "   3. Jalankan:    podman-compose up -d"
     echo ""
-    echo "   ⚠️  Pastikan podman-compose.yml menggunakan image:"
+    echo "   ⚠️  Tag image bundle sudah sama dengan podman-compose.yml:"
     echo "      - lms-backend:latest (untuk service elemes)"
     echo "      - lms-frontend:latest (untuk service elemes-frontend)"
     echo "      - lms-velxio:latest (untuk service velxio)"
+    echo "   ℹ️  Service compiler-worker & flowchart TIDAK ikut bundle — di VPS"
+    echo "      image-nya di-build otomatis oleh podman-compose dari source (build:)."
   else
     echo "❌ Export gagal."
   fi
   ;;
 importall)
   echo "📦 === Mengimpor Semua Image (Pre-Compiled Bundle) ==="
-  TAR_FILE="lms-c-precompiled.tar"
+  TAR_FILE="lms-precompiled.tar"
 
   if [ ! -f "$TAR_FILE" ]; then
     echo "❌ File $TAR_FILE tidak ditemukan!"
-    echo "   Pastikan file sudah ada di direktori ini."
+    echo "   Pastikan file sudah ada di direktori ini (nama default: lms-precompiled.tar)."
     exit 1
   fi
 
@@ -235,7 +237,7 @@ importall)
 
   echo ""
   echo "🔍 Memverifikasi image yang berhasil di-load..."
-  podman images | grep -E "lms-c-(backend|frontend|velxio)"
+  podman images | grep -E "lms-(backend|frontend|velxio)"
   echo ""
 
   echo "✅ Selesai! Image berhasil diimpor."

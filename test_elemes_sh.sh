@@ -207,12 +207,37 @@ else
     || fail "dbrestore tidak memakai compose_exec postgres (psql reset schema)"
 fi
 
-# ===== 4) Tidak boleh ada container name hard-coded / `podman exec` langsung
-if grep -qE "lms-dev_|lms-sinau-c_|podman exec " "$ACCUM"; then
-  fail "masih ada panggilan container name hard-coded:"
-  grep -E "lms-dev_|lms-sinau-c_|podman exec " "$ACCUM" || true
+# ===== 3c) exportall / importall memakai tag lms-* (bukan lms-c-*) ===========
+if ! OUT=$(run_elemes exportall); then
+  fail "exportall tidak berjalan"
 else
-  ok "tidak ada nama container hard-coded di semua panggilan"
+  grep -q "build -t lms-backend:latest" "$FAKEBIN/calls.log" \
+    && ok "exportall build tag lms-backend:latest" \
+    || fail "exportall tidak build tag lms-backend:latest"
+  grep -q "save lms-backend:latest lms-frontend:latest lms-velxio:latest" "$FAKEBIN/calls.log" \
+    && ok "exportall save 3 image dengan tag lms-*" \
+    || fail "exportall tidak save dengan tag lms-*"
+  if [ -f "$WORKSPACE/lms-precompiled.tar" ]; then
+    ok "exportall membuat file lms-precompiled.tar"
+  else
+    fail "exportall tidak membuat file lms-precompiled.tar"
+  fi
+fi
+
+if ! OUT=$(run_elemes importall); then
+  fail "importall tidak berjalan"
+else
+  grep -q "load -i lms-precompiled.tar" "$FAKEBIN/calls.log" \
+    && ok "importall load dari lms-precompiled.tar" \
+    || fail "importall tidak load dari lms-precompiled.tar"
+fi
+
+# ===== 4) Tidak boleh ada container name hard-coded / `podman exec` langsung
+if grep -qE "lms-dev_|lms-sinau-c_|lms-c-|podman exec " "$ACCUM"; then
+  fail "masih ada panggilan container name hard-coded / tag lama lms-c-:"
+  grep -E "lms-dev_|lms-sinau-c_|lms-c-|podman exec " "$ACCUM" || true
+else
+  ok "tidak ada nama container hard-coded / tag lms-c- di semua panggilan"
 fi
 
 # ===== 5) Label filter memakai PROJECT_NAME dinamis
