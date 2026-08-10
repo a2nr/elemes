@@ -217,7 +217,8 @@ exportall)
     echo "      - lms-frontend:latest (untuk service elemes-frontend)"
     echo "      - lms-velxio:latest (untuk service velxio)"
     echo "   ℹ️  Service compiler-worker & flowchart TIDAK ikut bundle — di VPS"
-    echo "      image-nya di-build otomatis oleh podman-compose dari source (build:)."
+    echo "      image-nya di-build otomatis oleh podman-compose dari source (build:);"
+    echo "      pastikan folder source ikut ter-upload, atau jalankan: ./elemes.sh runbuild"
   else
     echo "❌ Export gagal."
   fi

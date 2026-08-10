@@ -214,6 +214,12 @@ else
   grep -q "build -t lms-backend:latest" "$FAKEBIN/calls.log" \
     && ok "exportall build tag lms-backend:latest" \
     || fail "exportall tidak build tag lms-backend:latest"
+  grep -q "build -t lms-frontend:latest" "$FAKEBIN/calls.log" \
+    && ok "exportall build tag lms-frontend:latest" \
+    || fail "exportall tidak build tag lms-frontend:latest"
+  grep -q "build -t lms-velxio:latest" "$FAKEBIN/calls.log" \
+    && ok "exportall build tag lms-velxio:latest" \
+    || fail "exportall tidak build tag lms-velxio:latest"
   grep -q "save lms-backend:latest lms-frontend:latest lms-velxio:latest" "$FAKEBIN/calls.log" \
     && ok "exportall save 3 image dengan tag lms-*" \
     || fail "exportall tidak save dengan tag lms-*"
