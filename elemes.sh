@@ -215,9 +215,9 @@ exportall)
     echo "   3. Jalankan:    podman-compose up -d"
     echo ""
     echo "   ⚠️  Pastikan podman-compose.yml menggunakan image:"
-    echo "      - lms-c-backend:latest (untuk service elemes)"
-    echo "      - lms-c-frontend:latest (untuk service elemes-frontend)"
-    echo "      - lms-c-velxio:latest (untuk service velxio)"
+    echo "      - lms-backend:latest (untuk service elemes)"
+    echo "      - lms-frontend:latest (untuk service elemes-frontend)"
+    echo "      - lms-velxio:latest (untuk service velxio)"
   else
     echo "❌ Export gagal."
   fi
