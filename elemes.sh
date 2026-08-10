@@ -63,7 +63,7 @@ db_init() {
 
   # 1) Tunggu PostgreSQL siap (maks ~60 detik)
   for i in $(seq 1 "$attempts"); do
-    if podman exec lms-dev_postgres_1 pg_isready \
+    if compose_exec postgres pg_isready \
       -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" >/dev/null 2>&1; then
       break
     fi
@@ -75,14 +75,14 @@ db_init() {
   done
 
   # Catat apakah schema masih kosong (pertanda first-run / fresh install)
-  if [ "$(podman exec lms-dev_postgres_1 psql -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" \
+  if [ "$(compose_exec postgres psql -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" \
     -tAc "SELECT to_regclass('public.users') IS NULL")" = "t" ]; then
     fresh_schema=1
   fi
 
   # 2) Migrasi schema (idempotent)
   echo "🗄️  Migrasi database (alembic upgrade head)..."
-  podman exec -w /app -e PYTHONPATH=services lms-dev_elemes_1 \
+  compose_exec -w /app -e PYTHONPATH=services elemes \
     python -m alembic upgrade head || {
     echo "⚠️  Migrasi database gagal. Jalankan ./elemes.sh dbupgrade untuk inspeksi."
     return 1
@@ -92,8 +92,8 @@ db_init() {
   #    (untuk prompt interaktif: gunakan ./elemes.sh teacher)
   if [ -n "$TEACHER_TOKEN" ]; then
     echo "👤 Bootstrap akun guru otomatis (dari TEACHER_TOKEN)..."
-    printf '%s\n' "$TEACHER_TOKEN" | podman exec -i -w /app -e PYTHONPATH=/app \
-      lms-dev_elemes_1 python scripts/bootstrap_teacher.py "${TEACHER_NAME:-Guru LMS}" || {
+    printf '%s\n' "$TEACHER_TOKEN" | compose_exec -w /app -e PYTHONPATH=/app \
+      elemes python scripts/bootstrap_teacher.py "${TEACHER_NAME:-Guru LMS}" || {
       echo "⚠️  Bootstrap guru gagal. Periksa TEACHER_TOKEN/TEACHER_NAME di .env, atau jalankan ./elemes.sh teacher."
     }
   fi
@@ -102,7 +102,7 @@ db_init() {
   #    berjalan setelah schema jadi (kalau tidak, tabel lessons kosong).
   if [ "$fresh_schema" -eq 1 ]; then
     echo "🔄 First-run terdeteksi; restart backend agar lesson registry ter-sync..."
-    podman restart lms-dev_elemes_1 >/dev/null 2>&1
+    compose_restart elemes >/dev/null 2>&1
   fi
 }
 
