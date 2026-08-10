@@ -21,12 +21,10 @@ done
 
 # Function to run podman-compose quietly unless verbose
 run_compose() {
-  # Ensure we are in the script directory so podman-compose finds the yaml file
-  cd "$SCRIPT_DIR" || exit
   if [ "$VERBOSE" -eq 1 ]; then
-    podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@"
+    run_compose_out "$@"
   else
-    podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@" >/dev/null 2>&1
+    run_compose_out "$@" >/dev/null 2>&1
   fi
 }
 
@@ -373,10 +371,15 @@ dbbackup)
   # --clean --if-exists: dump berisi DROP ... IF EXISTS supaya restore
   # ke DB yang sudah berisi data TIDAK bentrok (fix: dbrestore sebelumnya
   # gagal diam-diam karena CREATE TABLE/COPY kena duplicate key).
-  compose_exec postgres pg_dump \
+  if compose_exec postgres pg_dump \
     -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" \
-    --clean --if-exists > "$OUT"
-  echo "✅ Backup selesai: $OUT"
+    --clean --if-exists > "$OUT"; then
+    echo "✅ Backup selesai: $OUT"
+  else
+    echo "❌ Backup gagal (lihat error di atas)."
+    rm -f "$OUT"
+    exit 1
+  fi
   ;;
 dbrestore)
   set -a; source "$PARENT_DIR/.env" 2>/dev/null; set +a
