@@ -277,7 +277,7 @@ verify)
   else
     while IFS='|' read -r cname cimage cid cstatus clabels; do
       svc=$(printf '%s' "$clabels" | sed -n 's/.*com.docker.compose.service[:=]\([^ ,}]*\).*/\1/p')
-      tag="${SERVICE_IMAGE_TAG[$svc]:-unknown}"
+      tag="${SERVICE_IMAGE_TAG[$svc]}"
       stale=""
       if [ -n "$tag" ]; then
         tag_iid=$(podman images "$tag" --noheading --format '{{.ID}}' 2>/dev/null | head -1)
