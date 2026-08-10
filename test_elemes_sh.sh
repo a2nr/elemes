@@ -110,8 +110,24 @@ FAILED=0
 fail() { echo "❌ $1"; FAILED=1; }
 ok() { echo "✅ $1"; }
 
+# Akumulator semua panggilan (untuk cek global "tidak ada nama hard-coded")
+ACCUM="$FAKEBIN/calls.all.log"
+: > "$ACCUM"
+
+# Jalankan perintah elemes.sh: truncate calls.log per-perintah (supaya asersi
+# per-bagian presisi), lalu kumpulkan ke akumulator untuk cek global.
+run_elemes() {
+  : > "$FAKEBIN/calls.log"
+  local out
+  if ! out=$(cd "$WORKSPACE" && bash elemes.sh "$@" 2>&1); then
+    return 1
+  fi
+  cat "$FAKEBIN/calls.log" >> "$ACCUM" 2>/dev/null || true
+  printf '%s' "$out"
+}
+
 # ===== 1) verify: resolusi via label + service, tanpa nama container hard-coded
-if ! OUT=$(cd "$WORKSPACE" && bash elemes.sh verify 2>&1); then
+if ! OUT=$(run_elemes verify); then
   fail "verify tidak berjalan"
   echo "$OUT"
 else
@@ -129,7 +145,7 @@ else
 fi
 
 # ===== 2) run: down/up + db_init memakai compose_exec / compose_restart ======
-if ! OUT=$(cd "$WORKSPACE" && bash elemes.sh run 2>&1); then
+if ! OUT=$(run_elemes run); then
   fail "run tidak berjalan"
   echo "$OUT"
 else
@@ -148,7 +164,7 @@ else
 fi
 
 # ===== 3) dbbackup: dump lewat compose_exec postgres (bukan lms-dev_postgres_1)
-if ! OUT=$(cd "$WORKSPACE" && bash elemes.sh dbbackup 2>&1); then
+if ! OUT=$(run_elemes dbbackup); then
   fail "dbbackup tidak berjalan"
   echo "$OUT"
 else
@@ -163,16 +179,44 @@ else
     || fail "dbbackup tidak memakai compose_exec postgres (pg_dump)"
 fi
 
+# ===== 3b) dbupgrade / dbstatus / dbrestore juga memakai compose_exec =========
+if ! OUT=$(run_elemes dbupgrade); then
+  fail "dbupgrade tidak berjalan"
+else
+  grep -q "exec -T -w /app -e PYTHONPATH=services elemes python -m alembic upgrade head" "$FAKEBIN/calls.log" \
+    && ok "dbupgrade memakai compose_exec elemes (alembic upgrade)" \
+    || fail "dbupgrade tidak memakai compose_exec elemes (alembic upgrade)"
+fi
+
+if ! OUT=$(run_elemes dbstatus); then
+  fail "dbstatus tidak berjalan"
+else
+  grep -q "exec -T -w /app -e PYTHONPATH=services elemes python -m alembic current" "$FAKEBIN/calls.log" \
+    && ok "dbstatus memakai compose_exec elemes (alembic current)" \
+    || fail "dbstatus tidak memakai compose_exec elemes (alembic current)"
+fi
+
+# dbrestore butuh file backup (buat dummy supaya tidak bergantung hasil dbbackup)
+mkdir -p "$PARENT_DIR/backups"
+touch "$PARENT_DIR/backups/elemes_20260101_000000.sql"
+if ! OUT=$(run_elemes dbrestore); then
+  fail "dbrestore tidak berjalan"
+else
+  grep -q "exec -T postgres psql.*DROP SCHEMA" "$FAKEBIN/calls.log" \
+    && ok "dbrestore memakai compose_exec postgres (psql reset schema)" \
+    || fail "dbrestore tidak memakai compose_exec postgres (psql reset schema)"
+fi
+
 # ===== 4) Tidak boleh ada container name hard-coded / `podman exec` langsung
-if grep -qE "lms-dev_|lms-sinau-c_|podman exec " "$FAKEBIN/calls.log"; then
+if grep -qE "lms-dev_|lms-sinau-c_|podman exec " "$ACCUM"; then
   fail "masih ada panggilan container name hard-coded:"
-  grep -E "lms-dev_|lms-sinau-c_|podman exec " "$FAKEBIN/calls.log" || true
+  grep -E "lms-dev_|lms-sinau-c_|podman exec " "$ACCUM" || true
 else
   ok "tidak ada nama container hard-coded di semua panggilan"
 fi
 
 # ===== 5) Label filter memakai PROJECT_NAME dinamis
-grep -q "label=io.podman.compose.project=$PROJECT_NAME" "$FAKEBIN/calls.log" \
+grep -q "label=io.podman.compose.project=$PROJECT_NAME" "$ACCUM" \
   && ok "label filter memakai PROJECT_NAME dinamis ($PROJECT_NAME)" \
   || fail "label filter tidak memakai PROJECT_NAME dinamis"
 
