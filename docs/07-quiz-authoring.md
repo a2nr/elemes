@@ -100,3 +100,11 @@ Blockquote `>` di bagian akhir soal (setelah opsi) menjadi field `explanation` d
 ## Contoh lengkap
 
 Lihat `content/dasar/quiz_test.md` (atau `examples/content/dasar/quiz_test.md`).
+
+## Integritas kuis (anti-cheat)
+
+Kuis berjalan dengan kebijakan strict focus-loss: berpindah tab/kehilangan fokus
+saat kuis aktif mengakhiri kuis secara otomatis dengan penalti dan mencatat
+pelanggaran untuk laporan guru. Lihat
+[12. Quiz Integrity](./12-quiz-integrity.md) untuk detail policy, event yang
+terdeteksi, dan cara membaca badge pelanggaran di laporan guru.

@@ -15,7 +15,7 @@
 		id: string;
 		nama_siswa: string;
 		completed_count: number;
-		[key: string]: string | number;
+		[key: string]: string | number | boolean;
 	}
 
 	let students = $state<StudentProgress[]>([]);
@@ -244,6 +244,9 @@
 							{#each lessons as lesson}
 								{@const key = lesson.filename.replace('.md', '')}
 								{@const status = student[key]}
+								{@const violation = student[key + '_has_violation']}
+								{@const violationReason = student[key + '_termination_reason']}
+								{@const violationTime = student[key + '_attempt_finished_at']}
 								<td class="status-cell">
 									<div class="cell-content">
 										{#if status === 'completed'}
@@ -252,6 +255,15 @@
 											<span class="badge score">{status}</span>
 										{:else}
 											<span class="badge empty">&mdash;</span>
+										{/if}
+
+										{#if violation}
+											<span
+												class="badge violation"
+												title="Pelanggaran anti-cheat — {violationReason}{violationTime ? ' pada ' + violationTime : ''}"
+											>
+												&#9888; Pelanggaran
+											</span>
 										{/if}
 
 										{#if status && status !== 'not_started'}
@@ -420,6 +432,16 @@
 	}
 	.badge.empty {
 		color: var(--color-text-muted);
+	}
+	.badge.violation {
+		color: var(--color-danger, #e8590c);
+		background: color-mix(in srgb, var(--color-danger, #e8590c) 10%, var(--color-bg));
+		border: 1px solid color-mix(in srgb, var(--color-danger, #e8590c) 40%, var(--color-bg));
+		border-radius: 999px;
+		padding: 0.1rem 0.45rem;
+		font-size: 0.65rem;
+		font-weight: 700;
+		white-space: nowrap;
 	}
 	.cell-content {
 		display: flex;

@@ -5,6 +5,7 @@ users           — identitas + role eksplisit (teacher/student)
 access_tokens   — hash token (HMAC-SHA256 + pepper), bukan plaintext
 lessons         — registry materi (konten tetap Markdown; DB hanya metadata)
 student_progress— status per (user, lesson), unik; skor terstruktur utk state 'scored'
+quiz_attempts   — audit one-attempt kuis (status/termination reason anti-cheat)
 """
 
 from datetime import datetime
@@ -50,6 +51,9 @@ class User(Base):
     progress: Mapped[list["StudentProgress"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    quiz_attempts: Mapped[list["QuizAttempt"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class AccessToken(Base):
@@ -87,6 +91,59 @@ class Lesson(Base):
     )
 
     progress: Mapped[list["StudentProgress"]] = relationship(back_populates="lesson")
+    quiz_attempts: Mapped[list["QuizAttempt"]] = relationship(back_populates="lesson")
+
+
+class QuizAttempt(Base):
+    """Satu attempt kuis per (user, lesson) — audit anti-cheat terpisah dari skor.
+
+    - id dibuat klien saat startQuiz (UUID canonical) untuk korelasi/idempotency
+      beacon & fetch; row dibuat pada saat finalisasi (sekali).
+    - `status`: submitted (selesai normal) atau terminated (exit dini/penalti).
+    - `termination_reason` hanya untuk terminated: focus_lost, spa_navigation,
+      page_unload, user_exit, completed (reserved).
+    - unique (user_id, lesson_id) = one-attempt policy.
+    """
+
+    __tablename__ = "quiz_attempts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "lesson_id", name="uq_quiz_attempts_user_lesson"),
+        CheckConstraint(
+            "status IN ('submitted','terminated')", name="ck_quiz_attempts_status"
+        ),
+        CheckConstraint(
+            "termination_reason IS NULL OR termination_reason IN "
+            "('focus_lost','spa_navigation','page_unload','user_exit','completed')",
+            name="ck_quiz_attempts_reason",
+        ),
+        CheckConstraint(
+            "(status = 'terminated' AND termination_reason IS NOT NULL) OR "
+            "(status = 'submitted' AND termination_reason IS NULL)",
+            name="ck_quiz_attempts_status_reason",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    lesson_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("lessons.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    termination_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    score_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    score_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    visibility_event_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Diagnosis device/browser saja — bukan dasar hukuman tambahan.
+    user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="quiz_attempts")
+    lesson: Mapped["Lesson"] = relationship(back_populates="quiz_attempts")
 
 
 class StudentProgress(Base):

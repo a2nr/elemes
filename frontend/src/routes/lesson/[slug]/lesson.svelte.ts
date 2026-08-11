@@ -2,9 +2,10 @@ import { page } from '$app/stores';
 import { get } from 'svelte/store';
 import { pickDefaultTab } from '$services/lesson-tabs';
 import { tick, untrack } from 'svelte';
-import { auth, authLoggedIn } from '$stores/auth';
+import { auth, authLoggedIn, authToken } from '$stores/auth';
 import { lessonContext } from '$stores/lessonContext';
-import { compileCode, trackProgress } from '$services/api';
+import { compileCode, trackProgress, submitQuizAttempt, quizAttemptBeacon, type QuizAttemptSubmission } from '$services/api';
+import { createAttemptId, type QuizTerminationReason } from '$services/quiz-integrity';
 import { evaluateVelxioSubmission } from '$services/velxio-evaluator';
 import { evaluateFlowchartSubmission } from '$services/flowchart-evaluator';
 import { evaluateCircuitSubmission, processLanguageEvaluation } from '$services/evaluators';
@@ -33,6 +34,13 @@ export class LessonManager {
 	quizSession = $state<QuizSession | null>(null);
 	quizCurrentIndex = $state(0);
 	quizResult = $state<QuizResult | null>(null);
+
+	// Quiz attempt metadata (anti-cheat / focus-loss)
+	quizAttemptId = $state<string | null>(null);
+	quizStartedAt = $state<string | null>(null);
+	quizFinalized = $state(false);
+	quizTerminationReason = $state<QuizTerminationReason | null>(null);
+	visibilityEventCount = $state(0);
 	currentCode = $state('');
 	currentLanguage = $state<string>('c');
 
@@ -181,6 +189,11 @@ export class LessonManager {
 				this.quizSession = null;
 				this.quizCurrentIndex = 0;
 				this.quizResult = null;
+				this.quizAttemptId = null;
+				this.quizStartedAt = null;
+				this.quizFinalized = false;
+				this.quizTerminationReason = null;
+				this.visibilityEventCount = 0;
 
 		this.cCode = lesson.initial_code_c || '';
 			this.pythonCode = lesson.initial_python || '';
@@ -266,6 +279,14 @@ export class LessonManager {
 		this.quizSession = createQuizSession(source);
 		this.quizCurrentIndex = 0;
 		this.quizResult = null;
+		// Satu attempt_id untuk seluruh siklus kuis — semua exit path (finish,
+		// keluar, navigation, focus_lost, unload) memakai ID yang sama agar
+		// backend menyimpan paling banyak satu attempt per kuis.
+		this.quizAttemptId = createAttemptId();
+		this.quizStartedAt = new Date().toISOString();
+		this.quizFinalized = false;
+		this.quizTerminationReason = null;
+		this.visibilityEventCount = 0;
 		this.isQuizMode = true;
 		this.activeTab = 'quiz';
 		// On mobile the tab panel is a bottom sheet — open it so the answer
@@ -298,25 +319,105 @@ export class LessonManager {
 	}
 
 	async finishQuiz() {
-		if (!this.isQuizMode || !this.quizSession || !this.quizAllAnswered) return;
-		this.quizResult = calculateQuizResult(this.quizSession);
-		this.isQuizMode = false;
-		await this.completeLesson(this.quizResult.statusString);
+		if (!this.quizSession || !this.quizAllAnswered) return;
+		await this.terminateQuiz('completed');
 	}
 
-	async submitQuiz() {
-		if (!this.isQuizMode || !this.quizSession) return;
-
-		// Exit path with penalty: unanswered MCQ counted as wrong via session result.
-		// Idempotent — duplicate triggers (nav + unload) do not double-submit.
-		this.quizResult = calculateQuizResult(this.quizSession);
-		this.isQuizMode = false;
-		await this.completeLesson(this.quizResult.statusString);
+	/**
+	 * Exit kuis dengan penalti (unanswered MCQ dianggap salah) — idempotent.
+	 *
+	 * `reason` default `user_exit` (tombol Keluar); SPA navigation memakai
+	 * `spa_navigation`. Event ganda (nav + unload + focus_lost) hanya
+	 * memfinalisasi sekali karena `terminateQuiz` dijaga flag `quizFinalized`.
+	 */
+	async submitQuiz(reason: QuizTerminationReason = 'user_exit') {
+		await this.terminateQuiz(reason);
 	}
 
-	getExitStatus(): string {
-		if (!this.quizSession) return '';
-		return calculateQuizResult(this.quizSession).statusString;
+	/**
+	 * Finalisasi kuis satu kali — memakai attempt_id yang sama untuk semua
+	 * exit path, mengirim attempt ke endpoint atomic, dan menampilkan hasil.
+	 *
+	 * - `focus_lost`/`page_unload`: beacon synchronous dulu (browser bisa
+	 *   suspend kapan saja); fetch keepalive hanya sebagai best-effort.
+	 * - Exit lain (`user_exit`, `spa_navigation`, `completed`): fetch biasa
+	 *   agar response dapat ditangani; fallback legacy ke `completeLesson`
+	 *   bila endpoint attempt gagal (tanpa membuat attempt kedua).
+	 */
+	async terminateQuiz(reason: QuizTerminationReason) {
+		if (!this.quizSession) return;
+		if (this.quizFinalized) return;
+		this.quizFinalized = true;
+		this.quizTerminationReason = reason;
+		if (reason === 'focus_lost') this.visibilityEventCount += 1;
+
+		// Hitung hasil SEBELUM menutup mode — unanswered tetap dihitung salah.
+		this.quizResult = calculateQuizResult(this.quizSession);
+		this.isQuizMode = false;
+
+		const payload = this.buildQuizAttemptPayload(reason);
+		if (!payload) return;
+
+		// Update status UI lokal (tanpa menulis progress ulang — endpoint
+		// attempt atomic yang menulis progress). Celebration hanya untuk
+		// penyelesaian normal, bukan exit penalti/termination.
+		this.markQuizCompletedLocally(reason === 'completed');
+
+		if (reason === 'focus_lost' || reason === 'page_unload') {
+			// Jangan mengandalkan await dari event lifecycle. Beacon pertama;
+			// retry fetch keepalive hanya bila document masih visible/aktif.
+			const ok = quizAttemptBeacon(payload);
+			if (!ok && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+				try {
+					await submitQuizAttempt(payload);
+				} catch {
+					/* best-effort saja — jangan memblokir UI */
+				}
+			}
+			return;
+		}
+
+		try {
+			await submitQuizAttempt(payload);
+		} catch {
+			// Fallback legacy: skor tetap tersimpan walau endpoint attempt
+			// tidak bisa dijangkau. Tidak membuat attempt kedua — endpoint
+			// attempt atomic; jalur ini hanya penyelamat last-resort.
+			await this.completeLesson(this.quizResult.statusString);
+		}
+	}
+
+	/**
+	 * Tandai lesson selesai di UI lokal setelah kuis difinalisasi. Tidak
+	 * memanggil track-progress — endpoint attempt atomic yang menulis progress.
+	 */
+	private markQuizCompletedLocally(celebrate: boolean) {
+		this.lessonCompleted = true;
+		if (celebrate) this.showCelebration = true;
+		lessonContext.update((ctx) => (ctx ? { ...ctx, completed: true } : ctx));
+	}
+
+	/**
+	 * Bangun payload attempt secara synchronous dari session & attempt state.
+	 * Returns null bila belum ada attempt/session atau token tidak tersedia.
+	 */
+	private buildQuizAttemptPayload(reason: QuizTerminationReason): QuizAttemptSubmission | null {
+		if (!this.quizSession || !this.quizAttemptId) return null;
+		const token = get(authToken) || localStorage.getItem('student_token') || '';
+		if (!token) return null;
+		const result = calculateQuizResult(this.quizSession);
+		const now = new Date().toISOString();
+		return {
+			attempt_id: this.quizAttemptId,
+			token,
+			lesson_name: this.slug.replace('.md', ''),
+			status: reason === 'completed' ? 'submitted' : 'terminated',
+			termination_reason: reason === 'completed' ? null : reason,
+			score: result.statusString,
+			occurred_at: now,
+			started_at: this.quizStartedAt ?? now,
+			visibility_event_count: this.visibilityEventCount
+		};
 	}
 
 	checkAllPassed(): boolean {

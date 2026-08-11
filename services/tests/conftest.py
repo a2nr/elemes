@@ -61,7 +61,7 @@ def seed_demo_users():
     try:
         db.execute(
             text(
-                "TRUNCATE student_progress, access_tokens, lessons, users "
+                "TRUNCATE quiz_attempts, student_progress, access_tokens, lessons, users "
                 "RESTART IDENTITY CASCADE"
             )
         )
@@ -97,7 +97,7 @@ def _isolate_database():
     try:
         db.execute(
             text(
-                "TRUNCATE student_progress, access_tokens, lessons, users "
+                "TRUNCATE quiz_attempts, student_progress, access_tokens, lessons, users "
                 "RESTART IDENTITY CASCADE"
             )
         )

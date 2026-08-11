@@ -64,3 +64,39 @@ def test_cascade_delete_user_removes_tokens_and_progress():
     progress_fk = _fk_to(_table("student_progress"), "user_id")
     assert tokens_fk is not None and tokens_fk.ondelete == "CASCADE"
     assert progress_fk is not None and progress_fk.ondelete == "CASCADE"
+
+
+def test_quiz_attempts_table_shape():
+    table = _table("quiz_attempts")
+    cols = table.columns
+    assert {
+        "id",
+        "user_id",
+        "lesson_id",
+        "status",
+        "termination_reason",
+        "score_earned",
+        "score_total",
+        "started_at",
+        "finished_at",
+        "visibility_event_count",
+    }.issubset(cols.keys())
+    assert table.primary_key.columns.keys() == ["id"]
+    assert cols["termination_reason"].nullable
+    assert cols["user_agent"].nullable
+
+
+def test_quiz_attempts_constraints():
+    table = _table("quiz_attempts")
+    names = {c.name for c in table.constraints}
+    assert "uq_quiz_attempts_user_lesson" in names
+    assert "ck_quiz_attempts_status" in names
+    assert "ck_quiz_attempts_reason" in names
+    assert "ck_quiz_attempts_status_reason" in names
+    assert {"ix_quiz_attempts_user_id", "ix_quiz_attempts_finished_at"}.issubset(
+        {i.name for i in table.indexes}
+    )
+    user_fk = _fk_to(table, "user_id")
+    lesson_fk = _fk_to(table, "lesson_id")
+    assert user_fk is not None and user_fk.ondelete == "CASCADE"
+    assert lesson_fk is not None and lesson_fk.ondelete == "CASCADE"

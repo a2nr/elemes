@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from services.models import AccessToken, Lesson, StudentProgress, User
+from services.models import AccessToken, Lesson, QuizAttempt, StudentProgress, User
 from services.progress_status import ParsedProgress
 from services.student_roundtrip import (
     RoundTripImportError,
@@ -238,6 +238,97 @@ def count_completed_lessons(db: Session, *, user_id: str) -> int:
         )
         or 0
     )
+
+
+# ── quiz_attempts (anti-cheat / focus-loss) ───────────────────────
+
+
+def get_quiz_attempt_by_id(db: Session, attempt_id: str) -> QuizAttempt | None:
+    return db.get(QuizAttempt, attempt_id)
+
+
+def list_quiz_attempts_for_user(db: Session, *, user_id: str) -> list[QuizAttempt]:
+    return list(
+        db.scalars(select(QuizAttempt).where(QuizAttempt.user_id == user_id))
+    )
+
+
+def delete_quiz_attempts(db: Session, *, user_id: str, lesson_id: str) -> int:
+    """Hapus attempt (one-attempt) — dipakai saat guru me-reset progress."""
+    attempts = list(
+        db.scalars(
+            select(QuizAttempt).where(
+                QuizAttempt.user_id == user_id,
+                QuizAttempt.lesson_id == lesson_id,
+            )
+        )
+    )
+    for attempt in attempts:
+        db.delete(attempt)
+    return len(attempts)
+
+
+def finalize_quiz_attempt(
+    db: Session,
+    *,
+    attempt_id: str,
+    user_id: str,
+    lesson_id: str,
+    status: str,
+    termination_reason: str | None,
+    score_earned: int | None,
+    score_total: int | None,
+    started_at: datetime,
+    finished_at: datetime,
+    visibility_event_count: int,
+    user_agent: str | None = None,
+) -> tuple[QuizAttempt, bool]:
+    """Insert/confirm SATU attempt kuis — idempotent per `attempt_id`.
+
+    Return `(attempt, created)`:
+    - row baru                           → (attempt, True)
+    - `attempt_id` sudah ada (retry beacon/fetch ganda) → row PERTAMA, False;
+      record pertama tidak pernah ditimpa oleh retry.
+    - `attempt_id` sudah dipakai attempt dengan user/lesson BERBEDA
+      → raise ValueError (konflik payload).
+    - `attempt_id` baru tetapi (user, lesson) sudah punya attempt (one-attempt
+      policy) → IntegrityError dari unique constraint; pemanggil menangani
+      sebagai 409. Race dua request attempt_id sama juga dilindungi di sini.
+
+    Tidak commit — transaksi dikelola pemanggil (route).
+    """
+    existing = get_quiz_attempt_by_id(db, attempt_id)
+    if existing is not None:
+        if existing.user_id != user_id or existing.lesson_id != lesson_id:
+            raise ValueError("attempt_id sudah dipakai attempt lain")
+        return existing, False
+
+    attempt = QuizAttempt(
+        id=attempt_id,
+        user_id=user_id,
+        lesson_id=lesson_id,
+        status=status,
+        termination_reason=termination_reason,
+        score_earned=score_earned,
+        score_total=score_total,
+        started_at=started_at,
+        finished_at=finished_at,
+        visibility_event_count=visibility_event_count,
+        user_agent=user_agent,
+    )
+    db.add(attempt)
+    try:
+        db.flush()
+    except IntegrityError:
+        # Race: request ganda dengan attempt_id sama, atau one-attempt
+        # (user, lesson) sudah terisi. Rollback membatalkan transaksi saat ini;
+        # baca pemenang — bila ada row dengan attempt_id sama → idempotent.
+        db.rollback()
+        winner = get_quiz_attempt_by_id(db, attempt_id)
+        if winner is None:
+            raise
+        return winner, False
+    return attempt, True
 
 
 # ── export / import round-trip ─────────────────────────────────────

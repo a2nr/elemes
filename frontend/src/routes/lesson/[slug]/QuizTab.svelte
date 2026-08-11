@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { authLoggedIn } from '$stores/auth';
 	import { renderMath } from '$lib/actions/renderMath';
+	import { shouldShowQuizReview } from '$services/quiz-integrity';
 	import type { LessonManager } from './lesson.svelte';
 
 	interface Props {
@@ -21,6 +22,9 @@
 	const currentAnswer = $derived(mgr.currentQuizAnswer);
 	const questions = $derived(mgr.quizSession?.questions ?? []);
 	const result = $derived(mgr.quizResult);
+	// Strict policy: kuis yang dihentikan karena focus_lost tidak menampilkan
+	// pembahasan (siswa yang kehilangan fokus tidak mendapat bocoran jawaban).
+	const showReview = $derived(shouldShowQuizReview(mgr.quizTerminationReason));
 
 	function handleExit() {
 		if (!mgr.isQuizMode) return;
@@ -59,6 +63,11 @@
 					</div>
 				{:else if result}
 					{@const totalMcq = result.totalMcq}
+					{#if mgr.quizTerminationReason === 'focus_lost'}
+						<div class="alert alert-danger">
+							Kuis dihentikan karena halaman kehilangan fokus. Skor disimpan dan percobaan tidak dapat diulang.
+						</div>
+					{/if}
 					{@const correct = result.correctMcq}
 					<p class="score-display">Skor: <strong>{correct} / {totalMcq}</strong></p>
 
@@ -72,7 +81,7 @@
 						</div>
 					{/if}
 
-					{#if questions.length > 0}
+					{#if showReview && questions.length > 0}
 						<div class="summary-review">
 							<h3 class="review-title">Pembahasan</h3>
 							{#each questions as q, i}
@@ -119,6 +128,10 @@
 								</div>
 							{/each}
 						</div>
+					{:else if !showReview && questions.length > 0}
+						<p class="review-hidden-note">
+							🔒 Pembahasan disembunyikan karena kuis dihentikan saat halaman kehilangan fokus.
+						</p>
 					{/if}
 				{/if}
 			</div>
@@ -269,6 +282,7 @@
 	.alert-warning { background: var(--color-bg-secondary); border: 1px solid var(--color-warning); color: var(--color-text); }
 	.alert-success { background: rgba(25, 135, 84, 0.1); border: 1px solid var(--color-success); color: var(--color-success); }
 	.alert-info { background: rgba(13, 110, 253, 0.1); border: 1px solid var(--color-primary); color: var(--color-primary); }
+	.alert-danger { background: rgba(233, 236, 239, 0.5); border: 1px solid var(--color-danger, #dc3545); color: var(--color-danger, #dc3545); }
 
 	.quiz-progress { font-size: 0.85rem; color: var(--color-text-muted); }
 	.quiz-progress-answered { margin-left: 0.75rem; }
@@ -335,6 +349,7 @@
 	.review-option.correct-opt { border-color: var(--color-success); background: rgba(25, 135, 84, 0.08); }
 	.review-option-text :global(img) { max-width: 100%; height: auto; border-radius: 4px; }
 	.review-unanswered { font-size: 0.8rem; color: var(--color-danger); font-style: italic; margin: 0.5rem 0; }
+	.review-hidden-note { font-size: 0.9rem; color: var(--color-text-muted); padding: 1rem; background: var(--color-bg-secondary); border: 1px dashed var(--color-border); border-radius: 8px; margin-top: 1rem; text-align: center; }
 	.review-back { padding: 0.75rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; font-size: 0.9rem; }
 	.explanation-box { font-size: 0.85rem; line-height: 1.5; padding: 1rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; text-align: left; margin-top: 0.5rem; }
 	.explanation-box :global(p) { margin: 0; }

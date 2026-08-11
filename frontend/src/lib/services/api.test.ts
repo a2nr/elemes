@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { resetProgress, trackProgress } from './api';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+	quizAttemptBeacon,
+	resetProgress,
+	submitQuizAttempt,
+	trackProgress,
+	type QuizAttemptSubmission
+} from './api';
 
 function captureFetch() {
 	const calls: { url: string; init: RequestInit }[] = [];
@@ -37,5 +43,118 @@ describe('trackProgress', () => {
 			lesson_name: 'hello_world',
 			status: 'completed'
 		});
+	});
+});
+
+describe('submitQuizAttempt', () => {
+	function payload(overrides: Partial<QuizAttemptSubmission> = {}): QuizAttemptSubmission {
+		return {
+			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
+			token: 'student-token',
+			lesson_name: 'quiz_test',
+			status: 'terminated',
+			termination_reason: 'focus_lost',
+			score: '2/4',
+			occurred_at: '2026-08-09T14:04:44.000Z',
+			started_at: '2026-08-09T14:03:00.000Z',
+			visibility_event_count: 1,
+			...overrides
+		};
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('mengirim POST ke /quiz-attempts/submit dengan JSON fields lengkap', async () => {
+		const { calls, customFetch } = captureFetch();
+		const p = payload();
+		await submitQuizAttempt(p, customFetch);
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0].url).toBe('/api/quiz-attempts/submit');
+		expect(calls[0].init.method).toBe('POST');
+		expect((calls[0].init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+		const body = JSON.parse(String(calls[0].init.body));
+		expect(body).toEqual({
+			attempt_id: p.attempt_id,
+			token: p.token,
+			lesson_name: 'quiz_test',
+			status: 'terminated',
+			termination_reason: 'focus_lost',
+			score: '2/4',
+			occurred_at: p.occurred_at,
+			started_at: p.started_at,
+			visibility_event_count: 1
+		});
+	});
+
+	it('submit completed memakai status submitted + termination_reason null', async () => {
+		const { calls, customFetch } = captureFetch();
+		await submitQuizAttempt(payload({ status: 'submitted', termination_reason: null }), customFetch);
+		const body = JSON.parse(String(calls[0].init.body));
+		expect(body.status).toBe('submitted');
+		expect(body.termination_reason).toBeNull();
+	});
+});
+
+describe('quizAttemptBeacon', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it('memakai sendBeacon dengan Blob application/json di endpoint yang sama', async () => {
+		const sendBeacon = vi
+			.fn<(url: string, blob: Blob) => boolean>()
+			.mockReturnValue(true);
+		vi.stubGlobal('navigator', { sendBeacon });
+
+		const p: QuizAttemptSubmission = {
+			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
+			token: 'student-token',
+			lesson_name: 'quiz_test',
+			status: 'terminated',
+			termination_reason: 'focus_lost',
+			score: '2/4',
+			occurred_at: '2026-08-09T14:04:44.000Z',
+			started_at: '2026-08-09T14:03:00.000Z',
+			visibility_event_count: 1
+		};
+
+		const ok = quizAttemptBeacon(p);
+		expect(ok).toBe(true);
+		expect(sendBeacon).toHaveBeenCalledTimes(1);
+		expect(sendBeacon.mock.calls[0][0]).toBe('/api/quiz-attempts/submit');
+		const blob = sendBeacon.mock.calls[0][1];
+		expect(blob.type).toBe('application/json');
+		const text = await blob.text();
+		const body = JSON.parse(text);
+		expect(body).toEqual({
+			attempt_id: p.attempt_id,
+			token: p.token,
+			lesson_name: 'quiz_test',
+			status: 'terminated',
+			termination_reason: 'focus_lost',
+			score: '2/4',
+			occurred_at: p.occurred_at,
+			started_at: p.started_at,
+			visibility_event_count: 1
+		});
+	});
+
+	it('tidak melempar dan mengembalikan false saat sendBeacon tidak tersedia', () => {
+		vi.stubGlobal('navigator', {});
+		const p: QuizAttemptSubmission = {
+			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
+			token: 'student-token',
+			lesson_name: 'quiz_test',
+			status: 'terminated',
+			termination_reason: 'focus_lost',
+			score: '2/4',
+			occurred_at: '2026-08-09T14:04:44.000Z',
+			started_at: '2026-08-09T14:03:00.000Z',
+			visibility_event_count: 1
+		};
+		expect(quizAttemptBeacon(p)).toBe(false);
 	});
 });

@@ -19,6 +19,7 @@ from services.repositories import (
     get_user_by_token,
     list_lessons,
     list_progress_for_user,
+    list_quiz_attempts_for_user,
     set_progress,
 )
 
@@ -131,7 +132,11 @@ def update_student_progress(token, lesson_name, status="completed"):
 
 
 def reset_progress(student_id, lesson_name):
-    """Reset via student_id = user.id (PG) — teacher tidak perlu token siswa."""
+    """Reset via student_id = user.id (PG) — teacher tidak perlu token siswa.
+
+    Reset menghapus audit attempt (one-attempt) bersama progress agar siswa
+    dapat mengulang kuis setelah reset guru.
+    """
     if SessionLocal is None:
         return False
     db = SessionLocal()
@@ -142,6 +147,7 @@ def reset_progress(student_id, lesson_name):
         lesson = get_lesson_by_slug(db, lesson_name)
         if lesson is None:
             return False
+        repo.delete_quiz_attempts(db, user_id=user.id, lesson_id=lesson.id)
         set_progress(db, user_id=user.id, lesson_id=lesson.id, state="not_started")
         db.commit()
         return True
@@ -191,9 +197,25 @@ def get_all_students_progress(all_lessons_func):
         students = []
         for user in users:
             rows = {p.lesson_id: p for p in list_progress_for_user(db, user_id=user.id)}
+            attempts = {
+                a.lesson_id: a for a in list_quiz_attempts_for_user(db, user_id=user.id)
+            }
             student = {'nama_siswa': user.display_name, 'id': user.id}
             for lesson in lessons:
                 student[lesson.slug] = _status_to_string(rows.get(lesson.id))
+                # Metadata anti-cheat — field TERPISAH, tidak mengubah kontrak
+                # status lama. `has_violation` hanya untuk reason focus_lost.
+                attempt = attempts.get(lesson.id)
+                student[f"{lesson.slug}_attempt_status"] = attempt.status if attempt else ""
+                student[f"{lesson.slug}_termination_reason"] = (
+                    attempt.termination_reason if attempt else ""
+                )
+                student[f"{lesson.slug}_has_violation"] = bool(
+                    attempt and attempt.termination_reason == "focus_lost"
+                )
+                student[f"{lesson.slug}_attempt_finished_at"] = (
+                    attempt.finished_at.isoformat() if attempt and attempt.finished_at else ""
+                )
             student['completed_count'] = count_completed_lessons(db, user_id=user.id)
             students.append(student)
         return students, ordered_lessons

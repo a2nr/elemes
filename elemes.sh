@@ -28,12 +28,23 @@ run_compose() {
   fi
 }
 
+# Baris noise yang dicetak podman-compose ke stderr: banner versi, echo
+# perintah "podman exec ...", dan laporan "exit code: N". Difilter agar output
+# CLI rapi; pakai --verbose untuk menampilkan semuanya.
+NOISE_RE='^(podman-compose version:|\[.*--version.*\]$|using podman version:|podman exec |exit code: )'
+
 # Variant of run_compose that NEVER suppresses output. Wajib dipakai oleh helper
 # yang stdout/stderr-nya harus sampai ke pemanggil (output exec, config, ps).
+# stdout dibiarkan utuh; stderr hanya difilter dari baris noise podman-compose.
 run_compose_out() {
   # Ensure we are in the script directory so podman-compose finds the yaml file
   cd "$SCRIPT_DIR" || exit
-  podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@"
+  if [ "$VERBOSE" -eq 1 ]; then
+    podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@"
+  else
+    podman-compose -p "$PROJECT_NAME" --env-file "$PARENT_DIR/.env" "$@" \
+      2> >(grep -v -E "$NOISE_RE" >&2)
+  fi
 }
 
 # Jalankan perintah di dalam container service TANPA menyusun nama container.
@@ -160,7 +171,7 @@ stop)
   ;;
 runclearbuild)
   echo "🧹 Membersihkan container dan image (prune)..."
-  podman image prune -f
+  podman image prune -f -a
   echo "🏗️  Membangun ulang container dari awal (no-cache)..."
   run_compose build --no-cache
   ;;&

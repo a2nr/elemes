@@ -17,6 +17,7 @@ import type {
 	StartSessionRequest
 } from '$types/compiler';
 import type { Lesson, LessonContent } from '$types/lesson';
+import type { QuizTerminationReason } from './quiz-integrity';
 
 const BASE = '/api';
 
@@ -140,4 +141,51 @@ export function resetProgress(
 		{ teacher_token: teacherToken, student_id: studentId, lesson_name: lessonName },
 		customFetch
 	);
+}
+
+// ── Quiz attempt (anti-cheat / focus-loss) ────────────────────────
+
+export interface QuizAttemptSubmission {
+	attempt_id: string;
+	token: string;
+	lesson_name: string;
+	status: 'submitted' | 'terminated';
+	termination_reason: QuizTerminationReason | null;
+	score: string;
+	occurred_at: string;
+	started_at: string;
+	visibility_event_count: number;
+}
+
+export interface QuizAttemptSubmitResponse {
+	success: boolean;
+	idempotent?: boolean;
+	attempt_id?: string;
+	message: string;
+}
+
+/**
+ * Submit finalisasi kuis (satu attempt) — endpoint atomic di backend.
+ * Dipakai untuk exit path normal: tombol Keluar, SPA navigation, finish.
+ */
+export function submitQuizAttempt(
+	payload: QuizAttemptSubmission,
+	customFetch = fetch
+): Promise<QuizAttemptSubmitResponse> {
+	return post<QuizAttemptSubmitResponse>('/quiz-attempts/submit', payload, customFetch);
+}
+
+/**
+ * Kirim attempt via `navigator.sendBeacon` (synchronous, fire-and-forget).
+ * Dipakai untuk event lifecycle yang bisa membuat browser suspend
+ * (focus_lost / page_unload) — tidak boleh mengandalkan `await`.
+ *
+ * Mengembalikan `false` bila beacon tidak tersedia/gagal; TIDAK melempar.
+ */
+export function quizAttemptBeacon(payload: QuizAttemptSubmission): boolean {
+	if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
+		return false;
+	}
+	const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+	return navigator.sendBeacon('/api/quiz-attempts/submit', blob);
 }

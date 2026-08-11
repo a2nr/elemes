@@ -584,6 +584,11 @@ Canva wajib URL dengan `?embed`. Lihat `docs/06-embed-content.md` untuk detail.
 Gunakan blok `---QUIZ_FLASHCARD---` dengan format Flashcard atau Pilihan Ganda.
 Lihat `docs/07-quiz-authoring.md` untuk panduan lengkap.
 
+**Q: Bagaimana kebijakan anti-cheat kuis bekerja?**
+Strict focus-loss: berpindah tab, minimize, atau pindah app saat kuis aktif
+langsung mengakhiri kuis dengan penalti, mencatat pelanggaran untuk laporan guru,
+dan menyembunyikan pembahasan soal. Lihat `docs/12-quiz-integrity.md` untuk detail.
+
 **Q: Apakah ada playground interaktif untuk mencoba kode?**
 Ya. Route `/playground` menyediakan tab Velxio (Arduino simulator), Flowchart,
 Circuit, dan Code. Fitur run sesi PTY mendukung Python `input()` dan C `scanf()`.

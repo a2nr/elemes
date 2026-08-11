@@ -23,9 +23,9 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
 	import { tick, mount, unmount, onMount } from 'svelte';
 	import { LessonManager } from './lesson.svelte';
+	import { isFocusLossEvent } from '$services/quiz-integrity';
 	import { ensureActiveTab } from '$services/lesson-tabs';
-	import { authLoggedIn, authToken } from '$stores/auth';
-	import { get } from 'svelte/store';
+	import { authLoggedIn } from '$stores/auth';
 	import SlideCarousel from '$components/SlideCarousel.svelte';
 
 	let { data: pageData } = $props();
@@ -131,12 +131,39 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 		}
 	});
 
+	// Strict focus-loss anti-cheat: listener hanya aktif saat kuis berjalan.
+	// Event ganda (visibilitychange + blur + beforeunload) aman karena
+	// `terminateQuiz` idempotent (flag quizFinalized). Kembalinya fokus TIDAK
+	// pernah membuka kembali kuis.
+	$effect(() => {
+		if (!mgr.isQuizMode) return;
+
+		const onVisibilityChange = () => {
+			if (isFocusLossEvent('visibilitychange', document.visibilityState, mgr.quizFinalized)) {
+				mgr.terminateQuiz('focus_lost');
+			}
+		};
+		const onWindowBlur = () => {
+			if (isFocusLossEvent('blur', document.visibilityState, mgr.quizFinalized)) {
+				mgr.terminateQuiz('focus_lost');
+			}
+		};
+
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		window.addEventListener('blur', onWindowBlur);
+
+		return () => {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
+			window.removeEventListener('blur', onWindowBlur);
+		};
+	});
+
 	beforeNavigate(() => {
 		lessonContext.set(null);
 
 		// Quiz integrity: submit with penalty on SPA navigation
 		if (mgr.isQuizMode) {
-			mgr.submitQuiz(); // fire-and-forget, async
+			mgr.submitQuiz('spa_navigation'); // fire-and-forget, async
 		}
 
 		if (mgr.velxioCleanup) {
@@ -152,20 +179,10 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 	onMount(() => {
 		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
 			if (mgr.isQuizMode) {
-				// Calculate score with penalty from the session (single source of truth)
-				const statusString = mgr.getExitStatus();
-				const lessonName = mgr.slug.replace('.md', '');
-
-				// Send beacon to /track-progress (fire-and-forget on page unload)
-				const payload = JSON.stringify({
-					token: get(authToken) || localStorage.getItem('student_token') || '',
-					lesson_name: lessonName,
-					status: statusString
-				});
-				navigator.sendBeacon(
-					'/api/track-progress',
-					new Blob([payload], { type: 'application/json' })
-				);
+				// Finalisasi attempt via sendBeacon SYNCHRONOUS (page_unload) —
+				// menggantikan beacon track-progress lama agar satu attempt
+				// tercatat di endpoint atomic. Tidak mengandalkan await.
+				mgr.terminateQuiz('page_unload');
 
 				// Trigger browser confirm dialog
 				e.preventDefault();
