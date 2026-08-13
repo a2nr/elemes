@@ -106,3 +106,79 @@ def test_lesson_prev_next_within_sub_home(client, content_dir):
     data = resp.get_json()
     assert data["prev_lesson"]["filename"] == "hello_world.md"
     assert data["next_lesson"]["filename"] == "percabangan.md"
+
+
+def test_bab_lessons_have_progress_fields(client, content_dir, monkeypatch):
+    from routes import lessons as lessons_routes
+
+    # Tanpa token → semua lesson punya field completed/locked, belum ada yang selesai
+    resp = client.get("/bab/bab1")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    for lesson in data["lessons"]:
+        assert "completed" in lesson
+        assert "locked" in lesson
+        assert lesson["completed"] is False
+
+    # Dengan progress → completed dihitung dari status siswa
+    monkeypatch.setattr(
+        lessons_routes,
+        "get_student_progress",
+        lambda token: {"hello_world": "completed"},
+    )
+    resp = client.get("/bab/bab1?token=siswa1")
+    data = resp.get_json()
+    by_name = {l["filename"]: l for l in data["lessons"]}
+    assert by_name["hello_world.md"]["completed"] is True
+    assert by_name["variabel.md"]["completed"] is False
+    assert by_name["percabangan.md"]["completed"] is False
+
+
+def test_bab_lesson_locked_by_prerequisites(client, tmp_path, monkeypatch):
+    bab = tmp_path / "bab1"
+    bab.mkdir()
+    (bab / "sub-home.md").write_text(
+        "# Bab Satu\n\n----Available_Lessons----\n"
+        "1. [Dasar](lesson/dasar.md)\n"
+        "2. [Lanjutan](lesson/lanjutan.md)\n",
+        encoding="utf-8",
+    )
+    (bab / "dasar.md").write_text("# Dasar\nMateri.\n", encoding="utf-8")
+    (bab / "lanjutan.md").write_text(
+        "# Lanjutan\n\n---LESSON_INFO---\n**Prerequisites:**\n- [Dasar](lesson/dasar.md)\n"
+        "---END_LESSON_INFO---\n\nMateri lanjutan.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "home.md").write_text("# Home\n\n----Available_Lessons----\n", encoding="utf-8")
+
+    monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))
+    lesson_service.find_lesson_file.cache_clear()
+    lesson_service.get_lessons.cache_clear()
+    lesson_service.get_lesson_names.cache_clear()
+    lesson_service.get_lessons_with_learning_objectives.cache_clear()
+
+    from routes import lessons as lessons_routes
+
+    # Prasyarat belum selesai → Lanjutan terkunci
+    monkeypatch.setattr(lessons_routes, "get_student_progress", lambda token: {})
+    resp = client.get("/bab/bab1?token=siswa1")
+    data = resp.get_json()
+    by_name = {l["filename"]: l for l in data["lessons"]}
+    assert by_name["dasar.md"]["completed"] is False
+    assert by_name["dasar.md"]["locked"] is False
+    assert by_name["lanjutan.md"]["completed"] is False
+    assert by_name["lanjutan.md"]["locked"] is True
+
+    # Prasyarat selesai → Lanjutan tidak terkunci lagi
+    monkeypatch.setattr(
+        lessons_routes,
+        "get_student_progress",
+        lambda token: {"dasar": "completed"},
+    )
+    resp = client.get("/bab/bab1?token=siswa1")
+    data = resp.get_json()
+    by_name = {l["filename"]: l for l in data["lessons"]}
+    assert by_name["dasar.md"]["completed"] is True
+    assert by_name["dasar.md"]["locked"] is False
+    assert by_name["lanjutan.md"]["completed"] is False
+    assert by_name["lanjutan.md"]["locked"] is False

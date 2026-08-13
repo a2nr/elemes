@@ -8,10 +8,11 @@ from flask import Blueprint, request, jsonify, send_from_directory
 from werkzeug.utils import secure_filename
 
 from compiler import compiler_factory
-from config import CONTENT_DIR, ASSETS_DIR
+from config import ASSETS_DIR
 from services.lesson_service import (
     get_ordered_lessons_with_learning_objectives,
     get_sub_home_data,
+    get_sub_home_path,
     find_sub_home_for_lesson,
     render_markdown_content,
     render_home_content,
@@ -58,6 +59,30 @@ def api_bab(folder):
     data = get_sub_home_data(folder)
     if not data:
         return jsonify({'error': 'Bab not found'}), 404
+
+    # Suntik progress & lock status per lesson (sama seperti /lessons) agar
+    # centang hijau & ikon kunci muncul di halaman bab.
+    token = request.args.get('token', '') or request.cookies.get('student_token', '')
+    progress = None
+    if token:
+        progress = get_student_progress(token)
+
+    source_path = get_sub_home_path(folder)
+    ordered = get_ordered_lessons_with_learning_objectives(
+        progress,
+        source_path=source_path if source_path else None,
+    )
+    for lesson in ordered:
+        prereqs = lesson.get('prerequisites', [])
+        is_locked = False
+        if prereqs:
+            for p_slug in prereqs:
+                if not progress or progress.get(p_slug) != 'completed':
+                    is_locked = True
+                    break
+        lesson['locked'] = is_locked
+    data['lessons'] = ordered
+
     return jsonify(data)
 
 

@@ -3,7 +3,11 @@ import type { Lesson } from '$types/lesson';
 import { error } from '@sveltejs/kit';
 
 export const load: PageLoad = async ({ params, fetch }) => {
-	const res = await fetch(`/api/bab/${params.folder}`);
+	const token = typeof window !== 'undefined'
+		? localStorage.getItem('student_token') ?? ''
+		: '';
+	const query = token ? `?token=${encodeURIComponent(token)}` : '';
+	const res = await fetch(`/api/bab/${params.folder}${query}`);
 	if (!res.ok) {
 		throw error(404, 'Bab not found');
 	}

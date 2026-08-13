@@ -67,6 +67,7 @@ Parses Markdown files to extract content and configuration.
 - `def get_lessons(source_path=None):` Returns lessons listed in the `Available_Lessons` section of `home.md` (or of `source_path` when given, e.g. a `sub-home.md`).
 - `def get_ordered_lessons_with_learning_objectives(progress=None, source_path=None):` Returns lessons ordered as they appear in `home.md` (or `source_path`), optionally injected with user progress status.
 - `def find_sub_home_for_lesson(file_path):` Returns `(sub_home_path, folder_name)` when the lesson's folder (one level inside `content/`) has a `sub-home.md`, else `(None, None)`.
+- `def get_sub_home_path(folder_name):` Returns the absolute path to a folder's `sub-home.md` (or `None`), using the same `CONTENT_DIR` as `get_sub_home_data`.
 - `def get_sub_home_data(folder_name):` Parses a folder's `sub-home.md` (title, intro HTML, lesson list) with an mtime-based cache so edits to the file are picked up without restart.
 - `def render_markdown_content(file_path):` The core parsing function. Uses regex to extract markers like `---INITIAL_CODE---`, `---VELXIO_CIRCUIT---`, etc. It identifies the `active_tabs` needed for the frontend.
 - `def _parse_flashcards(text):` Specifically parses `---QUIZ_FLASHCARD---` blocks into a structured JSON array for the frontend MCQ/Flashcard component.

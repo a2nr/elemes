@@ -384,6 +384,20 @@ def find_sub_home_for_lesson(file_path):
     return sub_home_path, folder_name
 
 
+def get_sub_home_path(folder_name):
+    """Absolute path to a folder's sub-home.md, or None if missing.
+
+    Uses the same CONTENT_DIR as get_sub_home_data() so callers can feed the
+    result back into get_ordered_lessons_with_learning_objectives(source_path=...)
+    without re-deriving the path (and without mismatched CONTENT_DIR copies).
+    """
+    folder_path = os.path.join(CONTENT_DIR, folder_name)
+    sub_home_path = os.path.join(folder_path, 'sub-home.md')
+    if os.path.isdir(folder_path) and os.path.exists(sub_home_path):
+        return sub_home_path
+    return None
+
+
 def get_sub_home_data(folder_name):
     """Return parsed sub-home data for a given folder name (mtime-cached).
     
