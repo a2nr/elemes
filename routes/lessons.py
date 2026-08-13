@@ -127,7 +127,23 @@ def api_lesson(filename):
             lesson_progress_status = status
             lesson_completed = status not in (None, '', 'not_started')
 
-    all_lessons = get_ordered_lessons_with_learning_objectives(progress)
+    # Detect sub-home for this lesson's folder (untuk sidebar & navigasi)
+    sub_home_path, sub_home_folder = find_sub_home_for_lesson(file_path)
+    sub_home = None
+    if sub_home_path and sub_home_folder:
+        sub_home_data = get_sub_home_data(sub_home_folder)
+        sub_home = {
+            'folder': sub_home_folder,
+            'url': f'/bab/{sub_home_folder}',
+            'title': sub_home_data['title'] if sub_home_data else sub_home_folder.replace('_', ' ').title(),
+        }
+
+    # ordered_lessons: daftar materi scoped ke sub-home.md bila folder memilikinya,
+    # fallback ke daftar global home.md bila tidak.
+    all_lessons = get_ordered_lessons_with_learning_objectives(
+        progress,
+        source_path=sub_home_path if (sub_home_path and sub_home_folder) else None,
+    )
 
     current_idx = -1
     current_lesson_meta = None
@@ -136,6 +152,16 @@ def api_lesson(filename):
             current_idx = i
             current_lesson_meta = les
             break
+
+    # Bila lesson tidak ada di daftar sub-home (mis. belum dicantumkan di
+    # sub-home.md), fallback ke daftar global home.md agar sidebar tidak kosong.
+    if current_idx < 0:
+        all_lessons = get_ordered_lessons_with_learning_objectives(progress)
+        for i, les in enumerate(all_lessons):
+            if les['filename'] == full_filename:
+                current_idx = i
+                current_lesson_meta = les
+                break
 
     # Prerequisite check
     is_locked = False
@@ -149,17 +175,6 @@ def api_lesson(filename):
 
     prev_lesson = all_lessons[current_idx - 1] if current_idx > 0 else None
     next_lesson = all_lessons[current_idx + 1] if 0 <= current_idx < len(all_lessons) - 1 else None
-
-    # Detect sub-home for this lesson's folder
-    sub_home_path, sub_home_folder = find_sub_home_for_lesson(file_path)
-    sub_home = None
-    if sub_home_path and sub_home_folder:
-        sub_home_data = get_sub_home_data(sub_home_folder)
-        sub_home = {
-            'folder': sub_home_folder,
-            'url': f'/bab/{sub_home_folder}',
-            'title': sub_home_data['title'] if sub_home_data else sub_home_folder.replace('_', ' ').title(),
-        }
 
     # Derive default language from active_tabs (frontend manages switching)
     if 'python' in active_tabs and 'c' not in active_tabs:

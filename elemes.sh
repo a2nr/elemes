@@ -184,12 +184,31 @@ runbuild | runclearbuild)
   run_compose up --force-recreate -d
   echo "✅ Elemes berhasil dijalankan!"
   db_init
+  ;;&
+runbuild | runclearbuild)
+  # Verifikasi tes sub-home setelah build bersih (runclearbuild) — memakai
+  # fake DATABASE_URL kosong agar tes yang butuh PostgreSQL di-skip dan tidak
+  # mengubah data produksi. Gagal bila ada tes baru yang rusak.
+  if [ "$1" = "runclearbuild" ]; then
+    echo "🧪 Verifikasi: unit & API test sub-home..."
+    if ! compose_exec -w /app -e PYTHONPATH=services -e DATABASE_URL= \
+      elemes python -m pytest services/tests/test_sub_home.py services/tests/test_sub_home_api.py -q; then
+      echo "❌ Tes sub-home gagal. Periksa output di atas sebelum deploy."
+      exit 1
+    fi
+    echo "✅ Tes sub-home lulus."
+  fi
   ;;
 run)
   echo "🚀 Menjalankan container..."
   run_compose up -d
   echo "✅ Elemes berhasil dijalankan!"
   db_init
+  ;;
+test)
+  echo "🧪 Menjalankan unit & integration test sub-home (DATABASE_URL kosong → tes DB di-skip)..."
+  compose_exec -w /app -e PYTHONPATH=services -e DATABASE_URL= \
+    elemes python -m pytest services/tests/test_sub_home.py services/tests/test_sub_home_api.py -q
   ;;
 exportall)
   echo "📦 === Mengekspor Semua Image (Pre-Compiled Bundle) ==="
@@ -427,6 +446,7 @@ dbrestore)
   echo "  ./elemes.sh teacher        # Buat/update akun guru (upsert, prompt nama & token)"
   echo "  ./elemes.sh dbbackup       # Backup database → backups/elemes_<ts>.sql"
   echo "  ./elemes.sh dbrestore      # Restore backup terbaru dari backups/"
+  echo "  ./elemes.sh test           # Jalankan unit & API test sub-home (tanpa DB)"
   echo "  ./elemes.sh loadtest       # Menjalankan utilitas simulasi Load Test (Locust)"
   ;;
 esac

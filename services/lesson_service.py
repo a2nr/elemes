@@ -21,6 +21,12 @@ _file_cache_lock = Lock()
 _markdown_cache = {}
 _markdown_lock = Lock()
 
+# Parsed sub-home data cache (folder -> {mtime, data}) — mtime-based, agar
+# hasil parsing sub-home.md selalu segar bila file-nya berubah (bukan lru_cache
+# yang bisa mengembalikan data basi sampai proses restart).
+_sub_home_cache = {}  # {folder_name: {'mtime': float, 'data': dict}}
+_sub_home_cache_lock = Lock()
+
 # Pre-computed absolute path for home.md (avoids repeated syscall on hot path)
 _HOME_MD_PATH = os.path.abspath(os.path.join(CONTENT_DIR, "home.md"))
 
@@ -64,6 +70,13 @@ def _read_md_cached(path):
         get_lessons_with_learning_objectives.cache_clear()
         with _markdown_lock:
             _markdown_cache.clear()
+
+    # If this is a sub-home.md, invalidate its parsed data cache so edits to
+    # the file (new lessons, reorder) show up without restarting the app.
+    if os.path.basename(path) == 'sub-home.md':
+        with _sub_home_cache_lock:
+            _sub_home_cache.clear()
+        find_lesson_file.cache_clear()
 
     return content
 
@@ -118,14 +131,18 @@ def find_lesson_file(filename):
 
 
 @lru_cache(maxsize=32)
-def get_lessons():
-    """Get lessons from the Available_Lessons section in home.md."""
+def get_lessons(source_path=None):
+    """Get lessons from the Available_Lessons section in home.md.
+
+    `source_path` opsional: bila diberikan, daftar materi diambil dari file
+    markdown tersebut (mis. sub-home.md) alih-alih home.md root.
+    """
     lessons = []
-    home_content = _read_home_md()
-    if not home_content:
+    source_content = _read_md_cached(source_path) if source_path else _read_home_md()
+    if not source_content:
         return lessons
 
-    for link_text, filename in _parse_lesson_links(home_content):
+    for link_text, filename in _parse_lesson_links(source_content):
         file_path = find_lesson_file(filename)
         if not file_path:
             continue
@@ -172,15 +189,12 @@ def get_lesson_names():
     return names
 
 
-@lru_cache(maxsize=32)
-def get_lessons_with_learning_objectives():
-    """Get lessons with learning objectives extracted from LESSON_INFO sections."""
+def _build_lessons_with_objectives(lesson_links):
+    """Build enriched lesson dicts (title, description, prerequisite_titles)
+    from parsed (link_text, filename) pairs, reading each lesson file."""
     lessons = []
-    home_content = _read_home_md()
-    if not home_content:
-        return lessons
 
-    for link_text, filename in _parse_lesson_links(home_content):
+    for link_text, filename in lesson_links:
         file_path = find_lesson_file(filename)
         if not file_path:
             continue
@@ -263,12 +277,29 @@ def get_lessons_with_learning_objectives():
     return lessons
 
 
-def get_ordered_lessons_with_learning_objectives(progress=None):
-    """Get lessons ordered per home.md with completion status from progress dict."""
+@lru_cache(maxsize=32)
+def get_lessons_with_learning_objectives():
+    """Get lessons with learning objectives extracted from LESSON_INFO sections."""
     home_content = _read_home_md()
-    lesson_links = _parse_lesson_links(home_content) if home_content else []
+    if not home_content:
+        return []
+    return _build_lessons_with_objectives(_parse_lesson_links(home_content))
 
-    all_lessons = get_lessons_with_learning_objectives()
+
+def get_ordered_lessons_with_learning_objectives(progress=None, source_path=None):
+    """Get lessons ordered per home.md with completion status from progress dict.
+
+    `source_path` opsional: bila diberikan (mis. path ke sub-home.md), daftar
+    materi & urutannya diambil dari file tersebut, bukan dari home.md root.
+    """
+    if source_path:
+        content = _read_md_cached(source_path)
+        lesson_links = _parse_lesson_links(content) if content else []
+        all_lessons = _build_lessons_with_objectives(lesson_links)
+    else:
+        home_content = _read_home_md()
+        lesson_links = _parse_lesson_links(home_content) if home_content else []
+        all_lessons = get_lessons_with_learning_objectives()
 
     # Build title -> slug mapping for prerequisite resolution
     title_to_slug = {lesson['title']: lesson['filename'].replace('.md', '') for lesson in all_lessons}
@@ -353,9 +384,8 @@ def find_sub_home_for_lesson(file_path):
     return sub_home_path, folder_name
 
 
-@lru_cache(maxsize=32)
 def get_sub_home_data(folder_name):
-    """Return parsed sub-home data for a given folder name.
+    """Return parsed sub-home data for a given folder name (mtime-cached).
     
     Returns dict with keys: title, intro_html, lessons, folder, url.
     Returns None if no sub-home.md found or unreadable.
@@ -373,6 +403,15 @@ def get_sub_home_data(folder_name):
             return None
     except OSError:
         return None
+    # mtime-based cache: refresh bila sub-home.md diubah, tanpa menunggu restart
+    try:
+        current_mtime = os.path.getmtime(sub_home_path)
+    except OSError:
+        current_mtime = 0.0
+    with _sub_home_cache_lock:
+        cached = _sub_home_cache.get(folder_name)
+        if cached and cached['mtime'] == current_mtime:
+            return cached['data']
     content = _read_md_cached(sub_home_path)
     if not content:
         return None
@@ -444,13 +483,18 @@ def get_sub_home_data(folder_name):
             'prerequisite_titles': prerequisite_titles,
         })
 
-    return {
+    data = {
         'title': title,
         'intro_html': intro_html,
         'lessons': lessons,
         'folder': folder_name,
         'url': f'/bab/{folder_name}',
     }
+    with _sub_home_cache_lock:
+        if len(_sub_home_cache) >= 64:
+            _sub_home_cache.clear()
+        _sub_home_cache[folder_name] = {'mtime': current_mtime, 'data': data}
+    return data
 
 
 # ---------------------------------------------------------------------------

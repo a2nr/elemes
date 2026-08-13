@@ -24,8 +24,10 @@ The backend is built with Flask, providing API endpoints for the SvelteKit front
 ### Lessons (`routes/lessons.py`)
 - `def api_lessons():` (GET `/lessons`)
   Returns a list of all lessons and the rendered `home.md` content via `lesson_service.get_ordered_lessons_with_learning_objectives()`.
+- `def api_bab(folder):` (GET `/bab/<folder>`)
+  Returns parsed `sub-home.md` data for a folder (title, intro HTML, lesson list) via `lesson_service.get_sub_home_data()`. Returns 404 when the folder has no `sub-home.md`.
 - `def api_lesson(filename):` (GET `/lesson/<slug>.json`)
-  Returns the fully parsed lesson data (content, initial code, circuits, key texts, active tabs) via `lesson_service.render_markdown_content(filepath)`.
+  Returns the fully parsed lesson data (content, initial code, circuits, key texts, active tabs) via `lesson_service.render_markdown_content(filepath)`. When the lesson lives in a folder that has a `sub-home.md`, `ordered_lessons` (sidebar) and prev/next navigation are scoped to that folder's lesson list; otherwise it falls back to the global `home.md` list.
 - `def get_key_text(filename):` (GET `/get-key-text/<slug>`)
   Returns only the required keywords for a specific lesson without exposing the full content logic.
 
@@ -62,9 +64,14 @@ are never persisted and cannot be recovered or exported.
 
 ### Lesson Service (`services/lesson_service.py`)
 Parses Markdown files to extract content and configuration.
-- `def get_ordered_lessons_with_learning_objectives(progress=None):` Returns lessons ordered as they appear in `home.md`, optionally injected with user progress status.
+- `def get_lessons(source_path=None):` Returns lessons listed in the `Available_Lessons` section of `home.md` (or of `source_path` when given, e.g. a `sub-home.md`).
+- `def get_ordered_lessons_with_learning_objectives(progress=None, source_path=None):` Returns lessons ordered as they appear in `home.md` (or `source_path`), optionally injected with user progress status.
+- `def find_sub_home_for_lesson(file_path):` Returns `(sub_home_path, folder_name)` when the lesson's folder (one level inside `content/`) has a `sub-home.md`, else `(None, None)`.
+- `def get_sub_home_data(folder_name):` Parses a folder's `sub-home.md` (title, intro HTML, lesson list) with an mtime-based cache so edits to the file are picked up without restart.
 - `def render_markdown_content(file_path):` The core parsing function. Uses regex to extract markers like `---INITIAL_CODE---`, `---VELXIO_CIRCUIT---`, etc. It identifies the `active_tabs` needed for the frontend.
 - `def _parse_flashcards(text):` Specifically parses `---QUIZ_FLASHCARD---` blocks into a structured JSON array for the frontend MCQ/Flashcard component.
+
+See `docs/13-content-sub-home.md` for the author-facing guide on writing `sub-home.md`.
 
 ## Compiler Framework (`compiler/`)
 

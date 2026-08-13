@@ -112,6 +112,31 @@ Situs LMS ini untuk belajar dasar-dasar pemrograman C.
 > yang dikenali sistem. Pastikan setiap materi yang ada di folder `content/`
 > terdaftar di sini.
 
+### 3b. Sub Bab (Opsional): `sub-home.md` dalam Folder
+
+Untuk mengelompokkan materi ke dalam bab, buat folder satu level di dalam
+`content/` (misal `content/bab1/`) dan beri file `sub-home.md` di dalamnya:
+
+```markdown
+# Judul Bab
+
+Intro bab (opsional).
+
+----Available_Lessons----
+1. [Materi A](lesson/materi_a.md)
+2. [Materi B](lesson/materi_b.md)
+```
+
+Folder yang memiliki `sub-home.md` otomatis punya halaman bab di
+`/bab/<folder>`, dan sidebar/navigasi materi di dalam folder tersebut memakai
+daftar dari `sub-home.md` (bukan daftar global).
+
+> **Catatan fallback:** Folder **tanpa** `sub-home.md` tetap memakai daftar
+global dari `home.md` — perilaku lama tidak berubah. `sub-home.md` tidak
+> dihitung sebagai materi.
+
+Panduan lengkap: `docs/13-content-sub-home.md`.
+
 ### 4. Buat Materi Pelajaran
 
 Setiap file `.md` di folder `content/` adalah satu materi pelajaran.
@@ -491,13 +516,16 @@ Folder `examples/` berisi contoh lengkap yang digunakan oleh `./elemes.sh init`:
 examples/
 ├── content/
 │   ├── home.md                    # Halaman utama (7 materi)
-│   ├── hello_world.md             # Materi dasar: Hello World
-│   ├── variabel.md                # Materi dasar: Variabel
-│   ├── rangkaian_dasar.md         # Materi hybrid: C + Circuit
-│   ├── led_blink_arduino.md       # Arduino: LED Blink + wiring
-│   ├── hello_serial_arduino.md    # Arduino: Serial Monitor (tanpa wiring)
-│   ├── button_input_arduino.md    # Arduino: Button + LED input/output
-│   └── traffic_light_arduino.md   # Arduino: Lampu lalu lintas 3 LED
+│   ├── dasar/                     # Sub bab: materi pemrograman dasar
+│   │   ├── sub-home.md            # Halaman bab dasar
+│   │   ├── hello_world.md         # Materi dasar: Hello World
+│   │   ├── variabel.md            # Materi dasar: Variabel
+│   │   └── ...
+│   ├── arduino/                   # Sub bab: materi Arduino (Velxio)
+│   │   ├── sub-home.md            # Halaman bab arduino
+│   │   ├── led_blink_arduino.md   # Arduino: LED Blink + wiring
+│   │   └── ...
+│   └── rangkaian_dasar.md         # Materi hybrid: C + Circuit
 ```
 
 ### Jenis Materi
@@ -516,6 +544,13 @@ Buat file `.md` baru di `content/`, lalu tambahkan link-nya di `content/home.md`
 (di bagian daftar topik DAN bagian `----Available_Lessons----`).
 Daftar lesson disinkronkan otomatis ke database saat aplikasi start — tidak
 perlu perintah manual.
+
+**Q: Bagaimana mengelompokkan materi ke dalam bab?**
+Buat folder satu level di dalam `content/` (misal `content/bab1/`), letakkan
+file `sub-home.md` di folder itu, dan daftarkan materi bab di bagian
+`----Available_Lessons----` file tersebut. Folder punya halaman sendiri di
+`/bab/<folder>` dan sidebar/navigasi materinya otomatis scoped ke bab itu.
+Detail: `docs/13-content-sub-home.md`.
 
 **Q: Bagaimana menambah siswa baru?**
 Buka halaman **Laporan Progress** (`/progress`), Export CSV, tambahkan baris
