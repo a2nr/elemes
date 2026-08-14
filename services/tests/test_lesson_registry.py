@@ -81,3 +81,86 @@ def test_sync_creates_and_deactivates_lessons(tmp_path, monkeypatch):
         assert third["total"] == 2
     finally:
         db.close()
+
+
+@pytest.mark.skipif(not DB_REQUIRED, reason="butuh DATABASE_URL (PostgreSQL nyata)")
+def test_sync_includes_sub_bab_lessons(tmp_path, monkeypatch):
+    """Lesson yang hanya ada di sub-home.md (bukan di home.md root) tetap
+    ter-sync ke DB sebagai lesson aktif — agar kolom CSV guru/sub-bab lengkap.
+
+    Regression test untuk bug: sync_lesson_registry hanya membaca home.md root
+    sehingga materi sub-bab tidak muncul sebagai kolom saat guru import siswa.
+    """
+    from services.database import SessionLocal
+    from services import repositories
+
+    (tmp_path / "home.md").write_text(
+        "# Home\n\n---Available_Lessons---\n- [Hello World](hello_world.md)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "hello_world.md").write_text("# Hello World\nisi", encoding="utf-8")
+
+    # Buat folder sub-bab dengan sub-home.md yang merujuk lesson unik
+    # (sub_bab_only) yang TIDAK ada di home.md root.
+    bab = tmp_path / "dasar"
+    bab.mkdir()
+    (bab / "sub-home.md").write_text(
+        "# Dasar\n\n---Available_Lessons---\n- [Sub Bab Only](sub_bab_only.md)\n",
+        encoding="utf-8",
+    )
+    (bab / "sub_bab_only.md").write_text("# Sub Bab Only\nisi", encoding="utf-8")
+
+    monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))
+    lesson_service.get_lessons.cache_clear()
+
+    db = SessionLocal()
+    try:
+        result = sync_lesson_registry(db)
+        assert result["specs"] == 2  # hello_world (root) + sub_bab_only (sub-bab)
+
+        active_slugs = {lesson.slug for lesson in repositories.list_active_lessons(db)}
+        assert "hello_world" in active_slugs
+        assert "sub_bab_only" in active_slugs  # <-- regression assertion
+    finally:
+        # Bersihkan: non-aktifkan lesson yang mungkin tertinggal (sub_bab_only)
+        # agar test idempotent & tidak mengganggu test lain.
+        repositories.deactivate_missing_lessons(db, {"hello_world", "sub_bab_only"})
+        db.commit()
+        db.close()
+
+
+def test_specs_union_root_and_sub_bab_no_db(tmp_path, monkeypatch):
+    """Unit (host, tanpa DB): lesson_specs() mengembalikan union root + sub-bab
+    dengan dedupe slug (root menang atas sub-bab bila collision)."""
+    (tmp_path / "home.md").write_text(
+        "# Home\n\n---Available_Lessons---\n"
+        "- [Root Only](root_only.md)\n"
+        "- [Shared](shared.md)\n",
+        encoding="utf-8",
+    )
+    for slug, title in [("root_only", "Root Only"), ("shared", "Shared")]:
+        (tmp_path / f"{slug}.md").write_text(f"# {title}\nisi", encoding="utf-8")
+
+    bab = tmp_path / "dasar"
+    bab.mkdir()
+    (bab / "sub-home.md").write_text(
+        "# Dasar\n\n---Available_Lessons---\n"
+        "- [Shared](shared.md)\n"           # collision — root priority\n"
+        "- [Sub Only](sub_only.md)\n",      # hanya ada di sub-bab\n"
+        encoding="utf-8",
+    )
+    (bab / "sub_only.md").write_text("# Sub Only\nisi", encoding="utf-8")
+
+    monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))
+    lesson_service.get_lessons.cache_clear()
+
+    specs = lesson_specs()
+    slugs = [s for s, _, _ in specs]
+
+    # Tiga lesson unik: root_only, shared, sub_only
+    assert slugs == ["root_only", "shared", "sub_only"]
+
+    # Slug collision: root title (Shared) menang, bukan sub-bab title
+    title_by_slug = {s: t for s, t, _ in specs}
+    assert title_by_slug["shared"] == "Shared"
+    assert title_by_slug["sub_only"] == "Sub Only"

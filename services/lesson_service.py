@@ -511,6 +511,28 @@ def get_sub_home_data(folder_name):
     return data
 
 
+def find_all_sub_home_folders():
+    """Return list nama folder level-1 di CONTENT_DIR yang berisi sub-home.md.
+
+    Digunakan lesson_registry.py untuk menemukan semua materi sub-bab agar
+    ter-sync ke tabel `lessons` (bukan cuma home.md root). Hanya memindai
+    langsung satu level di bawah CONTENT_DIR — sub-bab Elemes memang strukturnya
+    flat (bab/<folder>/sub-home.md).
+    """
+    folders = []
+    if not os.path.isdir(CONTENT_DIR):
+        return folders
+    try:
+        for entry in os.scandir(CONTENT_DIR):
+            if entry.is_dir(follow_symlinks=False) and os.path.exists(
+                os.path.join(entry.path, 'sub-home.md')
+            ):
+                folders.append(entry.name)
+    except OSError:
+        pass
+    return folders
+
+
 # ---------------------------------------------------------------------------
 # Markdown rendering
 # ---------------------------------------------------------------------------

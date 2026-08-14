@@ -17,19 +17,43 @@ logger = logging.getLogger(__name__)
 
 
 def lesson_specs() -> list[tuple[str, str, int]]:
-    """Daftar (slug, title, order_index) dari home.md — fresh, tanpa cache.
+    """Daftar (slug, title, order_index) dari **seluruh** lesson aktif —
 
-    Urutan mengikuti daftar Available_Lessons di home.md.
+    root home.md ditambah setiap sub-home.md (bab/<folder>/sub-home.md).
+
+    Urutan: root home.md dulu (indeks lokal), lalu sub-bab (indeks lokal).
+    Slug didedupe (root selalu menang atas sub-bab bila collision) sehingga
+    satu lesson ≡ satu baris di tabel `lessons`, tak tergantung dari halaman
+    mana siswa/guru mengakses materi tersebut.
+
+    Tidak pakai cache — fresh setiap panggilan agar perubahan home.md/sub-home.md
+    yang belum trigger restart tetap terpantau pada sync berikutnya.
     """
     lesson_service.get_lessons.cache_clear()
-    lessons = lesson_service.get_lessons()
-    specs = []
-    for idx, lesson in enumerate(lessons):
+    specs: dict[str, tuple[str, str, int]] = {}
+
+    # 1) Root home.md — prioritas utama, urutan index-nya menjadi acuan.
+    root_lessons = lesson_service.get_lessons()
+    for idx, lesson in enumerate(root_lessons):
         slug = lesson["filename"]
         if slug.endswith(".md"):
             slug = slug[:-3]
-        specs.append((slug, lesson["title"], idx))
-    return specs
+        specs[slug] = (slug, lesson["title"], idx)
+
+    # 2) Tiap folder level-1 yang punya sub-home.md.
+    for folder in lesson_service.find_all_sub_home_folders():
+        path = lesson_service.get_sub_home_path(folder)
+        if not path:
+            continue
+        sub_lessons = lesson_service.get_lessons(source_path=path)
+        for idx, lesson in enumerate(sub_lessons):
+            slug = lesson["filename"]
+            if slug.endswith(".md"):
+                slug = slug[:-3]
+            # root selamat: setdefault agar urutan root tidak tertimpa.
+            specs.setdefault(slug, (slug, lesson["title"], idx))
+
+    return list(specs.values())
 
 
 def sync_lesson_registry(db: Session) -> dict:
