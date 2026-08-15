@@ -155,6 +155,15 @@ export interface QuizAttemptSubmission {
 	occurred_at: string;
 	started_at: string;
 	visibility_event_count: number;
+	/** Ringkasan per-soal untuk review-after-refresh + breakdown kategori. */
+	answers: QuizAnswerPayload[];
+}
+
+export interface QuizAnswerPayload {
+	question_id: string;
+	selected_option_id: string | null;
+	is_correct: boolean;
+	category: 'evaluasi' | 'diagnostik';
 }
 
 export interface QuizAttemptSubmitResponse {
@@ -162,6 +171,20 @@ export interface QuizAttemptSubmitResponse {
 	idempotent?: boolean;
 	attempt_id?: string;
 	message: string;
+}
+
+/** Attempt yang dikembalikan endpoint GET (untuk review-after-refresh). */
+export interface QuizAttemptFetchResponse {
+	success: boolean;
+	attempt_id: string;
+	status: 'submitted' | 'terminated';
+	termination_reason: QuizTerminationReason | null;
+	score: string;
+	score_earned?: number | null;
+	score_total?: number | null;
+	started_at?: string | null;
+	finished_at?: string | null;
+	answers: QuizAnswerPayload[];
 }
 
 /**
@@ -173,6 +196,20 @@ export function submitQuizAttempt(
 	customFetch = fetch
 ): Promise<QuizAttemptSubmitResponse> {
 	return post<QuizAttemptSubmitResponse>('/quiz-attempts/submit', payload, customFetch);
+}
+
+/**
+ * Fetch attempt kuis siswa untuk sebuah lesson (GET /quiz-attempts/<lesson>).
+ * Dipakai saat halaman dibuka kembali supaya review per-soal tetap tampil
+ * setelah refresh (one-attempt policy → session hilang, tapi attempt persist).
+ */
+export function fetchQuizAttempt(
+	token: string,
+	lessonName: string,
+	customFetch = fetch
+): Promise<QuizAttemptFetchResponse> {
+	const query = `token=${encodeURIComponent(token)}`;
+	return get<QuizAttemptFetchResponse>(`/quiz-attempts/${lessonName}?${query}`, customFetch);
 }
 
 /**

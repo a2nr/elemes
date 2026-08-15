@@ -796,6 +796,12 @@ def _parse_flashcards(text):
                 image_url = f'/assets/{image_url}'
             body = re.sub(r'^\s*image:\s*.*$', '', body, flags=re.MULTILINE).strip()
 
+        # Check for ::diagnostic marker (stripped from display, sets category)
+        category = 'evaluasi'
+        if re.search(r'^\s*::diagnostic\s*$', body, re.MULTILINE):
+            category = 'diagnostik'
+            body = re.sub(r'^\s*::diagnostic\s*$', '', body, flags=re.MULTILINE).strip()
+
         # Option lines outside fenced code, in original order
         option_lines = list(_iter_option_lines(body))
         first_option_idx = option_lines[0][0] if option_lines else len(body)
@@ -849,7 +855,8 @@ def _parse_flashcards(text):
                 'question': md.markdown(prompt_text, extensions=MD_EXTENSIONS),
                 'options': parsed_options,
                 'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
-                'image': image_url
+                'image': image_url,
+                'category': category
             })
         else:
             # It's a simple Flashcard
@@ -865,7 +872,8 @@ def _parse_flashcards(text):
                 'back': md.markdown(clean_back, extensions=MD_EXTENSIONS),
                 'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
                 'image': image_url,
-                'options': None
+                'options': None,
+                'category': category
             })
             
     return flashcards

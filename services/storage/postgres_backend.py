@@ -5,6 +5,7 @@ validasi via HMAC-SHA256 digest + role eksplisit di tabel users.
 """
 
 import logging
+import json
 
 from sqlalchemy import select
 
@@ -216,6 +217,41 @@ def get_all_students_progress(all_lessons_func):
                 student[f"{lesson.slug}_attempt_finished_at"] = (
                     attempt.finished_at.isoformat() if attempt and attempt.finished_at else ""
                 )
+                # Breakdown kategori (evaluasi / diagnostik) dari answers_json attempt —
+                # untuk report guru. `eval_correct/eval_total` = skor resmi;
+                # `diag_correct/diag_total` = info diagnostik.
+                if attempt and attempt.answers_json:
+                    try:
+                        answers = json.loads(attempt.answers_json)
+                    except (json.JSONDecodeError, TypeError):
+                        answers = []
+                    eval_correct = 0
+                    eval_total = 0
+                    diag_correct = 0
+                    diag_total = 0
+                    for ans in answers:
+                        cat = ans.get('category', 'evaluasi')
+                        if cat == 'diagnostik':
+                            diag_total += 1
+                            if ans.get('is_correct'):
+                                diag_correct += 1
+                        else:
+                            eval_total += 1
+                            if ans.get('is_correct'):
+                                eval_correct += 1
+                    student[f"{lesson.slug}_eval"] = f"{eval_correct}/{eval_total}"
+                    student[f"{lesson.slug}_diag"] = f"{diag_correct}/{diag_total}"
+                    student[f"{lesson.slug}_diag_unmastered"] = json.dumps(
+                        [
+                            a.get('question_id', '')
+                            for a in answers
+                            if a.get('category') == 'diagnostik' and not a.get('is_correct')
+                        ]
+                    )
+                else:
+                    student[f"{lesson.slug}_eval"] = ""
+                    student[f"{lesson.slug}_diag"] = ""
+                    student[f"{lesson.slug}_diag_unmastered"] = "[]"
             student['completed_count'] = count_completed_lessons(db, user_id=user.id)
             students.append(student)
         return students, ordered_lessons

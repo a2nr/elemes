@@ -18,6 +18,17 @@
 		[key: string]: string | number | boolean;
 	}
 
+	// `_diag_unmastered` dikirim backend sebagai JSON string array of question_id.
+	function parseUnmastered(raw: string | number | boolean | undefined): string[] {
+		if (typeof raw !== 'string') return [];
+		try {
+			const parsed = JSON.parse(raw);
+			return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+		} catch {
+			return [];
+		}
+	}
+
 	let students = $state<StudentProgress[]>([]);
 	let lessons = $state<LessonHeader[]>([]);
 	let loading = $state(true);
@@ -247,6 +258,9 @@
 								{@const violation = student[key + '_has_violation']}
 								{@const violationReason = student[key + '_termination_reason']}
 								{@const violationTime = student[key + '_attempt_finished_at']}
+								{@const evalScore = student[key + '_eval']}
+								{@const diagScore = student[key + '_diag']}
+								{@const diagUnmastered = parseUnmastered(student[key + '_diag_unmastered'])}
 								<td class="status-cell">
 									<div class="cell-content">
 										{#if status === 'completed'}
@@ -264,6 +278,21 @@
 											>
 												&#9888; Pelanggaran
 											</span>
+										{/if}
+
+										{#if evalScore}
+											<span class="badge eval" title="Skor evaluasi (skor resmi)">Eval: {evalScore}</span>
+										{/if}
+										{#if diagScore}
+											<span class="badge diag" title="Skor soal diagnostik">Diag: {diagScore}</span>
+											{#if diagUnmastered.length > 0}
+												<span
+													class="badge unmastered"
+													title="Belum dikuasai: {diagUnmastered.join(', ')}"
+												>
+													{diagUnmastered.length} belum dikuasai
+												</span>
+											{/if}
 										{/if}
 
 										{#if status && status !== 'not_started'}
@@ -443,10 +472,33 @@
 		font-weight: 700;
 		white-space: nowrap;
 	}
+	.badge.eval, .badge.diag, .badge.unmastered {
+		border-radius: 999px;
+		padding: 0.1rem 0.45rem;
+		font-size: 0.65rem;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	.badge.eval {
+		color: var(--color-primary);
+		background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
+		border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-bg));
+	}
+	.badge.diag {
+		color: var(--color-text-muted);
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+	}
+	.badge.unmastered {
+		color: var(--color-danger, #e8590c);
+		background: color-mix(in srgb, var(--color-danger, #e8590c) 10%, var(--color-bg));
+		border: 1px solid color-mix(in srgb, var(--color-danger, #e8590c) 40%, var(--color-bg));
+	}
 	.cell-content {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		flex-wrap: wrap;
 		gap: 0.4rem;
 	}
 	.btn-reset-mini {

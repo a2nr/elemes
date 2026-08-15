@@ -58,6 +58,7 @@ describe('submitQuizAttempt', () => {
 			occurred_at: '2026-08-09T14:04:44.000Z',
 			started_at: '2026-08-09T14:03:00.000Z',
 			visibility_event_count: 1,
+			answers: [],
 			...overrides
 		};
 	}
@@ -85,7 +86,8 @@ describe('submitQuizAttempt', () => {
 			score: '2/4',
 			occurred_at: p.occurred_at,
 			started_at: p.started_at,
-			visibility_event_count: 1
+			visibility_event_count: 1,
+			answers: []
 		});
 	});
 
@@ -110,37 +112,39 @@ describe('quizAttemptBeacon', () => {
 		vi.stubGlobal('navigator', { sendBeacon });
 
 		const p: QuizAttemptSubmission = {
-			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
-			token: 'student-token',
-			lesson_name: 'quiz_test',
-			status: 'terminated',
-			termination_reason: 'focus_lost',
-			score: '2/4',
-			occurred_at: '2026-08-09T14:04:44.000Z',
-			started_at: '2026-08-09T14:03:00.000Z',
-			visibility_event_count: 1
-		};
+				attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
+				token: 'student-token',
+				lesson_name: 'quiz_test',
+				status: 'terminated',
+				termination_reason: 'focus_lost',
+				score: '2/4',
+				occurred_at: '2026-08-09T14:04:44.000Z',
+				started_at: '2026-08-09T14:03:00.000Z',
+				visibility_event_count: 1,
+				answers: [],
+			};
 
-		const ok = quizAttemptBeacon(p);
-		expect(ok).toBe(true);
-		expect(sendBeacon).toHaveBeenCalledTimes(1);
-		expect(sendBeacon.mock.calls[0][0]).toBe('/api/quiz-attempts/submit');
-		const blob = sendBeacon.mock.calls[0][1];
-		expect(blob.type).toBe('application/json');
-		const text = await blob.text();
-		const body = JSON.parse(text);
-		expect(body).toEqual({
-			attempt_id: p.attempt_id,
-			token: p.token,
-			lesson_name: 'quiz_test',
-			status: 'terminated',
-			termination_reason: 'focus_lost',
-			score: '2/4',
-			occurred_at: p.occurred_at,
-			started_at: p.started_at,
-			visibility_event_count: 1
+			const ok = quizAttemptBeacon(p);
+			expect(ok).toBe(true);
+			expect(sendBeacon).toHaveBeenCalledTimes(1);
+			expect(sendBeacon.mock.calls[0][0]).toBe('/api/quiz-attempts/submit');
+			const blob = sendBeacon.mock.calls[0][1];
+			expect(blob.type).toBe('application/json');
+			const text = await blob.text();
+			const body = JSON.parse(text);
+			expect(body).toEqual({
+				attempt_id: p.attempt_id,
+				token: p.token,
+				lesson_name: 'quiz_test',
+				status: 'terminated',
+				termination_reason: 'focus_lost',
+				score: '2/4',
+				occurred_at: p.occurred_at,
+				started_at: p.started_at,
+				visibility_event_count: 1,
+				answers: p.answers
+			});
 		});
-	});
 
 	it('tidak melempar dan mengembalikan false saat sendBeacon tidak tersedia', () => {
 		vi.stubGlobal('navigator', {});
@@ -153,7 +157,8 @@ describe('quizAttemptBeacon', () => {
 			score: '2/4',
 			occurred_at: '2026-08-09T14:04:44.000Z',
 			started_at: '2026-08-09T14:03:00.000Z',
-			visibility_event_count: 1
+			visibility_event_count: 1,
+			answers: []
 		};
 		expect(quizAttemptBeacon(p)).toBe(false);
 	});

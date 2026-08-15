@@ -1,8 +1,13 @@
 <script lang="ts">
-	import { authLoggedIn } from '$stores/auth';
+	import { authLoggedIn, authToken } from '$stores/auth';
+	import { get } from 'svelte/store';
+	import { onMount } from 'svelte';
 	import { renderMath } from '$lib/actions/renderMath';
 	import { shouldShowQuizReview } from '$services/quiz-integrity';
 	import type { LessonManager } from './lesson.svelte';
+	import type { QuizQuestion, QuizAnswer } from '$types/quiz';
+	import { fetchQuizAttempt } from '$services/api';
+	import type { QuizAttemptFetchResponse } from '$services/api';
 
 	interface Props {
 		mgr: LessonManager;
@@ -25,6 +30,50 @@
 	// Strict policy: kuis yang dihentikan karena focus_lost tidak menampilkan
 	// pembahasan (siswa yang kehilangan fokus tidak mendapat bocoran jawaban).
 	const showReview = $derived(shouldShowQuizReview(mgr.quizTerminationReason));
+
+	// --- Review-after-refresh: fetch stored attempt (one-attempt → session lost) ---
+	let storedAttempt: QuizAttemptFetchResponse | null = $state(null);
+	let reviewQuestions: QuizQuestion[] = $state([]);
+	let reviewAnswers: Record<string, QuizAnswer> = $state({});
+
+	async function loadStoredAttempt() {
+		const token = get(authToken) || localStorage.getItem('student_token') || '';
+		if (!token || !mgr.data) return;
+		const lessonName = mgr.slug.replace('.md', '');
+		try {
+			const resp = await fetchQuizAttempt(token, lessonName);
+			if (resp.success && resp.answers?.length) {
+				storedAttempt = resp;
+				// Rekonstruksi question+answer maps dari stored attempt agar
+				// summary review per-soal bisa dirender setelah refresh.
+				const src = mgr.data?.quiz_data ?? [];
+				// Cocokkan by question_id; gunakan urutan asli (parser order).
+				reviewQuestions = src.filter((q) => resp.answers.some((a) => a.question_id === q.id));
+				reviewAnswers = {};
+				for (const ans of resp.answers) {
+					const q = src.find((qq) => qq.id === ans.question_id);
+					if (q) {
+						reviewAnswers[q.id] = {
+							questionId: q.id,
+							selectedOptionId: ans.selected_option_id,
+							acknowledged: false,
+							isCorrect: ans.is_correct,
+						};
+					}
+				}
+			}
+		} catch {
+			// best-effort; review akan tetap tersedia di session bila masih hidup
+		}
+	}
+
+	// Fetch attempt bila sudah selesai tapi session hilang (refresh/page-open)
+	onMount(() => {
+		const r = result;
+		if (!r && quizAlreadyCompleted && !mgr.quizSession) {
+			loadStoredAttempt();
+		}
+	});
 
 	function handleExit() {
 		if (!mgr.isQuizMode) return;
@@ -57,7 +106,15 @@
 				<div class="summary-icon">🏁</div>
 				<h2>Kuis Selesai!</h2>
 				{#if quizAlreadyCompleted && !result}
-					<p class="score-display">Nilai Anda: <strong>{mgr.data?.lesson_progress_status}</strong></p>
+					{#if storedAttempt}
+						{@const s = storedAttempt}
+						<p class="score-display">Nilai Anda: <strong>{s.score}</strong></p>
+						<div class="score-breakdown">
+							<span class="breakdown-item">Evaluasi: <strong>{s.score_earned ?? '-'}/{s.score_total ?? '-'}</strong></span>
+						</div>
+					{:else}
+						<p class="score-display">Nilai Anda: <strong>{mgr.data?.lesson_progress_status}</strong></p>
+					{/if}
 					<div class="alert alert-info">
 						Kuis ini sudah diselesaikan. Silakan hubungi guru jika ingin mengulang.
 					</div>
@@ -65,7 +122,7 @@
 					{@const totalMcq = result.totalMcq}
 					{#if mgr.quizTerminationReason === 'focus_lost'}
 						<div class="alert alert-danger">
-							Kuis dihentikan karena halaman kehilangan fokus. Skor disimpan dan percobaan tidak dapat diulang.
+							Kuis dihentikan karena halaman kehilangan fokus. Skor disimpan dan percobaann tidak dapat diulang.
 						</div>
 					{/if}
 					{@const correct = result.correctMcq}
@@ -81,14 +138,33 @@
 						</div>
 					{/if}
 
+					{#if result.evalTotal > 0 || result.diagTotal > 0}
+						<div class="score-breakdown">
+							{#if result.evalTotal > 0}
+								<span class="breakdown-item">Evaluasi: <strong>{result.evalCorrect}/{result.evalTotal}</strong></span>
+							{/if}
+							{#if result.diagTotal > 0}
+								<span class="breakdown-item">Diagnostik: <strong>{result.diagCorrect}/{result.diagTotal}</strong></span>
+								{#if result.diagUnmastered.length > 0}
+									<span class="breakdown-item unmastered">
+										Belum dikuasai:
+										{#each result.diagUnmastered as q}
+											<span class="unmastered-topic">{(q.front ?? q.question ?? 'Soal').replace(/<[^>]*>/g, '').slice(0, 40)}</span>
+										{/each}
+									</span>
+								{/if}
+							{/if}
+						</div>
+					{/if}
+
 					{#if showReview && questions.length > 0}
 						<div class="summary-review">
 							<h3 class="review-title">Pembahasan</h3>
 							{#each questions as q, i}
 								{@const a = mgr.quizSession!.answers[q.id]}
-								<div class="review-item">
+								<div class="review-item" data-category={q.category ?? 'evaluasi'}>
 									<div class="review-header">
-										<span class="review-number">Soal {i + 1}</span>
+										<span class="review-number">Soal {i + 1} <span class="review-category-badge">{q.category === 'diagnostik' ? 'Diagnostik' : 'Evaluasi'}</span></span>
 										{#if q.type === 'mcq'}
 											<span class="review-badge" class:ok={a.isCorrect} class:bad={!a.isCorrect}>
 												{a.isCorrect ? '✓ Benar' : '✗ Salah'}
@@ -133,6 +209,52 @@
 							🔒 Pembahasan disembunyikan karena kuis dihentikan saat halaman kehilangan fokus.
 						</p>
 					{/if}
+				{/if}
+
+				{#if storedAttempt && !result && showReview && reviewQuestions.length > 0}
+					<div class="summary-review">
+						<h3 class="review-title">Pembahasan (tersimpan)</h3>
+						{#each reviewQuestions as q, i}
+							{@const a = reviewAnswers[q.id]}
+							<div class="review-item" data-category={q.category ?? 'evaluasi'}>
+								<div class="review-header">
+									<span class="review-number">Soal {i + 1} <span class="review-category-badge">{q.category === 'diagnostik' ? 'Diagnostik' : 'Evaluasi'}</span></span>
+									{#if q.type === 'mcq'}
+										<span class="review-badge" class:ok={a.isCorrect} class:bad={!a.isCorrect}>
+											{a.isCorrect ? '✓ Benar' : '✗ Salah'}
+										</span>
+									{:else}
+										<span class="review-badge ok">Selesai</span>
+									{/if}
+								</div>
+								<div class="review-question">{@html q.question ?? q.front ?? ''}</div>
+								{#if q.type === 'mcq' && q.options}
+									<div class="review-options">
+										{#each q.options as opt}
+											<div
+												class="review-option"
+												class:chosen={opt.id === a.selectedOptionId}
+												class:correct-opt={opt.is_correct}
+											>
+												<span class="review-option-mark">
+													{opt.is_correct ? '✅' : opt.id === a.selectedOptionId ? '❌' : '○'}
+												</span>
+												<span class="review-option-text">{@html opt.text}</span>
+											</div>
+										{/each}
+									</div>
+									{#if !a.isCorrect && a.selectedOptionId === null}
+										<p class="review-unanswered">Tidak dijawab — dianggap salah.</p>
+									{/if}
+								{:else}
+									<div class="review-back">{@html q.back ?? ''}</div>
+								{/if}
+								{#if q.explanation}
+									<div class="explanation-box">{@html q.explanation}</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
 				{/if}
 			</div>
 		</div>
@@ -353,6 +475,12 @@
 	.review-back { padding: 0.75rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; font-size: 0.9rem; }
 	.explanation-box { font-size: 0.85rem; line-height: 1.5; padding: 1rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; text-align: left; margin-top: 0.5rem; }
 	.explanation-box :global(p) { margin: 0; }
+
+	.score-breakdown { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: center; margin: 0.75rem 0 1.25rem; }
+	.breakdown-item { font-size: 0.95rem; padding: 0.35rem 0.7rem; border-radius: 999px; background: var(--color-bg-secondary); border: 1px solid var(--color-border); }
+	.breakdown-item strong { color: var(--color-primary); }
+	.breakdown-item.unmastered { flex-basis: 100%; justify-content: center; }
+	.unmastered-topic { font-size: 0.8rem; background: rgba(220, 53, 69, 0.1); color: var(--color-danger); padding: 0.15rem 0.5rem; border-radius: 6px; margin: 0.15rem; display: inline-block; }
 
 	@media (max-width: 600px) {
 		.option-btn { padding: 0.75rem; font-size: 0.95rem; }

@@ -253,6 +253,19 @@ def list_quiz_attempts_for_user(db: Session, *, user_id: str) -> list[QuizAttemp
     )
 
 
+def get_quiz_attempt_for_user_lesson(db: Session, *, user_id: str, lesson_id: str) -> QuizAttempt | None:
+    """Satu attempt kuis per (user, lesson) — one-attempt policy (unique constraint)."""
+    return db.scalars(
+        select(QuizAttempt)
+        .where(
+            QuizAttempt.user_id == user_id,
+            QuizAttempt.lesson_id == lesson_id,
+        )
+        .order_by(QuizAttempt.finished_at.desc())
+        .limit(1)
+    ).first()
+
+
 def delete_quiz_attempts(db: Session, *, user_id: str, lesson_id: str) -> int:
     """Hapus attempt (one-attempt) — dipakai saat guru me-reset progress."""
     attempts = list(
@@ -282,6 +295,7 @@ def finalize_quiz_attempt(
     finished_at: datetime,
     visibility_event_count: int,
     user_agent: str | None = None,
+    answers_json: str | None = None,
 ) -> tuple[QuizAttempt, bool]:
     """Insert/confirm SATU attempt kuis — idempotent per `attempt_id`.
 
@@ -315,6 +329,7 @@ def finalize_quiz_attempt(
         finished_at=finished_at,
         visibility_event_count=visibility_event_count,
         user_agent=user_agent,
+        answers_json=answers_json,
     )
     db.add(attempt)
     try:

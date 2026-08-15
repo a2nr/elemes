@@ -13,8 +13,16 @@ export interface QuizResult {
 	unansweredMcq: number;
 	completedFlashcards: number;
 	allHandled: boolean;
-	/** e.g. "2/4" when MCQ exist, "completed" when only flashcards. */
+	/** Skor resmi = evaluasi saja. "X/Y" bila ada MCQ evaluasi, "completed" bila tidak ada MCQ evaluasi (hanya diagnostik/flashcard). */
 	statusString: string;
+	/** MCQ dengan category 'evaluasi' */
+	evalCorrect: number;
+	evalTotal: number;
+	/** MCQ dengan category 'diagnostik' */
+	diagCorrect: number;
+	diagTotal: number;
+	/** Soal diagnostik yang salah/atur tidak dijawab */
+	diagUnmastered: QuizQuestion[];
 }
 
 /**
@@ -74,12 +82,28 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 	let unansweredMcq = 0;
 	let completedFlashcards = 0;
 
+	let evalCorrect = 0;
+	let evalTotal = 0;
+	let diagCorrect = 0;
+	let diagTotal = 0;
+	const diagUnmastered: QuizQuestion[] = [];
+
 	for (const q of session.questions) {
 		const a = session.answers[q.id];
+		const isEval = q.category !== 'diagnostik'; // default 'evaluasi'
 		if (q.type === 'mcq') {
 			totalMcq += 1;
 			if (a.isCorrect) correctMcq += 1;
 			if (a.selectedOptionId === null) unansweredMcq += 1;
+
+			if (isEval) {
+				evalTotal += 1;
+				if (a.isCorrect) evalCorrect += 1;
+			} else {
+				diagTotal += 1;
+				if (a.isCorrect) diagCorrect += 1;
+				else diagUnmastered.push(q);
+			}
 		} else if (a.acknowledged) {
 			completedFlashcards += 1;
 		}
@@ -90,7 +114,20 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 			? session.answers[q.id].selectedOptionId !== null
 			: session.answers[q.id].acknowledged
 	);
-	const statusString = totalMcq > 0 ? `${correctMcq}/${totalMcq}` : 'completed';
+	// Skor resmi = evaluasi saja; bila tidak ada MCQ evaluasi → 'completed'.
+	const statusString = evalTotal > 0 ? `${evalCorrect}/${evalTotal}` : 'completed';
 
-	return { totalMcq, correctMcq, unansweredMcq, completedFlashcards, allHandled, statusString };
+	return {
+		totalMcq,
+		correctMcq,
+		unansweredMcq,
+		completedFlashcards,
+		allHandled,
+		statusString,
+		evalCorrect,
+		evalTotal,
+		diagCorrect,
+		diagTotal,
+		diagUnmastered,
+	};
 }

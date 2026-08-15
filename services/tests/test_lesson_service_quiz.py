@@ -198,3 +198,77 @@ def test_old_flat_format_still_parses_with_ids():
     assert quiz[0]['type'] == 'mcq'
     assert len(quiz[0]['options']) == 2
     assert quiz[0]['options'][1]['is_correct'] is True
+
+
+def test_default_category_is_evaluasi():
+    md_text = """### Mana yang benar?
+- [] Salah
+- [x] Benar
+"""
+    quiz = _parse_flashcards(md_text)
+    assert len(quiz) == 1
+    assert quiz[0]['category'] == 'evaluasi'
+
+
+def test_diagnostic_marker_on_own_line_sets_category_mcq():
+    md_text = """### Apa output dari `printf("%d", 5 + 5);`?
+::diagnostic
+- [] 55
+- [x] 10
+- [] 5 + 5
+
+> Penjelasan: 5 + 5 = 10.
+"""
+    quiz = _parse_flashcards(md_text)
+    assert len(quiz) == 1
+    q = quiz[0]
+    assert q['category'] == 'diagnostik'
+    # Marker tidak boleh bocor ke teks yang dirender
+    assert '::diagnostic' not in q['question']
+    assert len(q['options']) == 3
+
+
+def test_diagnostic_marker_on_own_line_sets_category_flashcard():
+    md_text = """### Apa fungsi `return 0;`?
+::diagnostic
+Program selesai dengan sukses.
+"""
+    quiz = _parse_flashcards(md_text)
+    assert len(quiz) == 1
+    q = quiz[0]
+    assert q['category'] == 'diagnostik'
+    assert '::diagnostic' not in q['front']
+    assert 'sukses' in q['back']
+
+
+def test_diagnostic_marker_inline_in_heading_does_not_set_category():
+    """Kontrak: marker wajib di baris sendiri — format inline (lama) diabaikan."""
+    md_text = """### Apa output dari `printf("%d", 5 + 5);`  <-- ::diagnostic
+- [] 55
+- [x] 10
+- [] 5 + 5
+"""
+    quiz = _parse_flashcards(md_text)
+    assert len(quiz) == 1
+    q = quiz[0]
+    assert q['category'] == 'evaluasi'
+    # Konten heading tetap dipertahankan apa adanya (termasuk komentar)
+    assert '::diagnostic' in q['question']
+
+
+def test_diagnostic_mixed_questions_categorized_independently():
+    md_text = """### Soal evaluasi 1
+- [] a
+- [x] b
+
+### Soal diagnostik 1
+::diagnostic
+- [] a
+- [x] b
+
+### Soal evaluasi 2
+- [] a
+- [x] b
+"""
+    quiz = _parse_flashcards(md_text)
+    assert [q['category'] for q in quiz] == ['evaluasi', 'diagnostik', 'evaluasi']

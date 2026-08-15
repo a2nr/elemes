@@ -17,7 +17,9 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -141,6 +143,11 @@ class QuizAttempt(Base):
     )
     # Diagnosis device/browser saja — bukan dasar hukuman tambahan.
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Ringkasan per-soal (question_id -> selected_option_id, is_correct, category).
+    # Digunakan frontend untuk render review-after-refresh + breakdown kategori;
+    # tidak memengaruui skor resmi (evaluasi saja, lihat quiz-session.ts).
+    answers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="quiz_attempts")
     lesson: Mapped["Lesson"] = relationship(back_populates="quiz_attempts")

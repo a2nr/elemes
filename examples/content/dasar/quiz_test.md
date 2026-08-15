@@ -10,6 +10,7 @@ image: https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Languag
 > Penjelasan: Bahasa C sebenarnya dikategorikan sebagai bahasa tingkat menengah (*middle-level language*) karena memiliki fitur bahasa tingkat rendah (seperti manipulasi memori) sekaligus fitur bahasa tingkat tinggi (seperti struktur kontrol yang manusiawi).
 
 ### Apa output dari `printf("%d", 5 + 5);`?
+::diagnostic
 - [] 55
 - [x] 10
 - [] 5 + 5
@@ -29,7 +30,8 @@ Berapakah keluaran program di atas?
 > Pembahasan: `x * 3` menghasilkan `6` karena nilai `x` adalah `2`.
 
 ### Berdasarkan tabel berikut, tipe data mana yang tepat untuk menyimpan `3.14`?
-| Tipe   | Ukuran | Rentang            |
+::diagnostic
+|| Tipe   | Ukuran | Rentang            ||
 |--------|--------|--------------------|
 | int    | 4 byte | -2^31 s/d 2^31-1   |
 | float  | 4 byte | ~1e-38 s/d ~1e38   |
@@ -40,6 +42,7 @@ Berapakah keluaran program di atas?
 > Pembahasan: `double` punya presisi lebih tinggi dan rentang lebih luas untuk bilangan pecahan.
 
 ### Berapakah nilai dari $\int_0^1 2x \, dx$?
+::diagnostic
 - [x] 1
 - [] 2
 - [] 0.5

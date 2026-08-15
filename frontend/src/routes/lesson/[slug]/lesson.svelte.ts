@@ -4,7 +4,7 @@ import { pickDefaultTab } from '$services/lesson-tabs';
 import { tick, untrack } from 'svelte';
 import { auth, authLoggedIn, authToken } from '$stores/auth';
 import { lessonContext } from '$stores/lessonContext';
-import { compileCode, trackProgress, submitQuizAttempt, quizAttemptBeacon, type QuizAttemptSubmission } from '$services/api';
+import { compileCode, trackProgress, submitQuizAttempt, quizAttemptBeacon, fetchQuizAttempt, type QuizAttemptSubmission, type QuizAttemptFetchResponse } from '$services/api';
 import { createAttemptId, type QuizTerminationReason } from '$services/quiz-integrity';
 import { evaluateVelxioSubmission } from '$services/velxio-evaluator';
 import { evaluateFlowchartSubmission } from '$services/flowchart-evaluator';
@@ -416,7 +416,16 @@ export class LessonManager {
 			score: result.statusString,
 			occurred_at: now,
 			started_at: this.quizStartedAt ?? now,
-			visibility_event_count: this.visibilityEventCount
+			visibility_event_count: this.visibilityEventCount,
+			answers: this.quizSession.questions.map((q) => {
+				const a = this.quizSession!.answers[q.id];
+				return {
+					question_id: q.id,
+					selected_option_id: a.selectedOptionId,
+					is_correct: a.isCorrect,
+					category: (q.category === 'diagnostik' ? 'diagnostik' : 'evaluasi') as 'evaluasi' | 'diagnostik'
+				};
+			})
 		};
 	}
 

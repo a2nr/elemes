@@ -15,6 +15,7 @@ Kontrak:
 - Raw token tidak pernah di-log; response hanya memuat status/message/attempt_id.
 """
 
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -119,6 +120,17 @@ def submit_quiz_attempt():
     ):
         return jsonify({"success": False, "message": "visibility_event_count tidak valid"}), 400
 
+    # answers: ringkasan per-soal [{question_id, selected_option_id, is_correct, category}]
+    answers_raw = data.get("answers")
+    answers_json = None
+    if answers_raw is not None:
+        if not isinstance(answers_raw, list):
+            return jsonify({"success": False, "message": "answers harus berupa list"}), 400
+        try:
+            answers_json = json.dumps(answers_raw)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "message": "answers tidak dapat diserialisasi"}), 400
+
     if SessionLocal is None:
         return jsonify({"success": False, "message": "PostgreSQL tidak aktif"}), 503
 
@@ -145,6 +157,7 @@ def submit_quiz_attempt():
                 finished_at=datetime.now(timezone.utc),
                 visibility_event_count=visibility_count,
                 user_agent=user_agent,
+                answers_json=answers_json,
             )
         except ValueError as exc:
             db.rollback()
@@ -185,3 +198,57 @@ def submit_quiz_attempt():
             "attempt_id": attempt.id,
         }
     )
+
+
+@quiz_attempts_bp.route("/quiz-attempts/<lesson_name>", methods=["GET"])
+def get_quiz_attempt(lesson_name: str):
+    """Dapatkan attempt kuis siswa untuk lesson (untuk review-after-refresh).
+
+    Auth: student_token via query param `token` (siswa hanya lihat attempt miliknya).
+    Response: attempt_id, status, termination_reason, score, score_earned, score_total,
+    started_at, finished_at, answers (parsed dari answers_json).
+    """
+    token = (request.args.get("token") or "").strip()
+    if not token:
+        return jsonify({"success": False, "message": "Token wajib"}), 400
+    if SessionLocal is None:
+        return jsonify({"success": False, "message": "PostgreSQL tidak aktif"}), 503
+
+    db = SessionLocal()
+    try:
+        user = repo.get_user_by_token(db, token)
+        if user is None:
+            return jsonify({"success": False, "message": "Token tidak valid"}), 401
+        lesson = repo.get_lesson_by_slug(db, lesson_name)
+        if lesson is None:
+            return jsonify({"success": False, "message": "Lesson tidak dikenal"}), 404
+        attempt = repo.get_quiz_attempt_for_user_lesson(
+            db, user_id=user.id, lesson_id=lesson.id
+        )
+        if attempt is None:
+            return jsonify({"success": False, "message": "Belum ada attempt"}), 404
+
+        try:
+            answers = json.loads(attempt.answers_json) if attempt.answers_json else []
+        except (json.JSONDecodeError, TypeError):
+            answers = []
+
+        return jsonify({
+            "success": True,
+            "attempt_id": attempt.id,
+            "status": attempt.status,
+            "termination_reason": attempt.termination_reason,
+            "score": f"{attempt.score_earned}/{attempt.score_total}"
+            if attempt.score_earned is not None and attempt.score_total is not None
+            else "completed",
+            "score_earned": attempt.score_earned,
+            "score_total": attempt.score_total,
+            "started_at": attempt.started_at.isoformat() if attempt.started_at else None,
+            "finished_at": attempt.finished_at.isoformat() if attempt.finished_at else None,
+            "answers": answers,
+        })
+    except Exception:  # noqa: BLE001
+        logger.exception("get_quiz_attempt gagal")
+        return jsonify({"success": False, "message": "Gagal mengambil attempt"}), 500
+    finally:
+        db.close()

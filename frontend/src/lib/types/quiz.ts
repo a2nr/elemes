@@ -7,6 +7,7 @@ export interface QuizOption {
 export interface QuizQuestion {
 	id: string;
 	type: 'flashcard' | 'mcq';
+	category?: 'evaluasi' | 'diagnostik';
 	question?: string;
 	front?: string;
 	back?: string;

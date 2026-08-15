@@ -45,6 +45,7 @@ def _payload(overrides: dict | None = None) -> dict:
         "occurred_at": "2026-08-09T14:04:44.000Z",
         "started_at": "2026-08-09T14:03:00.000Z",
         "visibility_event_count": 1,
+        "answers": [],
     }
     if overrides:
         data.update(overrides)
