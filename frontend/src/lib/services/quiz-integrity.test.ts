@@ -53,6 +53,10 @@ describe('shouldShowQuizReview', () => {
 		expect(shouldShowQuizReview('focus_lost')).toBe(false);
 	});
 
+	it('page_unload → false (refresh tidak menampilkan pembahasan)', () => {
+		expect(shouldShowQuizReview('page_unload')).toBe(false);
+	});
+
 	it('completed → true (penyelesaian normal menampilkan pembahasan)', () => {
 		expect(shouldShowQuizReview('completed')).toBe(true);
 	});
@@ -60,7 +64,6 @@ describe('shouldShowQuizReview', () => {
 	it('exit penalti lain tetap menampilkan pembahasan', () => {
 		expect(shouldShowQuizReview('user_exit')).toBe(true);
 		expect(shouldShowQuizReview('spa_navigation')).toBe(true);
-		expect(shouldShowQuizReview('page_unload')).toBe(true);
 	});
 
 	it('null (belum ada termination / kunjungan ulang) → true', () => {

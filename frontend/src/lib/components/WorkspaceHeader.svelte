@@ -3,7 +3,7 @@
 
 	interface Props {
 		isMobile: boolean;
-		mobileMode: 'hidden' | 'half' | 'full';
+		mobileMode: 'hidden' | 'h30' | 'h50' | 'h70' | 'full';
 		activeTab: TabType;
 		currentLanguage: string;
 		hasInfo: boolean;
@@ -37,6 +37,19 @@
 
 	let touchStartY = 0;
 
+	const MOBILE_MODES = ['hidden', 'h30', 'h50', 'h70', 'full'] as const;
+	type MobileMode = (typeof MOBILE_MODES)[number];
+
+	function stepUp(mode: MobileMode): MobileMode {
+		const idx = MOBILE_MODES.indexOf(mode);
+		return idx < MOBILE_MODES.length - 1 ? MOBILE_MODES[idx + 1] : mode;
+	}
+
+	function stepDown(mode: MobileMode): MobileMode {
+		const idx = MOBILE_MODES.indexOf(mode);
+		return idx > 0 ? MOBILE_MODES[idx - 1] : mode;
+	}
+
 	const hasC = $derived(activeTabs?.includes('c') ?? false);
 	const hasPython = $derived(activeTabs?.includes('python') ?? false);
 	const hasVelxio = $derived(activeTabs?.includes('velxio') ?? false);
@@ -56,13 +69,11 @@
 	function onSheetTouchEnd(e: TouchEvent) {
 		const delta = e.changedTouches[0].clientY - touchStartY;
 		if (delta < -60) {
-			// Swipe up → expand (pull sheet up)
-			if (mobileMode === 'hidden') mobileMode = 'half';
-			else mobileMode = 'full';
+			// Swipe up → expand (pull sheet up one level)
+			mobileMode = stepUp(mobileMode as MobileMode);
 		} else if (delta > 60) {
-			// Swipe down → collapse (shrink downward)
-			if (mobileMode === 'full') mobileMode = 'half';
-			else mobileMode = 'hidden';
+			// Swipe down → collapse (shrink one level)
+			mobileMode = stepDown(mobileMode as MobileMode);
 		}
 	}
 
@@ -70,7 +81,7 @@
 		activeTab = tab;
 		if (lang) currentLanguage = lang;
 		if (isMobile && mobileMode === 'hidden') {
-			mobileMode = 'half';
+			mobileMode = 'h50';
 		}
 	}
 </script>
@@ -119,8 +130,8 @@
 			{@render chromeTabs()}
 		</div>
 		<div class="panel-actions">
-			<button type="button" class="panel-btn" onclick={(e) => { e.stopPropagation(); if (mobileMode === 'full') mobileMode = 'half'; else if (mobileMode === 'half') mobileMode = 'hidden'; }} title="Minimize" disabled={mobileMode === 'hidden'}>▽</button>
-			<button type="button" class="panel-btn" onclick={(e) => { e.stopPropagation(); if (mobileMode === 'hidden') mobileMode = 'half'; else if (mobileMode === 'half') mobileMode = 'full'; }} title="Maximize" disabled={mobileMode === 'full'}>△</button>
+			<button type="button" class="panel-btn" onclick={(e) => { e.stopPropagation(); mobileMode = stepDown(mobileMode as MobileMode); }} title="Minimize" disabled={mobileMode === 'hidden'}>▽</button>
+			<button type="button" class="panel-btn" onclick={(e) => { e.stopPropagation(); mobileMode = stepUp(mobileMode as MobileMode); }} title="Maximize" disabled={mobileMode === 'full'}>△</button>
 		</div>
 	</div>
 {:else if floating && !minimized}

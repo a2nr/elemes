@@ -49,13 +49,14 @@ export function isFocusLossEvent(
  * Apakah pembahasan (review per-soal) boleh tampil di ringkasan setelah kuis
  * berakhir?
  *
- * Strict policy: kuis yang dihentikan karena `focus_lost` TIDAK menampilkan
- * pembahasan — siswa yang kehilangan fokus tidak mendapat bocoran jawaban.
- * Alasan lain (`user_exit`, `spa_navigation`, `page_unload`, `completed`)
- * tetap menampilkan pembahasan; `null` (belum ada termination) → tampil.
+ * Strict policy: kuis yang dihentikan karena `focus_lost` atau `page_unload`
+ * TIDAK menampilkan pembahasan — siswa yang kehilangan fokus / me-refresh
+ * halaman tidak mendapat bocoran jawaban. Alasan lain (`user_exit`,
+ * `spa_navigation`, `completed`) tetap menampilkan pembahasan; `null`
+ * (belum ada termination) → tampil.
  */
 export function shouldShowQuizReview(reason: QuizTerminationReason | null): boolean {
-	return reason !== 'focus_lost';
+	return reason !== 'focus_lost' && reason !== 'page_unload';
 }
 
 /**

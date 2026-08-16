@@ -124,6 +124,10 @@
 						<div class="alert alert-danger">
 							Kuis dihentikan karena halaman kehilangan fokus. Skor disimpan dan percobaann tidak dapat diulang.
 						</div>
+					{:else if mgr.quizTerminationReason === 'page_unload'}
+						<div class="alert alert-danger">
+							Kuis dihentikan karena halaman di-refresh atau ditutup. Skor disimpan dan percobaan tidak dapat diulang.
+						</div>
 					{/if}
 					{@const correct = result.correctMcq}
 					<p class="score-display">Skor: <strong>{correct} / {totalMcq}</strong></p>
@@ -196,6 +200,8 @@
 										<div class="review-back">{@html q.back ?? ''}</div>
 										{#if !a.acknowledged}
 											<p class="review-unanswered">Tidak ditandai dipahami.</p>
+										{:else if a.understood === false}
+											<p class="review-not-understood">❓ Siswa tidak mengerti materi ini.</p>
 										{/if}
 									{/if}
 									{#if q.explanation}
@@ -211,7 +217,7 @@
 					{/if}
 				{/if}
 
-				{#if storedAttempt && !result && showReview && reviewQuestions.length > 0}
+				{#if storedAttempt && !result && shouldShowQuizReview(storedAttempt.termination_reason) && reviewQuestions.length > 0}
 					<div class="summary-review">
 						<h3 class="review-title">Pembahasan (tersimpan)</h3>
 						{#each reviewQuestions as q, i}
@@ -282,21 +288,10 @@
 		</div>
 	{:else if questions.length > 0}
 		<div class="quiz-active-view">
-			<div class="quiz-progress">
-				Pertanyaan {mgr.quizCurrentIndex + 1} dari {questions.length}
-				<span class="quiz-progress-answered">{mgr.quizAnsweredCount} dijawab</span>
-				<div class="progress-bar-bg">
-					<div
-						class="progress-bar-fill"
-						style="width: {((mgr.quizAnsweredCount / questions.length) * 100).toFixed(1)}%"
-					></div>
-				</div>
-			</div>
-
 			<div class="answer-sheet">
 				{#if currentQuestion?.type === 'mcq'}
 					<p class="answer-sheet-label">Pilih jawabanmu</p>
-					<div class="options-grid">
+					<div class="options-grid" class:single-col={(currentQuestion.options?.length ?? 0) <= 2}>
 						{#each currentQuestion.options ?? [] as option, i}
 							<button
 								type="button"
@@ -313,15 +308,21 @@
 					<p class="answer-hint">Pilihan bisa diganti sebelum kuis diselesaikan.</p>
 				{:else if currentQuestion?.type === 'flashcard'}
 					<div class="flashcard-ack-view">
-						<p class="answer-sheet-label">Sudah paham materi ini?</p>
-						<p class="answer-hint">Baca soal di panel kiri. Jawaban dari kartu ini hanya ditampilkan di pembahasan setelah kuis selesai.</p>
 						<button
 							type="button"
-							class="btn btn-primary btn-lg ack-btn"
-							class:acknowledged={currentAnswer?.acknowledged}
-							onclick={() => mgr.acknowledgeFlashcard()}
+							class="btn-flashcard-ok"
+							class:selected={currentAnswer?.acknowledged && currentAnswer?.understood !== false}
+							onclick={() => mgr.acknowledgeFlashcard(true)}
 						>
-							{currentAnswer?.acknowledged ? '✅ Sudah dipahami' : 'Tandai sudah dipahami'}
+							✅ Sudah Mengerti
+						</button>
+						<button
+							type="button"
+							class="btn-flashcard-no"
+							class:selected={currentAnswer?.acknowledged && currentAnswer?.understood === false}
+							onclick={() => mgr.acknowledgeFlashcard(false)}
+						>
+							❓ Tidak Mengerti
 						</button>
 					</div>
 				{/if}
@@ -406,15 +407,17 @@
 	.alert-info { background: rgba(13, 110, 253, 0.1); border: 1px solid var(--color-primary); color: var(--color-primary); }
 	.alert-danger { background: rgba(233, 236, 239, 0.5); border: 1px solid var(--color-danger, #dc3545); color: var(--color-danger, #dc3545); }
 
-	.quiz-progress { font-size: 0.85rem; color: var(--color-text-muted); }
-	.quiz-progress-answered { margin-left: 0.75rem; }
-	.progress-bar-bg { height: 6px; background: var(--color-border); border-radius: 3px; margin-top: 0.5rem; overflow: hidden; }
-	.progress-bar-fill { height: 100%; background: var(--color-primary, #339af0); transition: width 0.3s ease; }
-
 	.answer-sheet { flex: 1; display: flex; flex-direction: column; gap: 1rem; }
 	.answer-sheet-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); font-weight: 700; }
-	.options-grid { display: flex; flex-direction: column; gap: 0.75rem; }
-	.option-btn { display: flex; align-items: center; gap: 1rem; padding: 1rem; background: var(--color-bg); border: 2px solid var(--color-border); border-radius: 12px; cursor: pointer; text-align: left; transition: all 0.2s; font-size: 1rem; color: var(--color-text); }
+	.options-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.75rem;
+	}
+	.options-grid.single-col {
+		grid-template-columns: 1fr;
+	}
+	.option-btn { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem; background: var(--color-bg); border: 2px solid var(--color-border); border-radius: 12px; cursor: pointer; text-align: left; transition: all 0.2s; font-size: 1rem; color: var(--color-text); align-self: stretch; }
 	.option-btn:hover { border-color: var(--color-primary); background: var(--color-bg-secondary); }
 	.option-btn.selected { border-color: var(--color-primary); background: var(--color-bg-secondary); box-shadow: 0 0 0 2px rgba(51, 154, 240, 0.15); }
 	.option-marker { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; font-weight: 700; font-size: 0.9rem; flex-shrink: 0; color: var(--color-text); }
@@ -423,8 +426,52 @@
 	.option-text :global(img) { max-width: 100%; height: auto; border-radius: 4px; display: block; margin: 0.5rem 0; }
 	.answer-hint { font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; }
 
-	.flashcard-ack-view { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; text-align: center; flex: 1; padding: 2rem 1rem; background: var(--color-bg-secondary); border: 2px dashed var(--color-border); border-radius: 16px; }
-	.ack-btn.acknowledged { background: var(--color-success); }
+	.flashcard-ack-view {
+		display: flex;
+		flex-direction: row;
+		gap: 0.75rem;
+		justify-content: center;
+		flex-wrap: wrap;
+		padding: 1rem 0;
+	}
+	.btn-flashcard-ok {
+		flex: 1;
+		min-width: 120px;
+		max-width: 200px;
+		padding: 0.8rem 1rem;
+		border-radius: 10px;
+		border: 2px solid var(--color-success, #40c057);
+		background: transparent;
+		color: var(--color-success, #40c057);
+		font-weight: 600;
+		font-size: 0.95rem;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.btn-flashcard-ok:hover,
+	.btn-flashcard-ok.selected {
+		background: var(--color-success, #40c057);
+		color: white;
+	}
+	.btn-flashcard-no {
+		flex: 1;
+		min-width: 120px;
+		max-width: 200px;
+		padding: 0.8rem 1rem;
+		border-radius: 10px;
+		border: 2px solid var(--color-warning, #fab005);
+		background: transparent;
+		color: var(--color-warning, #fab005);
+		font-weight: 600;
+		font-size: 0.95rem;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.btn-flashcard-no:hover,
+	.btn-flashcard-no.selected {
+		background: var(--color-warning, #fab005);
+		color: white;
+	}
 
 	.quiz-navigator { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 	.nav-dot { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
@@ -471,6 +518,7 @@
 	.review-option.correct-opt { border-color: var(--color-success); background: rgba(25, 135, 84, 0.08); }
 	.review-option-text :global(img) { max-width: 100%; height: auto; border-radius: 4px; }
 	.review-unanswered { font-size: 0.8rem; color: var(--color-danger); font-style: italic; margin: 0.5rem 0; }
+	.review-not-understood { font-size: 0.8rem; color: var(--color-warning, #fab005); font-style: italic; margin: 0.5rem 0; }
 	.review-hidden-note { font-size: 0.9rem; color: var(--color-text-muted); padding: 1rem; background: var(--color-bg-secondary); border: 1px dashed var(--color-border); border-radius: 8px; margin-top: 1rem; text-align: center; }
 	.review-back { padding: 0.75rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; font-size: 0.9rem; }
 	.explanation-box { font-size: 0.85rem; line-height: 1.5; padding: 1rem; background: var(--color-bg-secondary); border: 1px solid var(--color-border); border-radius: 8px; text-align: left; margin-top: 0.5rem; }
@@ -481,6 +529,12 @@
 	.breakdown-item strong { color: var(--color-primary); }
 	.breakdown-item.unmastered { flex-basis: 100%; justify-content: center; }
 	.unmastered-topic { font-size: 0.8rem; background: rgba(220, 53, 69, 0.1); color: var(--color-danger); padding: 0.15rem 0.5rem; border-radius: 6px; margin: 0.15rem; display: inline-block; }
+
+	@media (max-width: 400px) {
+		.options-grid {
+			grid-template-columns: 1fr;
+		}
+	}
 
 	@media (max-width: 600px) {
 		.option-btn { padding: 0.75rem; font-size: 0.95rem; }

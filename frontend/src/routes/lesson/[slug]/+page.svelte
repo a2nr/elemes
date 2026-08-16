@@ -158,11 +158,17 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 		};
 	});
 
-	beforeNavigate(() => {
+	beforeNavigate((nav) => {
 		lessonContext.set(null);
 
-		// Quiz integrity: submit with penalty on SPA navigation
-		if (mgr.isQuizMode) {
+		// Quiz integrity: submit with penalty on SPA navigation.
+		// JANGAN finalisasi untuk tipe 'leave' (full-page unload / reload):
+		// SvelteKit memanggil beforeNavigate dengan type 'leave' saat event
+		// beforeunload, dan di situ user masih bisa membatalkan dialog
+		// (F5 → Cancel). Finalisasi untuk 'leave' ditangani handler
+		// beforeunload yang hanya mengirim beacon — jadi quiz tetap hidup
+		// bila user membatalkan reload.
+		if (mgr.isQuizMode && nav.type !== 'leave') {
 			mgr.submitQuiz('spa_navigation'); // fire-and-forget, async
 		}
 
@@ -178,11 +184,12 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 
 	onMount(() => {
 		const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-			if (mgr.isQuizMode) {
-				// Finalisasi attempt via sendBeacon SYNCHRONOUS (page_unload) —
-				// menggantikan beacon track-progress lama agar satu attempt
-				// tercatat di endpoint atomic. Tidak mengandalkan await.
-				mgr.terminateQuiz('page_unload');
+			if (mgr.isQuizMode && !mgr.quizFinalized) {
+				// Kirim beacon sebagai backup (skor partial tercatat di DB)
+				// TANPA memfinalisasi state — user masih bisa membatalkan dialog.
+				// Jika user cancel, quiz lanjut di memory; attempt_id sudah
+				// terpakai di DB (idempotent policy: retry tidak menimpa skor).
+				mgr.sendQuizBeacon('page_unload');
 
 				// Trigger browser confirm dialog
 				e.preventDefault();
@@ -237,7 +244,6 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 				question={mgr.currentQuizQuestion}
 				currentIndex={mgr.quizCurrentIndex}
 				totalCount={mgr.quizTotalCount}
-				answeredCount={mgr.quizAnsweredCount}
 				onExit={() => {
 					mgr.submitQuiz();
 				}}
@@ -259,7 +265,9 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 				class:floating-hidden={float.floating && float.minimized && !mgr.isMobile}
 				class:mobile-sheet={mgr.isMobile}
 				class:mobile-hidden={mgr.isMobile && mgr.mobileMode === 'hidden'}
-				class:mobile-half={mgr.isMobile && mgr.mobileMode === 'half'}
+				class:mobile-h30={mgr.isMobile && mgr.mobileMode === 'h30'}
+				class:mobile-h50={mgr.isMobile && mgr.mobileMode === 'h50'}
+				class:mobile-h70={mgr.isMobile && mgr.mobileMode === 'h70'}
 				class:mobile-full={mgr.isMobile && mgr.mobileMode === 'full'}
 				class:editor-locked={mgr.data?.locked}
 				style={float.style}>

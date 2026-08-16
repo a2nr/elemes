@@ -21,4 +21,6 @@ export interface QuizAnswer {
 	selectedOptionId: string | null;
 	acknowledged: boolean;
 	isCorrect: boolean;
+	/** Flashcard — apakah siswa merasa mengerti materi (true/false). Opsional. */
+	understood?: boolean;
 }

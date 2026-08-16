@@ -76,6 +76,17 @@ export function acknowledgeQuestion(session: QuizSession, questionId: string): v
 	answer.acknowledged = true;
 }
 
+/**
+ * Tandai flashcard sebagai handled. `understood` mencatat apakah siswa
+ * merasa mengerti (true) atau tidak (false). Kedua state = acknowledged.
+ */
+export function acknowledgeFlashcard(session: QuizSession, questionId: string, understood: boolean): void {
+	const answer = session.answers[questionId];
+	if (!answer) throw new Error(`Unknown question id: ${questionId}`);
+	answer.acknowledged = true;
+	answer.understood = understood;
+}
+
 export function calculateQuizResult(session: QuizSession): QuizResult {
 	let totalMcq = 0;
 	let correctMcq = 0;

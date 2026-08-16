@@ -211,8 +211,18 @@
 .editor-area.mobile-hidden {
 	height: 52px;
 }
+/* Backward compat — tidak dipakai lagi (digantikan mobile-h30/h50/h70). */
 .editor-area.mobile-half {
 	height: 60vh;
+}
+.editor-area.mobile-h30 {
+	height: 30vh;
+}
+.editor-area.mobile-h50 {
+	height: 50vh;
+}
+.editor-area.mobile-h70 {
+	height: 70vh;
 }
 .editor-area.mobile-full {
 	height: 100dvh;
@@ -447,11 +457,6 @@
 	color: var(--color-primary);
 }
 
-.quiz-question-answered {
-	color: var(--color-text-muted);
-	margin-left: auto;
-}
-
 .quiz-question-header .btn-exit-quiz {
 	background: none;
 	border: none;
@@ -460,19 +465,6 @@
 	font-size: 0.85rem;
 	cursor: pointer;
 	padding: 0;
-}
-
-.quiz-question-progress {
-	height: 6px;
-	background: var(--color-border);
-	border-radius: 3px;
-	overflow: hidden;
-}
-
-.quiz-question-progress .progress-bar-fill {
-	height: 100%;
-	background: var(--color-primary, #339af0);
-	transition: width 0.3s ease;
 }
 
 .quiz-question-prose {

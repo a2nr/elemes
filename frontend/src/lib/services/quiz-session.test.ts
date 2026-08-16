@@ -4,6 +4,7 @@ import {
 	createQuizSession,
 	answerQuestion,
 	acknowledgeQuestion,
+	acknowledgeFlashcard,
 	calculateQuizResult
 } from './quiz-session';
 
@@ -109,6 +110,38 @@ describe('acknowledgeQuestion', () => {
 		const session = createQuizSession(source, () => 0);
 		acknowledgeQuestion(session, 'q-0');
 		expect(session.answers['q-0'].acknowledged).toBe(true);
+	});
+});
+
+describe('acknowledgeFlashcard', () => {
+	it('marks acknowledged + understood true', () => {
+		const source = [makeQuestion('q-0', 'flashcard')];
+		const session = createQuizSession(source, () => 0);
+		acknowledgeFlashcard(session, 'q-0', true);
+		expect(session.answers['q-0'].acknowledged).toBe(true);
+		expect(session.answers['q-0'].understood).toBe(true);
+	});
+
+	it('marks acknowledged + understood false (toggle)', () => {
+		const source = [makeQuestion('q-0', 'flashcard')];
+		const session = createQuizSession(source, () => 0);
+		acknowledgeFlashcard(session, 'q-0', true);
+		acknowledgeFlashcard(session, 'q-0', false);
+		expect(session.answers['q-0'].acknowledged).toBe(true);
+		expect(session.answers['q-0'].understood).toBe(false);
+	});
+
+	it('throwing on unknown question id', () => {
+		const source = [makeQuestion('q-0', 'flashcard')];
+		const session = createQuizSession(source, () => 0);
+		expect(() => acknowledgeFlashcard(session, 'nope', true)).toThrow(/unknown/i);
+	});
+
+	it('allHandled tetap berdasarkan acknowledged, apapun understood-nya', () => {
+		const source = [makeQuestion('q-0', 'flashcard')];
+		const session = createQuizSession(source, () => 0);
+		acknowledgeFlashcard(session, 'q-0', false);
+		expect(calculateQuizResult(session).allHandled).toBe(true);
 	});
 });
 

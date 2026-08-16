@@ -5,24 +5,16 @@
 		question: QuizQuestion | null;
 		currentIndex: number;
 		totalCount: number;
-		answeredCount: number;
 		onExit: () => void;
 	}
 
-	let { question, currentIndex, totalCount, answeredCount, onExit }: Props = $props();
+	let { question, currentIndex, totalCount, onExit }: Props = $props();
 </script>
 
 <div class="quiz-question-view">
 	<div class="quiz-question-header">
 		<span class="quiz-question-counter">Soal {currentIndex + 1} dari {totalCount}</span>
-		<span class="quiz-question-answered">{answeredCount} dijawab</span>
 		<button type="button" class="btn-exit-quiz" onclick={onExit}>Keluar Kuis</button>
-	</div>
-	<div class="quiz-question-progress" aria-hidden="true">
-		<div
-			class="progress-bar-fill"
-			style="width: {((answeredCount / Math.max(totalCount, 1)) * 100).toFixed(1)}%"
-		></div>
 	</div>
 
 	{#if question}

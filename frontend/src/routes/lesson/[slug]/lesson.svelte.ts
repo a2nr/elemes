@@ -19,7 +19,7 @@ import type { QuizQuestion, QuizAnswer } from '$types/quiz';
 import {
 	createQuizSession,
 	answerQuestion,
-	acknowledgeQuestion,
+	acknowledgeFlashcard,
 	calculateQuizResult,
 	type QuizSession,
 	type QuizResult
@@ -71,7 +71,7 @@ export class LessonManager {
 	showSolution = $state(false);
 	activeTab = $state<'info' | 'exercise' | 'editor' | 'circuit' | 'output' | 'velxio' | 'flowchart' | 'deploy' | 'quiz'>('info');
 	showCelebration = $state(false);
-	mobileMode = $state<'hidden' | 'half' | 'full'>('hidden');
+	mobileMode = $state<'hidden' | 'h30' | 'h50' | 'h70' | 'full'>('hidden');
 	isMobile = $state(false);
 
 	// Refs (set from component)
@@ -291,7 +291,7 @@ export class LessonManager {
 		this.activeTab = 'quiz';
 		// On mobile the tab panel is a bottom sheet — open it so the answer
 		// sheet is visible while the question stays in the content area above.
-		if (this.isMobile) this.mobileMode = 'half';
+		if (this.isMobile) this.mobileMode = 'h50';
 	}
 
 	selectQuizOption(optionId: string) {
@@ -299,9 +299,9 @@ export class LessonManager {
 		if (q && this.quizSession) answerQuestion(this.quizSession, q.id, optionId);
 	}
 
-	acknowledgeFlashcard() {
+	acknowledgeFlashcard(understood: boolean) {
 		const q = this.currentQuizQuestion;
-		if (q && this.quizSession) acknowledgeQuestion(this.quizSession, q.id);
+		if (q && this.quizSession) acknowledgeFlashcard(this.quizSession, q.id, understood);
 	}
 
 	goToQuizQuestion(index: number) {
@@ -398,10 +398,22 @@ export class LessonManager {
 	}
 
 	/**
+	 * Kirim beacon quiz tanpa memfinalisasi quiz session di memory.
+	 * Digunakan oleh beforeunload — hanya backup; state quiz tidak diubah.
+	 * Returns false bila quiz belum aktif atau sudah finalized.
+	 */
+	sendQuizBeacon(reason: QuizTerminationReason): boolean {
+		if (!this.quizSession || this.quizFinalized) return false;
+		const payload = this.buildQuizAttemptPayload(reason);
+		if (!payload) return false;
+		return quizAttemptBeacon(payload);
+	}
+
+	/**
 	 * Bangun payload attempt secara synchronous dari session & attempt state.
 	 * Returns null bila belum ada attempt/session atau token tidak tersedia.
 	 */
-	private buildQuizAttemptPayload(reason: QuizTerminationReason): QuizAttemptSubmission | null {
+	buildQuizAttemptPayload(reason: QuizTerminationReason): QuizAttemptSubmission | null {
 		if (!this.quizSession || !this.quizAttemptId) return null;
 		const token = get(authToken) || localStorage.getItem('student_token') || '';
 		if (!token) return null;
@@ -710,7 +722,7 @@ export class LessonManager {
 			if (!this.isMobile) {
 				float.floating = true;
 			} else {
-				this.mobileMode = 'half';
+				this.mobileMode = 'h50';
 				tick().then(() => {
 					document.querySelector('.editor-area')?.scrollIntoView({ behavior: 'smooth' });
 				});
@@ -722,7 +734,7 @@ export class LessonManager {
 				if (!this.isMobile) {
 					float.floating = true;
 				} else {
-					this.mobileMode = 'half';
+					this.mobileMode = 'h50';
 					tick().then(() => {
 						document.querySelector('.editor-area')?.scrollIntoView({ behavior: 'smooth' });
 					});
