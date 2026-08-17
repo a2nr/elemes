@@ -615,3 +615,68 @@ def test_import_comma_delimiter_csv_apply_success(client):
     raw = resp.get_data(as_text=True)
     assert "LocustBot48" not in raw
     assert hash_token("LocustBot48") not in raw
+
+
+# ── add single student (Task 3) ──────────────────────────────────────
+
+
+def test_add_student_success(client):
+    _seed_teacher_and_students()
+    _login_teacher(client)
+    resp = client.post(
+        "/students/add",
+        json={"nama_siswa": "Andi Wijaya", "token": "TOKEN_ANDI_BARU_001"},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["success"] is True
+    assert data["nama_siswa"] == "Andi Wijaya"
+    assert "student_id" in data
+
+
+def test_added_student_can_authenticate(client):
+    _seed_teacher_and_students()
+    _login_teacher(client)
+    client.post(
+        "/students/add",
+        json={"nama_siswa": "Andi Wijaya", "token": "TOKEN_ANDI_BARU_001"},
+    )
+    resp = client.post("/validate-token", json={"token": "TOKEN_ANDI_BARU_001"})
+    assert resp.status_code == 200
+    assert resp.get_json().get("success") is True
+
+
+def test_add_student_duplicate_token_rejected(client):
+    _seed_teacher_and_students()
+    _login_teacher(client)
+    resp = client.post(
+        "/students/add",
+        json={"nama_siswa": "Siswa Lain", "token": STUDENT_TOKEN},  # token milik Budi
+    )
+    data = resp.get_json()
+    assert data["success"] is False
+    assert resp.status_code == 409
+
+
+def test_add_student_invalid_token_length_rejected(client):
+    _seed_teacher_and_students()
+    _login_teacher(client)
+    resp = client.post("/students/add", json={"nama_siswa": "X", "token": "pendek"})
+    data = resp.get_json()
+    assert data["success"] is False
+    assert resp.status_code == 400
+
+
+def test_add_student_requires_teacher_auth(client):
+    resp = client.post("/students/add", json={"nama_siswa": "X", "token": "TOKEN_VALID_12345"})
+    assert resp.status_code == 401
+
+
+def test_add_student_empty_name_rejected(client):
+    _seed_teacher_and_students()
+    _login_teacher(client)
+    resp = client.post("/students/add", json={"nama_siswa": "  ", "token": "TOKEN_VALID_12345"})
+    data = resp.get_json()
+    assert data["success"] is False
+    assert resp.status_code == 400
+

@@ -5,6 +5,7 @@
 	import { exportStudentsCsv, triggerBlobDownload } from '$services/studentManagement';
 	import StudentImportDialog from '$lib/components/StudentImportDialog.svelte';
 	import BulkDeleteStudentsDialog from '$lib/components/BulkDeleteStudentsDialog.svelte';
+	import AddStudentDialog from '$lib/components/AddStudentDialog.svelte';
 
 	interface LessonHeader {
 		filename: string;
@@ -14,6 +15,7 @@
 	interface StudentProgress {
 		id: string;
 		nama_siswa: string;
+		role: 'teacher' | 'student';
 		completed_count: number;
 		[key: string]: string | number | boolean;
 	}
@@ -36,6 +38,7 @@
 	let exportError = $state('');
 	let importOpen = $state(false);
 	let deleteOpen = $state(false);
+	let addOpen = $state(false);
 	let headerCheckbox = $state<HTMLInputElement | undefined>();
 
 	// Reactively load data when auth is ready
@@ -57,7 +60,10 @@
 			const data = await res.json();
 			students = data.students ?? [];
 			lessons = data.lessons ?? [];
-			studentSelection.setAvailable(students.map((s) => s.id));
+			// Hanya siswa yang bisa di-select untuk bulk export/delete (guru hanya ditampilkan)
+			studentSelection.setAvailable(
+				students.filter((s) => s.role === 'student').map((s) => s.id)
+			);
 		} catch {
 			// API not available
 		} finally {
@@ -117,6 +123,12 @@
 		loadData();
 	}
 
+	function handleAdded() {
+		addOpen = false;
+		studentSelection.clear();
+		loadData();
+	}
+
 	function handleHeaderCheckbox() {
 		if (get(studentSelection.allSelected)) {
 			studentSelection.clear();
@@ -150,6 +162,8 @@
 	const selectedStudents = $derived(students.filter((s) => selectedIds.includes(s.id)));
 
 	const totalLessons = $derived(lessons.length);
+	// Hanya siswa yang dihitung untuk ringkasan & empty-state (guru hanya ditampilkan)
+	const studentRows = $derived(students.filter((s) => s.role === 'student'));
 </script>
 
 <svelte:head>
@@ -164,7 +178,7 @@
 	<p class="empty">Anda tidak memiliki akses ke halaman ini.</p>
 {:else}
 	<div class="summary-bar">
-		<span><strong>{students.length}</strong> siswa</span>
+		<span><strong>{studentRows.length}</strong> siswa</span>
 		<span><strong>{totalLessons}</strong> pelajaran</span>
 
 		{#if selectionCount > 0}
@@ -195,6 +209,14 @@
 
 			<button
 				class="btn btn-sm btn-secondary"
+				onclick={() => (addOpen = true)}
+				title="Tambah satu siswa dengan nama & token"
+			>
+				+ Tambah Siswa
+			</button>
+
+			<button
+				class="btn btn-sm btn-secondary"
 				onclick={() => (importOpen = true)}
 				title="Import CSV — siswa baru dibuat, siswa existing dipulihkan/di-update"
 			>
@@ -216,7 +238,7 @@
 		</div>
 	</div>
 
-	{#if students.length === 0}
+	{#if studentRows.length === 0}
 		<p class="empty">Belum ada data siswa. Gunakan <strong>Import CSV</strong> untuk menambah siswa pertama.</p>
 	{:else}
 		<div class="table-wrapper">
@@ -242,16 +264,26 @@
 				<tbody>
 					{#each students as student}
 						{@const isChecked = selectedIds.includes(student.id as string)}
+						{@const isTeacher = student.role === 'teacher'}
 						<tr class:selected={isChecked}>
 							<td class="checkbox-col">
-								<input
-									type="checkbox"
-									checked={isChecked}
-									onchange={() => studentSelection.toggle(student.id as string)}
-									aria-label={`Pilih ${student.nama_siswa}`}
-								/>
+								{#if isTeacher}
+									<span class="teacher-no-select" aria-label="Guru tidak dapat dipilih" title="Guru tidak dapat dipilih untuk aksi bulk">—</span>
+								{:else}
+									<input
+										type="checkbox"
+										checked={isChecked}
+										onchange={() => studentSelection.toggle(student.id as string)}
+										aria-label={`Pilih ${student.nama_siswa}`}
+									/>
+								{/if}
 							</td>
-							<td class="sticky-col student-name">{student.nama_siswa}</td>
+							<td class="sticky-col student-name">
+								{student.nama_siswa}
+								{#if isTeacher}
+									<span class="badge teacher-badge">Guru</span>
+								{/if}
+							</td>
 							{#each lessons as lesson}
 								{@const key = lesson.filename.replace('.md', '')}
 								{@const status = student[key]}
@@ -321,6 +353,11 @@
 		open={importOpen}
 		onClose={() => (importOpen = false)}
 		onImported={handleImported}
+	/>
+	<AddStudentDialog
+		open={addOpen}
+		onClose={() => (addOpen = false)}
+		onAdded={handleAdded}
 	/>
 	<BulkDeleteStudentsDialog
 		open={deleteOpen}
@@ -446,6 +483,21 @@
 	.student-name {
 		font-weight: 500;
 		min-width: 150px;
+	}
+	.badge.teacher-badge {
+		margin-left: 0.4rem;
+		color: var(--color-primary);
+		background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
+		border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-bg));
+		border-radius: 999px;
+		padding: 0.1rem 0.45rem;
+		font-size: 0.65rem;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	.teacher-no-select {
+		color: var(--color-text-muted);
+		font-size: 0.9rem;
 	}
 	.status-cell {
 		min-width: 40px;

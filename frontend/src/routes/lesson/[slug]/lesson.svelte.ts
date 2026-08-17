@@ -435,7 +435,8 @@ export class LessonManager {
 					question_id: q.id,
 					selected_option_id: a.selectedOptionId,
 					is_correct: a.isCorrect,
-					category: (q.category === 'diagnostik' ? 'diagnostik' : 'evaluasi') as 'evaluasi' | 'diagnostik'
+					category: (q.category === 'diagnostik' ? 'diagnostik' : 'evaluasi') as 'evaluasi' | 'diagnostik',
+					type: (q.type === 'flashcard' ? 'flashcard' : 'mcq') as 'mcq' | 'flashcard'
 				};
 			})
 		};

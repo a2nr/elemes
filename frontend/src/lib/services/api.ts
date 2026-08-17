@@ -164,6 +164,8 @@ export interface QuizAnswerPayload {
 	selected_option_id: string | null;
 	is_correct: boolean;
 	category: 'evaluasi' | 'diagnostik';
+	/** 'mcq' | 'flashcard' — breakdown eval/diag hanya dihitung untuk MCQ. */
+	type: 'mcq' | 'flashcard';
 }
 
 export interface QuizAttemptSubmitResponse {

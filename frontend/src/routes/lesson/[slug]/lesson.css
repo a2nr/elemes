@@ -500,3 +500,58 @@
 	margin-bottom: 1rem;
 	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
+
+/* ── Quiz navigator & controls (dipindah dari QuizTab.svelte) ── */
+.quiz-navigator {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.nav-dot {
+	width: 34px;
+	height: 34px;
+	border-radius: 8px;
+	border: 1px solid var(--color-border);
+	background: var(--color-bg);
+	color: var(--color-text);
+	font-size: 0.85rem;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.15s;
+}
+.nav-dot:hover {
+	border-color: var(--color-primary);
+}
+.nav-dot.answered {
+	background: rgba(51, 154, 240, 0.15);
+	border-color: var(--color-primary);
+	color: var(--color-primary);
+}
+.nav-dot.active {
+	background: var(--color-primary);
+	border-color: var(--color-primary);
+	color: white;
+}
+
+.quiz-controls {
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+	position: relative;
+	z-index: 10;
+	background: var(--color-bg);
+	padding-top: 1rem;
+}
+
+.btn-outline {
+	background: white;
+	border: 1px solid var(--color-border);
+	color: var(--color-text);
+}
+
+@media (max-width: 600px) {
+	.quiz-question-view {
+		padding: 1rem 0;
+	}
+}

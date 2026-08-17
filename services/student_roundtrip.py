@@ -88,6 +88,23 @@ def _token_is_valid(token: str) -> bool:
     return True
 
 
+def validate_single_student_input(display_name: str, raw_token: str) -> list[str]:
+    """Validasi input tambah-1-siswa (dipakai endpoint /students/add).
+
+    Aturan sama dengan validasi baris CSV round-trip (nama & token), supaya
+    kedua jalur (CSV & single-add) punya kontrak identik.
+    """
+    errors: list[str] = []
+    name = (display_name or "").strip()
+    if not name:
+        errors.append("Nama siswa wajib diisi")
+    elif len(name) > MAX_NAME_LENGTH:
+        errors.append(f"Nama siswa maksimal {MAX_NAME_LENGTH} karakter")
+    if not _token_is_valid(raw_token):
+        errors.append(f"Token harus {TOKEN_MIN_LENGTH}-{TOKEN_MAX_LENGTH} karakter tanpa karakter kontrol")
+    return errors
+
+
 def _detect_import_delimiter(text: str) -> str:
     """Pilih delimiter import (`;` atau `,`) dari header, berbasis schema.
 

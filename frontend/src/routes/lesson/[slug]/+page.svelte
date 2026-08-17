@@ -240,14 +240,7 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 
 	{#if mgr.isQuizMode}
 		<div class="quiz-question-area" bind:this={quizQuestionEl}>
-			<QuizQuestionView
-				question={mgr.currentQuizQuestion}
-				currentIndex={mgr.quizCurrentIndex}
-				totalCount={mgr.quizTotalCount}
-				onExit={() => {
-					mgr.submitQuiz();
-				}}
-			/>
+			<QuizQuestionView mgr={mgr} />
 		</div>
 	{:else}
 		<div class="prose">{@html mgr.data?.lesson_content ?? ''}</div>

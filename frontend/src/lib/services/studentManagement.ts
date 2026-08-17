@@ -48,6 +48,14 @@ export interface BulkDeleteResponse {
 	message?: string;
 }
 
+export interface AddStudentResponse {
+	success: boolean;
+	student_id?: string;
+	nama_siswa?: string;
+	message?: string;
+	errors?: string[];
+}
+
 export interface ExportResult {
 	blob: Blob;
 	filename: string;
@@ -130,6 +138,20 @@ export async function bulkDeleteStudents(
 		body: JSON.stringify({ student_ids: studentIds })
 	});
 	return (await parseResponse(res)) as BulkDeleteResponse;
+}
+
+/** Tambah satu siswa langsung (nama + token). */
+export async function addStudent(
+	namaSiswa: string,
+	token: string,
+	customFetch: typeof fetch = fetch
+): Promise<AddStudentResponse> {
+	const res = await customFetch('/api/students/add', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ nama_siswa: namaSiswa, token })
+	});
+	return (await parseResponse(res)) as AddStudentResponse;
 }
 
 /**

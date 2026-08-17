@@ -27,8 +27,10 @@ from services.database import SessionLocal
 from services.student_roundtrip import (
     MAX_FILE_BYTES,
     RoundTripImportError,
+    StudentRoundTripRow,
     mask_student_id,
     parse_roundtrip_csv,
+    validate_single_student_input,
 )
 from services.token_service import validate_token
 
@@ -261,5 +263,88 @@ def bulk_delete():
             "success": True,
             "deleted_count": len(deleted_ids),
             "deleted_ids": deleted_ids,
+        }
+    )
+
+
+@student_management_bp.route("/students/add", methods=["POST"])
+def add_student():
+    """Tambah satu siswa langsung dari form (nama + token).
+
+    Memakai kembali jalur validasi & create-user CSV round-trip
+    (StudentRoundTripRow + find_student_import_conflicts + run_student_import)
+    agar aturan validasi & proteksi race condition identik dengan import CSV.
+    """
+    if not _check_origin():
+        return jsonify({"success": False, "message": "Origin tidak diizinkan"}), 403
+    teacher = _teacher_from_cookie()
+    if teacher is None:
+        return jsonify({"success": False, "message": "Unauthorized (Teacher only)"}), 401
+    if SessionLocal is None:
+        return jsonify({"success": False, "message": "PostgreSQL tidak aktif"}), 503
+
+    try:
+        data = request.get_json(silent=True, force=True) or {}
+        nama_siswa = data.get("nama_siswa", "")
+        token = data.get("token", "")
+    except Exception:  # noqa: BLE001
+        return jsonify({"success": False, "message": "Body JSON tidak valid"}), 400
+
+    # Validasi input (kontrak sama dengan baris CSV) — TIDAK bocorkan token.
+    errors = validate_single_student_input(nama_siswa, token)
+    if errors:
+        return jsonify({"success": False, "message": "Validasi gagal", "errors": errors}), 400
+
+    row = StudentRoundTripRow(
+        line=1,
+        student_id=None,  # None = siswa baru
+        raw_token=token,
+        display_name=nama_siswa.strip(),
+        progress={},
+    )
+
+    db = SessionLocal()
+    try:
+        conflicts = repositories.find_student_import_conflicts(db, [row])
+        if conflicts:
+            # conflicts[0] adalah pesan tanpa token (sudah aman).
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "message": "Token sudah terdaftar atau benturan dengan data existing",
+                        "errors": conflicts,
+                    }
+                ),
+                409,
+            )
+        result = repositories.run_student_import(db, [row])
+    except RoundTripImportError as exc:
+        db.rollback()
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "message": "Penambahan ditolak — data bertentangan dengan database",
+                    "errors": exc.errors,
+                }
+            ),
+            409,
+        )
+    except Exception:  # noqa: BLE001 — jangan bocorkan exception internal
+        db.rollback()
+        logger.exception("Add student gagal")
+        return jsonify({"success": False, "message": "Gagal menambahkan siswa"}), 500
+    finally:
+        db.close()
+
+    created = result.get("user_ids") or []
+    student_id = created[0] if created else None
+    logger.info("Add student: student_id=%s nama=%s", mask_student_id(student_id), nama_siswa.strip())
+    return jsonify(
+        {
+            "success": True,
+            "student_id": student_id,
+            "nama_siswa": nama_siswa.strip(),
         }
     )

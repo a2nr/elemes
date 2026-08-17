@@ -89,14 +89,6 @@
 			mgr.submitQuiz();
 		}
 	}
-
-	function handleFinish() {
-		if (!mgr.quizAllAnswered) return;
-
-		if (window.confirm('Apakah anda yakin untuk menyelesaikan kuis? Materi akan muncul kembali setelah ini.')) {
-			mgr.finishQuiz();
-		}
-	}
 </script>
 
 <div class="quiz-container">
@@ -328,43 +320,6 @@
 				{/if}
 			</div>
 
-			<div class="quiz-navigator" aria-label="Navigasi soal">
-				{#each questions as q, i}
-					{@const answered = mgr.quizSession!.answers[q.id].selectedOptionId !== null || mgr.quizSession!.answers[q.id].acknowledged}
-					<button
-						type="button"
-						class="nav-dot"
-						class:active={i === mgr.quizCurrentIndex}
-						class:answered={answered}
-						aria-label={`Soal ${i + 1}${answered ? ' (dijawab)' : ' (belum dijawab)'}`}
-						aria-current={i === mgr.quizCurrentIndex ? 'step' : undefined}
-						onclick={() => mgr.goToQuizQuestion(i)}
-					>
-						{i + 1}
-					</button>
-				{/each}
-			</div>
-
-			<div class="quiz-controls">
-				<button
-					type="button"
-					class="btn btn-outline"
-					onclick={() => mgr.prevQuizQuestion()}
-					disabled={mgr.quizCurrentIndex === 0}
-				>
-					← Sebelumnya
-				</button>
-				{#if mgr.quizCurrentIndex < questions.length - 1}
-					<button type="button" class="btn btn-primary" onclick={() => mgr.nextQuizQuestion()}>
-						Selanjutnya →
-					</button>
-				{:else}
-					<button type="button" class="btn btn-success" onclick={handleFinish} disabled={!mgr.quizAllAnswered}>
-						Selesai Kuis
-					</button>
-				{/if}
-			</div>
-
 			<div class="cancel-container">
 				<button type="button" class="btn-exit-quiz" onclick={handleExit}>Keluar Kuis</button>
 				<span class="cancel-lock-hint">⚠️ Keluar = selesai. Soal belum dijawab dianggap salah.</span>
@@ -473,29 +428,14 @@
 		color: white;
 	}
 
-	.quiz-navigator { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-	.nav-dot { width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--color-border); background: var(--color-bg); color: var(--color-text); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.15s; }
-	.nav-dot:hover { border-color: var(--color-primary); }
-	.nav-dot.answered { background: rgba(51, 154, 240, 0.15); border-color: var(--color-primary); color: var(--color-primary); }
-	.nav-dot.active { background: var(--color-primary); border-color: var(--color-primary); color: white; }
-
-	.quiz-controls {
-		display: flex;
-		justify-content: space-between;
-		gap: 1rem;
-		position: relative;
-		z-index: 10;
-		background: var(--color-bg);
-		padding-top: 1rem;
-	}
 	.btn { padding: 0.6rem 1.2rem; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.2s; }
 	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.btn-primary { background: #339af0; color: white; }
 	.btn-success { background: #40c057; color: white; }
-	.btn-outline { background: white; border: 1px solid var(--color-border); color: var(--color-text); }
 	.btn-lg { padding: 1rem 2rem; font-size: 1.1rem; }
 
 	.btn-exit-quiz { background: none; border: none; color: var(--color-danger, #dc3545); text-decoration: underline; font-size: 0.85rem; cursor: pointer; }
+
 	.btn-exit-quiz:hover { color: #c82333; }
 	.cancel-container { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
 	.cancel-lock-hint { font-size: 0.75rem; color: var(--color-danger, #dc3545); font-weight: 500; }
