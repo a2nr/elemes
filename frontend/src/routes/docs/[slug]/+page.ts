@@ -3,7 +3,7 @@ import type { DocContent } from '$types/docs';
 import { error } from '@sveltejs/kit';
 
 export const load: PageLoad = async ({ params, fetch }) => {
-	const res = await fetch(`/docs/${params.slug}`);
+	const res = await fetch(`/api/docs/${params.slug}`);
 	if (!res.ok) {
 		throw error(404, 'Dokumen tidak ditemukan');
 	}
