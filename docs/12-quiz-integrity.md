@@ -1,3 +1,8 @@
+---
+title: Quiz Integrity — Anti-Cheat
+order: 12
+category: quiz
+---
 # 12. Quiz Integrity — Strict Focus-Loss Anti-Cheat
 
 Kuis diakhiri secara otomatis saat browser mendeteksi siswa meninggalkan halaman

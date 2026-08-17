@@ -1,5 +1,10 @@
 # Elemes LMS — Dokumentasi Teknis
 
+**⚠️ NOTE:** Dokumen ini mencatat arsitektur dan panduan teknis. Untuk panduan
+terbaru, lihat **Docs Viewer** di `http://localhost:3000/docs` yang merender semua
+file di folder `docs/` secara dinamis. Docs Viewer adalah **single source of truth**
+yang selalu update.
+
 **Project:** LMS-C (Learning Management System untuk Pemrograman C & Arduino)
 **Terakhir diupdate:** 10 Mei 2026
 

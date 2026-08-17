@@ -1,3 +1,8 @@
+---
+title: Lesson Evaluation
+order: 4
+category: evaluation
+---
 # 04. Lesson Evaluation
 
 The LMS determines the type of lesson and how to evaluate it based on specific markers found in the Markdown content.

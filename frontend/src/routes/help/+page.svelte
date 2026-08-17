@@ -9,6 +9,10 @@
 <div class="help-container">
 	<header class="help-header">
 		<h1>{data.help.title}</h1>
+		<p class="help-subtitle">
+			Dokumentasi teknis lengkap tersedia di
+			<a href="/docs" class="docs-link">Docs Viewer</a>
+		</p>
 	</header>
 
 	<section class="help-content prose">
@@ -30,6 +34,18 @@
 	.help-header h1 {
 		font-size: 2.5rem;
 		margin: 0;
+	}
+	.help-subtitle {
+		margin-top: 0.5rem;
+		color: var(--color-text-secondary, #666);
+	}
+	.docs-link {
+		color: var(--color-accent, #2563eb);
+		font-weight: 500;
+		text-decoration: none;
+	}
+	.docs-link:hover {
+		text-decoration: underline;
 	}
 	.help-content {
 		background: var(--color-bg-secondary);

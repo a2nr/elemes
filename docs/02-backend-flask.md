@@ -1,3 +1,8 @@
+---
+title: Backend (Flask API)
+order: 2
+category: backend
+---
 # 02. Backend (Flask API)
 
 The backend is built with Flask, providing API endpoints for the SvelteKit frontend to fetch lessons, track progress, manage authentication, and proxy compilation requests.

@@ -1,3 +1,8 @@
+---
+title: Velxio BLE/USB Deployer
+order: 5
+category: velxio
+---
 # 05. Velxio BLE/USB Deployer — Dokumentasi Implementasi
 
 **Versi:** 3.2

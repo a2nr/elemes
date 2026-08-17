@@ -1,3 +1,8 @@
+---
+title: Quiz Authoring
+order: 7
+category: quiz
+---
 # 07. Quiz Authoring (Format Soal Kuis)
 
 Kuis ditulis sebagai Markdown di dalam marker `---QUIZ_FLASHCARD---` sampai `---END_QUIZ_FLASHCARD---`. Setiap blok diawali `###` (heading level 3). Opsi pilihan ganda ditulis sebagai list item dengan tanda kurung: `- [x]` = jawaban benar, `- []` = salah. **Wajib tepat satu `[x]` per soal** — parser menolak soal tanpa jawaban benar atau dengan lebih dari satu.

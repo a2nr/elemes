@@ -1,3 +1,8 @@
+---
+title: Slide Presentasi
+order: 9
+category: slides
+---
 # 09. Slide Presentasi Interaktif
 
 Blok `---slide-start---` dan `---slide-end---` di materi markdown membuat carousel presentasi interaktif dengan fullscreen mode.

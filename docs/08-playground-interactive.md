@@ -1,3 +1,8 @@
+---
+title: Playground Interaktif
+order: 8
+category: playground
+---
 # 08. Playground Interaktif
 
 Route `/playground` menyediakan lingkungan coding interaktif untuk mencoba kode langsung di browser.

@@ -1,3 +1,8 @@
+---
+title: Fitur Embed Konten
+order: 6
+category: content
+---
 # Fitur Embed Konten di Materi Markdown & Slide
 
 **Tanggal:** 2026-07-19

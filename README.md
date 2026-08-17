@@ -488,8 +488,20 @@ student_id;token;nama_siswa;hello_world;variabel
 | `./elemes.sh teacher` | Buat/update akun guru (upsert; prompt nama & token tersembunyi) |
 | `./elemes.sh dbupgrade` | Jalankan migrasi schema (alembic upgrade head) |
 | `./elemes.sh dbstatus` | Cek versi schema database |
-| `./elemes.sh dbbackup` | Backup database → `backups/elemes_<ts>.sql` |
-| `./elemes.sh dbrestore` | Restore backup terbaru dari `backups/` |
+|| `./elemes.sh dbbackup` | Backup database → `backups/elemes_<ts>.sql` |
+|| `./elemes.sh dbrestore` | Restore backup terbaru dari `backups/` |
+|| `./elemes.sh test` | Full test suite (alias ke `test-all`) |
+|| `./elemes.sh test-unit` | Unit test saja (cepat, no DB) |
+|| `./elemes.sh test-integration` | Integration test (butuh PostgreSQL `elemes_test`) |
+|| `./elemes.sh test-all` | Full test suite (CI gate) |
+|| `./elemes.sh test-smoke` | Smoke test post-deploy (unit + sub-home subset) |
+|| `./elemes.sh docs-validate` | Validasi frontmatter & broken link di `docs/*.md` |
+
+## Dokumentasi & Referensi API
+
+- **Docs Viewer**: Buka `http://localhost:3000/docs` untuk panduan teknis lengkap (arsitektur, backend, frontend, kuis, velxio, embed, dll) yang merender file `docs/*.md` secara dinamis.
+- **API Reference**: `http://localhost:3000/docs/api-reference` menampilkan daftar semua endpoint Flask dengan docstring, metode, path, dan requirement auth.
+- **Troubleshooting**: Buka `http://localhost:3000/help` untuk tutorial siswa; tautan ke Docs Viewer ada di sana.
 
 ## Database & Penyimpanan (PostgreSQL)
 

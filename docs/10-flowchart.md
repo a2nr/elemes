@@ -1,3 +1,8 @@
+---
+title: Flowchart Interaktif
+order: 10
+category: flowchart
+---
 # 10. Flowchart Interaktif
 
 Blok `` ```flowchart `` di materi markdown membuat flowchart interaktif dengan evaluasi frontend.

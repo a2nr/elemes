@@ -1,3 +1,8 @@
+---
+title: Sub Bab (`sub-home.md`)
+order: 13
+category: content
+---
 # Sub Bab (`sub-home.md`) — Mengelompokkan Materi dalam Folder
 
 **Tanggal:** 2026-08-13

@@ -1,3 +1,8 @@
+---
+title: Frontend (SvelteKit)
+order: 3
+category: frontend
+---
 # 03. Frontend (SvelteKit)
 
 The frontend is built using SvelteKit and Vite. It utilizes Svelte 5 for its reactivity model.

@@ -1,3 +1,8 @@
+---
+title: Architecture & Setup
+order: 1
+category: architecture
+---
 # 01. Architecture & Setup
 
 ## High-Level System Architecture

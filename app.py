@@ -39,6 +39,7 @@ def create_app():
     from routes.help import help_bp
     from routes.student_management import student_management_bp
     from routes.quiz_attempts import quiz_attempts_bp
+    from routes.docs import docs_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(compile_bp)
@@ -47,6 +48,7 @@ def create_app():
     app.register_blueprint(help_bp)
     app.register_blueprint(student_management_bp)
     app.register_blueprint(quiz_attempts_bp)
+    app.register_blueprint(docs_bp)
 
     # ── Startup tasks ─────────────────────────────────────────────────
     # Sync metadata lesson ke PostgreSQL (auto-skip bila DB belum aktif).
