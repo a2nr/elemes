@@ -160,110 +160,110 @@ def reset_progress(student_id, lesson_name):
 
 
 def get_all_students_progress(all_lessons_func):
-	"""Semua user (siswa + guru) + ordered_lessons dari registry.
+    """Semua user (siswa + guru) + ordered_lessons dari registry.
 
-	Guru ikut ditampilkan sebagai row di report /progress agar bisa di-review
-	materinya (dan di-reset progresnya sendiri). Field `role` menandai
-	apakah row tersebut guru atau siswa. Student dict TIDAK mengandung token
-	mentah (kontrak keamanan).
-	"""
-	if SessionLocal is None:
-		return [], []
-	db = SessionLocal()
-	try:
-		lessons = list_lessons(db)
-		all_lessons_dict = {}
-		for lesson in all_lessons_func():
-			lesson_key = lesson['filename'].replace('.md', '')
-			all_lessons_dict[lesson_key] = lesson
+    Guru ikut ditampilkan sebagai row di report /progress agar bisa di-review
+    materinya (dan di-reset progresnya sendiri). Field `role` menandai
+    apakah row tersebut guru atau siswa. Student dict TIDAK mengandung token
+    mentah (kontrak keamanan).
+    """
+    if SessionLocal is None:
+        return [], []
+    db = SessionLocal()
+    try:
+        lessons = list_lessons(db)
+        all_lessons_dict = {}
+        for lesson in all_lessons_func():
+            lesson_key = lesson['filename'].replace('.md', '')
+            all_lessons_dict[lesson_key] = lesson
 
-		ordered_lessons = []
-		for lesson in lessons:
-			slug = lesson.slug
-			if slug in all_lessons_dict:
-				ordered_lessons.append(all_lessons_dict[slug])
-			else:
-				ordered_lessons.append({
-					'filename': f"{slug}.md",
-					'title': lesson.title,
-					'description': 'Lesson information not available',
-				})
+        ordered_lessons = []
+        for lesson in lessons:
+            slug = lesson.slug
+            if slug in all_lessons_dict:
+                ordered_lessons.append(all_lessons_dict[slug])
+            else:
+                ordered_lessons.append({
+                    'filename': f"{slug}.md",
+                    'title': lesson.title,
+                    'description': 'Lesson information not available',
+                })
 
-		# Semua user (tanpa filter role) — guru ikut sebagai row, urutan
-		# deterministik (created_at, id) agar stable untuk UI/export.
-		users = list(
-			db.scalars(
-				select(User)
-				.order_by(User.created_at, User.id)
-			)
-		)
-		students = []
-		for user in users:
-			rows = {p.lesson_id: p for p in list_progress_for_user(db, user_id=user.id)}
-			attempts = {
-				a.lesson_id: a for a in list_quiz_attempts_for_user(db, user_id=user.id)
-			}
-			student = {'nama_siswa': user.display_name, 'id': user.id, 'role': user.role}
-			for lesson in lessons:
-				student[lesson.slug] = _status_to_string(rows.get(lesson.id))
-				# Metadata anti-cheat — field TERPISAH, tidak mengubah kontrak
-				# status lama. `has_violation` hanya untuk reason focus_lost.
-				attempt = attempts.get(lesson.id)
-				student[f"{lesson.slug}_attempt_status"] = attempt.status if attempt else ""
-				student[f"{lesson.slug}_termination_reason"] = (
-					attempt.termination_reason if attempt else ""
-				)
-				student[f"{lesson.slug}_has_violation"] = bool(
-					attempt and attempt.termination_reason == "focus_lost"
-				)
-				student[f"{lesson.slug}_attempt_finished_at"] = (
-					attempt.finished_at.isoformat() if attempt and attempt.finished_at else ""
-				)
-				# Breakdown kategori (evaluasi / diagnostik) dari answers_json attempt —
-				# untuk report guru. Sama seperti FE calculateQuizResult: breakdown
-				# HANYA dihitung untuk soal MCQ; flashcard netral (tidak masuk eval
-				# maupun diag) supaya penyebut eval = jumlah MCQ evaluasi, konsisten
-				# dengan skor resmi (statusString) yang juga cuma MCQ.
-				if attempt and attempt.answers_json:
-					try:
-						answers = json.loads(attempt.answers_json)
-					except (json.JSONDecodeError, TypeError):
-						answers = []
-					eval_correct = 0
-					eval_total = 0
-					diag_correct = 0
-					diag_total = 0
-					for ans in answers:
-						# Flashcard netral: abaikan dari breakdown eval/diag.
-						if ans.get('type') == 'flashcard':
-							continue
-						cat = ans.get('category', 'evaluasi')
-						if cat == 'diagnostik':
-							diag_total += 1
-							if ans.get('is_correct'):
-								diag_correct += 1
-						else:
-							eval_total += 1
-							if ans.get('is_correct'):
-								eval_correct += 1
-					student[f"{lesson.slug}_eval"] = f"{eval_correct}/{eval_total}"
-					student[f"{lesson.slug}_diag"] = f"{diag_correct}/{diag_total}"
-					student[f"{lesson.slug}_diag_unmastered"] = json.dumps(
-						[
-							a.get('question_id', '')
-							for a in answers
-							if a.get('type') != 'flashcard'
-							and a.get('category') == 'diagnostik'
-							and not a.get('is_correct')
-						]
-					)
-				else:
-					student[f"{lesson.slug}_eval"] = ""
-					student[f"{lesson.slug}_diag"] = ""
-					student[f"{lesson.slug}_diag_unmastered"] = "[]"
-			student['completed_count'] = count_completed_lessons(db, user_id=user.id)
-			students.append(student)
-		return students, ordered_lessons
-	finally:
-		db.close()
+        # Semua user (tanpa filter role) — guru ikut sebagai row, urutan
+        # deterministik (created_at, id) agar stable untuk UI/export.
+        users = list(
+            db.scalars(
+                select(User)
+                .order_by(User.created_at, User.id)
+            )
+        )
+        students = []
+        for user in users:
+            rows = {p.lesson_id: p for p in list_progress_for_user(db, user_id=user.id)}
+            attempts = {
+                a.lesson_id: a for a in list_quiz_attempts_for_user(db, user_id=user.id)
+            }
+            student = {'nama_siswa': user.display_name, 'id': user.id, 'role': user.role}
+            for lesson in lessons:
+                student[lesson.slug] = _status_to_string(rows.get(lesson.id))
+                # Metadata anti-cheat — field TERPISAH, tidak mengubah kontrak
+                # status lama. `has_violation` hanya untuk reason focus_lost.
+                attempt = attempts.get(lesson.id)
+                student[f"{lesson.slug}_attempt_status"] = attempt.status if attempt else ""
+                student[f"{lesson.slug}_termination_reason"] = (
+                    attempt.termination_reason if attempt else ""
+                )
+                student[f"{lesson.slug}_has_violation"] = bool(
+                    attempt and attempt.termination_reason == "focus_lost"
+                )
+                student[f"{lesson.slug}_attempt_finished_at"] = (
+                    attempt.finished_at.isoformat() if attempt and attempt.finished_at else ""
+                )
+                # Breakdown kategori (evaluasi / diagnostik) dari answers_json attempt —
+                # untuk report guru. Sama seperti FE calculateQuizResult: breakdown
+                # HANYA dihitung untuk soal MCQ; flashcard netral (tidak masuk eval
+                # maupun diag) supaya penyebut eval = jumlah MCQ evaluasi, konsisten
+                # dengan skor resmi (statusString) yang juga cuma MCQ.
+                if attempt and attempt.answers_json:
+                    try:
+                        answers = json.loads(attempt.answers_json)
+                    except (json.JSONDecodeError, TypeError):
+                        answers = []
+                    eval_correct = 0
+                    eval_total = 0
+                    diag_correct = 0
+                    diag_total = 0
+                    for ans in answers:
+                        # Flashcard netral: abaikan dari breakdown eval/diag.
+                        if ans.get('type') == 'flashcard':
+                            continue
+                        cat = ans.get('category', 'evaluasi')
+                        if cat == 'diagnostik':
+                            diag_total += 1
+                            if ans.get('is_correct'):
+                                diag_correct += 1
+                        else:
+                            eval_total += 1
+                            if ans.get('is_correct'):
+                                eval_correct += 1
+                    student[f"{lesson.slug}_eval"] = f"{eval_correct}/{eval_total}"
+                    student[f"{lesson.slug}_diag"] = f"{diag_correct}/{diag_total}"
+                    student[f"{lesson.slug}_diag_unmastered"] = json.dumps(
+                        [
+                            a.get('question_id', '')
+                            for a in answers
+                            if a.get('type') != 'flashcard'
+                            and a.get('category') == 'diagnostik'
+                            and not a.get('is_correct')
+                        ]
+                    )
+                else:
+                    student[f"{lesson.slug}_eval"] = ""
+                    student[f"{lesson.slug}_diag"] = ""
+                    student[f"{lesson.slug}_diag_unmastered"] = "[]"
+            student['completed_count'] = count_completed_lessons(db, user_id=user.id)
+            students.append(student)
+        return students, ordered_lessons
+    finally:
+        db.close()
 

@@ -452,11 +452,6 @@
 	flex-wrap: wrap;
 }
 
-.quiz-question-counter {
-	font-weight: 700;
-	color: var(--color-primary);
-}
-
 .quiz-question-header .btn-exit-quiz {
 	background: none;
 	border: none;
@@ -548,6 +543,11 @@
 	background: white;
 	border: 1px solid var(--color-border);
 	color: var(--color-text);
+}
+
+.quiz-controls .btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
 }
 
 @media (max-width: 600px) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+	addStudent,
 	bulkDeleteStudents,
 	exportStudentsCsv,
 	filenameFromDisposition,
@@ -199,5 +200,40 @@ describe('bulkDeleteStudents', () => {
 		const body = JSON.parse(String(calls[0].init.body));
 		expect(body.student_ids).toEqual(['a', 'b']);
 		expect(res.deleted_count).toBe(2);
+	});
+});
+
+describe('addStudent', () => {
+	it('mengirim POST ke /api/students/add dengan nama_siswa & token', async () => {
+		const { calls, customFetch } = captureFetch(() =>
+			jsonResponse({ success: true, student_id: 'abc-123', nama_siswa: 'Andi' })
+		);
+
+		const result = await addStudent('Andi', 'TOKEN_ANDI_001', customFetch);
+		expect(calls).toHaveLength(1);
+		expect(calls[0].url).toBe('/api/students/add');
+		expect(calls[0].init.method).toBe('POST');
+		const body = JSON.parse(String(calls[0].init.body));
+		expect(body).toEqual({ nama_siswa: 'Andi', token: 'TOKEN_ANDI_001' });
+		expect(result.success).toBe(true);
+		expect(result.student_id).toBe('abc-123');
+		expect(result.nama_siswa).toBe('Andi');
+	});
+
+	it('meneruskan error terstruktur saat backend menolak (mis. token duplikat)', async () => {
+		const { customFetch } = captureFetch(() =>
+			jsonResponse(
+				{
+					success: false,
+					message: 'Token sudah terdaftar',
+					errors: ['Baris 1: token sudah terdaftar di database']
+				},
+				409
+			)
+		);
+
+		const result = await addStudent('Siswa Lain', 'TOKEN_DIPAKAI', customFetch);
+		expect(result.success).toBe(false);
+		expect(result.errors).toContain('Baris 1: token sudah terdaftar di database');
 	});
 });

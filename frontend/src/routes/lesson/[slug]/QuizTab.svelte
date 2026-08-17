@@ -431,7 +431,6 @@
 	.btn { padding: 0.6rem 1.2rem; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.2s; }
 	.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 	.btn-primary { background: #339af0; color: white; }
-	.btn-success { background: #40c057; color: white; }
 	.btn-lg { padding: 1rem 2rem; font-size: 1.1rem; }
 
 	.btn-exit-quiz { background: none; border: none; color: var(--color-danger, #dc3545); text-decoration: underline; font-size: 0.85rem; cursor: pointer; }
