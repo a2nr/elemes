@@ -18,10 +18,6 @@ Semua materi bisa dikerjakan langsung di browser!
 
 [Hello, World!](lesson/hello_world.md)
 [Variabel](lesson/variabel.md)
-[Uji Coba Flowchart](lesson/flowchart_test.md)
-[Uji Coba Kuis](lesson/quiz_test.md)
-[Uji Coba LaTeX](lesson/latex_test.md)
-[Uji Coba Slide](lesson/test_slides.md)
 [Rangkaian Dasar](lesson/rangkaian_dasar.md)
 [LED Blink](lesson/led_blink_arduino.md)
 [Hello Serial](lesson/hello_serial_arduino.md)

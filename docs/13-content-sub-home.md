@@ -88,6 +88,21 @@ Mengembalikan JSON isi `sub-home.md`:
 
 Respons `404` bila folder tidak ada atau tidak memiliki `sub-home.md`.
 
+**Prasyarat materi (`**Prerequisites:**` di dalam `---LESSON_INFO---`):**
+Setiap bullet bisa berupa link `[Judul](lesson/slug.md)` atau teks biasa. Status
+siswa `completed` selalu memenuhi prasyarat; status skor (mis. `3/4`) juga
+memenuhi untuk skor berapa pun. Ambang minimum opsional ditulis sebagai suffix
+`min: N%` pada bullet:
+
+```markdown
+**Prerequisites:**
+- [Kuis Dasar](lesson/quiz_dasar.md)
+- [Ujian Tengah](lesson/uts.md) min: 75%
+```
+
+Bila `min: N%` dicantumkan, prasyarat baru terpenuhi bila `earned/total >= N%`
+(mis. `3/4` memenuhi `min: 75%`, `2/4` tidak).
+
 ### `GET /lesson/<slug>.json`
 
 Bila lesson berada di folder yang memiliki `sub-home.md`, field `ordered_lessons`

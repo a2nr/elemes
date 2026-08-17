@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import markdown as md
 
 from config import CONTENT_DIR
+from services.progress_status import parse_progress_status
 
 # Generic file cache (path -> {content, mtime})
 _file_cache = {}  # {path: {'content': str, 'mtime': float}}
@@ -189,6 +190,102 @@ def get_lesson_names():
     return names
 
 
+# ---------------------------------------------------------------------------
+# Prerequisite helpers
+# ---------------------------------------------------------------------------
+
+_MIN_PERCENT_RE = re.compile(r'\bmin(?:imum)?\s*:?\s*(\d+(?:[.,]\d+)?)\s*%')
+
+
+def _parse_prerequisite_bullet(bullet):
+    """Parse satu bullet prasyarat → (slug_or_title, min_percent) | None.
+
+    Mendukung format:
+      - [Kuis](lesson/quiz.md)           → ("quiz", None)
+      - [Kuis](lesson/quiz.md) min: 75%  → ("quiz", 75.0)
+      - Kuis min 75%                     → ("Kuis", 75.0)
+      - "Tidak ada" / "None" / "-"       → None (difilter)
+
+    `min: N%` bersifat opsional — ambang minimum skor (persen). Tanpa ambang,
+    skor berapa pun (termasuk 0/x) dianggap memenuhi prasyarat.
+    """
+    bullet = bullet.strip()
+    # Terima juga bentuk dengan dash awal (mis. hasil split manual) — di
+    # produksi bullet biasanya sudah dipotong dash oleh regex `- ([^\n]+)`.
+    if bullet.startswith('-'):
+        bullet = bullet[1:].strip()
+    if bullet.lower() in ('tidak ada', 'none', '-', ''):
+        return None
+
+    min_percent = None
+    min_match = _MIN_PERCENT_RE.search(bullet)
+    if min_match:
+        try:
+            min_percent = float(min_match.group(1).replace(',', '.'))
+        except ValueError:
+            min_percent = None
+        bullet = bullet[:min_match.start()].strip().rstrip(',').strip()
+
+    # Check if it's a markdown link format [title](path)
+    md_link_match = re.match(r'\[([^\]]+)\]\(([^)]+)\)', bullet)
+    if md_link_match:
+        # Extract slug from the link path
+        link_path = md_link_match.group(2)
+        # Handle paths like lesson/hello_world.md or just hello_world.md
+        slug = link_path.replace('.md', '').split('/')[-1]
+        return slug, min_percent
+    # Plain text - keep as title for later resolution
+    return bullet, min_percent
+
+
+def is_prerequisite_met(progress, prereq) -> bool:
+    """True bila prasyarat terpenuhi berdasarkan status progress siswa.
+
+    `prereq` berupa slug string, atau dict {'slug': ..., 'min_percent': ...}.
+
+    - progress kosong / status not_started / status tidak dikenal → belum terpenuhi.
+    - "completed" → terpenuhi (skor & ambang diabaikan).
+    - skor "<earned>/<total>" (mis. "3/4") → terpenuhi untuk skor berapa pun,
+      KECUALI ada `min_percent` (mis. 75.0): wajib earned/total >= min_percent.
+    """
+    if isinstance(prereq, str):
+        slug = prereq
+        min_percent = None
+    else:
+        slug = prereq['slug']
+        min_percent = prereq.get('min_percent')
+
+    if not progress:
+        return False
+    try:
+        state, earned, total = parse_progress_status(progress.get(slug, ''))
+    except (ValueError, TypeError):
+        return False
+    if state == 'not_started':
+        return False
+    if state == 'completed':
+        return True
+    # state == 'scored'
+    if min_percent is None:
+        return True
+    if earned is None or not total:
+        return False
+    return (earned / total) * 100 >= min_percent
+
+
+def get_missing_prerequisites(progress, prereqs):
+    """Slug prasyarat yang belum terpenuhi, urut sesuai deklarasi materi.
+
+    Menerima daftar slug string ATAU dict {'slug', 'min_percent'} — kompatibel
+    dengan `lesson['prerequisites']` (legacy) dan `lesson['prerequisite_specs']`.
+    """
+    missing = []
+    for prereq in prereqs or []:
+        if not is_prerequisite_met(progress, prereq):
+            missing.append(prereq['slug'] if isinstance(prereq, dict) else prereq)
+    return missing
+
+
 def _build_lessons_with_objectives(lesson_links):
     """Build enriched lesson dicts (title, description, prerequisite_titles)
     from parsed (link_text, filename) pairs, reading each lesson file."""
@@ -208,6 +305,7 @@ def _build_lessons_with_objectives(lesson_links):
         lesson_info_start = content.find('---LESSON_INFO---')
         lesson_info_end = content.find('---END_LESSON_INFO---')
         prerequisite_titles = []
+        prerequisite_specs = []
 
         if lesson_info_start != -1 and lesson_info_end != -1:
             lesson_info_section = content[lesson_info_start + len('---LESSON_INFO---'):lesson_info_end]
@@ -227,30 +325,18 @@ def _build_lessons_with_objectives(lesson_links):
             prereq_start = lesson_info_section.find('**Prerequisites:**')
             if prereq_start != -1:
                 prereq_section = lesson_info_section[prereq_start + len('**Prerequisites:**'):]
-                # Look for bullet points - support both plain text and markdown link format
-                # Plain text: - Hello, World!
-                # Markdown link: - [Hello, World!](lesson/hello_world.md)
                 bullet_lines = re.findall(r'- ([^\n]+)', prereq_section)
-                
+
                 prerequisite_slugs = []
+                prerequisite_specs = []
                 for bullet in bullet_lines:
-                    bullet = bullet.strip()
-                    # Filter out "None" or "Tidak ada"
-                    if bullet.lower() in ('tidak ada', 'none', '-', ''):
+                    parsed = _parse_prerequisite_bullet(bullet)
+                    if parsed is None:
                         continue
-                    
-                    # Check if it's a markdown link format [title](path)
-                    md_link_match = re.match(r'\[([^\]]+)\]\(([^)]+)\)', bullet)
-                    if md_link_match:
-                        # Extract slug from the link path
-                        link_path = md_link_match.group(2)
-                        # Handle paths like lesson/hello_world.md or just hello_world.md
-                        slug = link_path.replace('.md', '').split('/')[-1]
-                        prerequisite_slugs.append(slug)
-                    else:
-                        # Plain text - keep as title for later resolution
-                        prerequisite_slugs.append(bullet)
-                
+                    slug_or_title, min_percent = parsed
+                    prerequisite_slugs.append(slug_or_title)
+                    prerequisite_specs.append({'slug': slug_or_title, 'min_percent': min_percent})
+
                 prerequisite_titles = prerequisite_slugs
 
             content_after_info = content[lesson_info_end + len('---END_LESSON_INFO---'):].strip()
@@ -272,6 +358,7 @@ def _build_lessons_with_objectives(lesson_links):
             'description': description,
             'path': file_path,
             'prerequisite_titles': prerequisite_titles,
+            'prerequisite_specs': prerequisite_specs,
         })
 
     return lessons
@@ -318,15 +405,25 @@ def get_ordered_lessons_with_learning_objectives(progress=None, source_path=None
         # Resolve prerequisites - now contains slugs directly from markdown links
         # or still contains plain text titles that need resolution
         items = lesson.get('prerequisite_titles', [])
+        specs = lesson.get('prerequisite_specs') or [
+            {'slug': item, 'min_percent': None} for item in items
+        ]
         resolved_prereqs = []
-        for item in items:
+        resolved_specs = []
+        for i, item in enumerate(items):
             # If it's already a valid slug (exists in all_lessons), use it directly
             if item in title_to_slug.values():
-                resolved_prereqs.append(item)
+                slug = item
             # Otherwise try to resolve via title mapping
             elif item in title_to_slug:
-                resolved_prereqs.append(title_to_slug[item])
+                slug = title_to_slug[item]
+            else:
+                continue
+            resolved_prereqs.append(slug)
+            spec = specs[i] if i < len(specs) else {}
+            resolved_specs.append({'slug': slug, 'min_percent': spec.get('min_percent')})
         lesson['prerequisites'] = resolved_prereqs
+        lesson['prerequisite_specs'] = resolved_specs
         return lesson
 
     if lesson_links:
@@ -457,6 +554,7 @@ def get_sub_home_data(folder_name):
         lesson_title = link_text
         description = "Learn C programming concepts with practical examples."
         prerequisite_titles = []
+        prerequisite_specs = []
         lesson_info_start = lesson_content.find('---LESSON_INFO---')
         lesson_info_end = lesson_content.find('---END_LESSON_INFO---')
         if lesson_info_start != -1 and lesson_info_end != -1:
@@ -473,16 +571,12 @@ def get_sub_home_data(folder_name):
                 prereq_section = lesson_info_section[prereq_start + len('**Prerequisites:**'):]
                 bullet_lines = re.findall(r'- ([^\n]+)', prereq_section)
                 for bullet in bullet_lines:
-                    bullet = bullet.strip()
-                    if bullet.lower() in ('tidak ada', 'none', '-', ''):
+                    parsed = _parse_prerequisite_bullet(bullet)
+                    if parsed is None:
                         continue
-                    md_link_match = re.match(r'\[([^\]]+)\]\(([^)]+)\)', bullet)
-                    if md_link_match:
-                        link_path = md_link_match.group(2)
-                        slug = link_path.replace('.md', '').split('/')[-1]
-                        prerequisite_titles.append(slug)
-                    else:
-                        prerequisite_titles.append(bullet)
+                    slug_or_title, min_percent = parsed
+                    prerequisite_titles.append(slug_or_title)
+                    prerequisite_specs.append({'slug': slug_or_title, 'min_percent': min_percent})
         else:
             for line in lesson_content.split('\n')[:10]:
                 if line.startswith('# '):
@@ -495,6 +589,7 @@ def get_sub_home_data(folder_name):
             'description': description,
             'path': file_path,
             'prerequisite_titles': prerequisite_titles,
+            'prerequisite_specs': prerequisite_specs,
         })
 
     data = {

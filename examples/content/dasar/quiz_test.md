@@ -9,7 +9,7 @@ image: https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Languag
 - [x] Salah
 > Penjelasan: Bahasa C sebenarnya dikategorikan sebagai bahasa tingkat menengah (*middle-level language*) karena memiliki fitur bahasa tingkat rendah (seperti manipulasi memori) sekaligus fitur bahasa tingkat tinggi (seperti struktur kontrol yang manusiawi).
 
-### Apa output dari `printf("%d", 5 + 5);`?
+### Apa output dari `printf("%d", 5 + 5);`
 ::diagnostic
 - [] 55
 - [x] 10

@@ -10,6 +10,7 @@ from werkzeug.utils import secure_filename
 from compiler import compiler_factory
 from config import ASSETS_DIR
 from services.lesson_service import (
+    get_missing_prerequisites,
     get_ordered_lessons_with_learning_objectives,
     get_sub_home_data,
     get_sub_home_path,
@@ -23,6 +24,15 @@ from services.token_service import get_student_progress
 lessons_bp = Blueprint('lessons', __name__)
 
 
+def _prereq_specs(lesson):
+    """Spec prasyarat untuk pengecekan kunci.
+
+    Prioritas `prerequisite_specs` (slug + min_percent); fallback ke
+    `prerequisites` (slug saja) bila spec belum ada (data legacy).
+    """
+    return lesson.get('prerequisite_specs') or lesson.get('prerequisites', [])
+
+
 @lessons_bp.route('/lessons')
 def api_lessons():
     """Return lesson list + home content as JSON."""
@@ -33,17 +43,11 @@ def api_lessons():
         progress = get_student_progress(token)
 
     lessons = get_ordered_lessons_with_learning_objectives(progress)
-    
-    # Calculate locked status
+
+    # Calculate locked status — prasyarat terpenuhi bila completed ATAU sudah
+    # discor (skor berapa pun, atau di atas ambang `min: N%` bila dideklarasikan).
     for lesson in lessons:
-        prereqs = lesson.get('prerequisites', [])
-        is_locked = False
-        if prereqs:
-            for p_slug in prereqs:
-                if not progress or progress.get(p_slug) != 'completed':
-                    is_locked = True
-                    break
-        lesson['locked'] = is_locked
+        lesson['locked'] = bool(get_missing_prerequisites(progress, _prereq_specs(lesson)))
 
     home_content = render_home_content()
 
@@ -73,14 +77,7 @@ def api_bab(folder):
         source_path=source_path if source_path else None,
     )
     for lesson in ordered:
-        prereqs = lesson.get('prerequisites', [])
-        is_locked = False
-        if prereqs:
-            for p_slug in prereqs:
-                if not progress or progress.get(p_slug) != 'completed':
-                    is_locked = True
-                    break
-        lesson['locked'] = is_locked
+        lesson['locked'] = bool(get_missing_prerequisites(progress, _prereq_specs(lesson)))
     data['lessons'] = ordered
 
     return jsonify(data)
@@ -188,15 +185,12 @@ def api_lesson(filename):
                 current_lesson_meta = les
                 break
 
-    # Prerequisite check
-    is_locked = False
+    # Prerequisite check — status scored (mis. "3/4") juga memenuhi prasyarat,
+    # kecuali ada ambang `min: N%` yang belum tercapai.
     missing_prereqs = []
     if current_lesson_meta:
-        prereqs = current_lesson_meta.get('prerequisites', [])
-        for p_slug in prereqs:
-            if not progress or progress.get(p_slug) != 'completed':
-                is_locked = True
-                missing_prereqs.append(p_slug)
+        missing_prereqs = get_missing_prerequisites(progress, _prereq_specs(current_lesson_meta))
+    is_locked = bool(missing_prereqs)
 
     prev_lesson = all_lessons[current_idx - 1] if current_idx > 0 else None
     next_lesson = all_lessons[current_idx + 1] if 0 <= current_idx < len(all_lessons) - 1 else None

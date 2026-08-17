@@ -2,6 +2,9 @@
 **Learning Objectives:**
 - Memahami cara penulisan LaTeX di LMS.
 - Verifikasi perenderan rumus matematika.
+
+**Prerequisites:**
+- [Uji Coba Kuis](lesson/quiz_test.md) min: 75%
 ---END_LESSON_INFO---
 
 # Uji Coba LaTeX
