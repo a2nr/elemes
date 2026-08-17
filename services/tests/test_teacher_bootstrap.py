@@ -96,6 +96,7 @@ def _counts(db):
 
 
 @needs_db
+@pytest.mark.integration
 class TestTeacherBootstrapDB:
     """Skenario database — hanya jalan saat DATABASE_URL tersedia."""
 

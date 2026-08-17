@@ -1,6 +1,10 @@
 """Unit test hashing token — murni, tanpa DB."""
 
+import pytest
+
 from services.token_hashing import hash_token, pepper_set
+
+pytestmark = pytest.mark.unit
 
 
 def test_hash_deterministic(monkeypatch):

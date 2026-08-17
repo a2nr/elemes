@@ -192,6 +192,11 @@ runbuild | runclearbuild)
   if [ "$1" = "runclearbuild" ]; then
     echo "🧪 Verifikasi: unit & API test sub-home..."
     if ! compose_exec -w /app -e PYTHONPATH=services -e DATABASE_URL= \
+      elemes python -m pytest -m unit -q; then
+      echo "❌ Unit test gagal. Periksa output di atas sebelum deploy."
+      exit 1
+    fi
+    if ! compose_exec -w /app -e PYTHONPATH=services -e DATABASE_URL= \
       elemes python -m pytest services/tests/test_sub_home.py services/tests/test_sub_home_api.py -q; then
       echo "❌ Tes sub-home gagal. Periksa output di atas sebelum deploy."
       exit 1
@@ -205,10 +210,33 @@ run)
   echo "✅ Elemes berhasil dijalankan!"
   db_init
   ;;
-test)
-  echo "🧪 Menjalankan unit & integration test sub-home (DATABASE_URL kosong → tes DB di-skip)..."
+test-unit)
+  echo "🧪 Menjalankan unit test (cepat, no DB)..."
   compose_exec -w /app -e PYTHONPATH=services -e DATABASE_URL= \
-    elemes python -m pytest services/tests/test_sub_home.py services/tests/test_sub_home_api.py -q
+    elemes python -m pytest -m unit -v
+  ;;
+test-integration)
+  echo "🧪 Menjalankan integration test (butuh DATABASE_URL)..."
+  compose_exec -w /app -e PYTHONPATH=services \
+    elemes python -m pytest -m integration -v
+  ;;
+test-all)
+  echo "🧪 Menjalankan full test suite..."
+  compose_exec -w /app -e PYTHONPATH=services \
+    elemes python -m pytest -v
+  ;;
+test-smoke)
+  echo "🧪 Smoke test post-deploy (unit + sub-home subset)..."
+  compose_exec -w /app -e PYTHONPATH=services -e DATABASE_URL= \
+    elemes python -m pytest -m unit -v
+  compose_exec -w /app -e PYTHONPATH=services -e DATABASE_URL= \
+    elemes python -m pytest services/tests/test_sub_home.py services/tests/test_sub_home_api.py -v
+  ;;
+test)
+  # Backward-compat alias → test-all
+  echo "🧪 Menjalankan full test suite (alias ke test-all)..."
+  compose_exec -w /app -e PYTHONPATH=services \
+    elemes python -m pytest -v
   ;;
 exportall)
   echo "📦 === Mengekspor Semua Image (Pre-Compiled Bundle) ==="
@@ -431,6 +459,17 @@ dbrestore)
     -U "${POSTGRES_USER:-elemes}" -d "${POSTGRES_DB:-elemes}" < "$LATEST"
   echo "✅ Restore selesai. Bila daftar lesson kosong, jalankan ./elemes.sh run."
   ;;
+test-worker)
+  echo "🧪 Menjalankan compiler worker test suite..."
+  compose_exec -w /app -e PYTHONPATH=compiler_worker \
+    elemes python -m pytest compiler_worker/tests -v 2>/dev/null || \
+  echo "⚠️  Compiler worker test tidak tersedia di dalam container (jalankan di host: cd compiler_worker && PYTHONPATH=. python -m pytest -v)"
+  ;;
+docs-validate)
+  echo "📄 Validasi dokumentasi (frontmatter + broken link)..."
+  compose_exec -w /app -e PYTHONPATH=services \
+    elemes python scripts/validate_docs.py
+  ;;
 *)
   echo "💡 Cara Penggunaan elemes.sh:"
   echo "  ./elemes.sh init           # Inisialisasi konfigurasi, folder, & template .env"
@@ -446,7 +485,13 @@ dbrestore)
   echo "  ./elemes.sh teacher        # Buat/update akun guru (upsert, prompt nama & token)"
   echo "  ./elemes.sh dbbackup       # Backup database → backups/elemes_<ts>.sql"
   echo "  ./elemes.sh dbrestore      # Restore backup terbaru dari backups/"
-  echo "  ./elemes.sh test           # Jalankan unit & API test sub-home (tanpa DB)"
+  echo "  ./elemes.sh test           # Jalankan full test suite (alias ke test-all)"
+  echo "  ./elemes.sh test-unit       # Unit test saja (cepat, no DB)"
+  echo "  ./elemes.sh test-integration # Integration test (butuh PostgreSQL test DB)"
+  echo "  ./elemes.sh test-all       # Full test suite (CI gate)"
+  echo "  ./elemes.sh test-smoke     # Smoke test post-deploy (unit + sub-home subset)"
+  echo "  ./elemes.sh test-worker    # Compiler worker test suite"
+  echo "  ./elemes.sh docs-validate   # Validasi frontmatter & broken link di docs/*.md"
   echo "  ./elemes.sh loadtest       # Menjalankan utilitas simulasi Load Test (Locust)"
   ;;
 esac

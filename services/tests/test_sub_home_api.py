@@ -13,6 +13,7 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.integration
 from services import lesson_service
 
 

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
 from services.progress_status import (
     ParsedProgress,
     format_progress_status,

@@ -1,5 +1,6 @@
 import pytest
 
+pytestmark = pytest.mark.unit
 from services.lesson_service import _parse_flashcards
 
 

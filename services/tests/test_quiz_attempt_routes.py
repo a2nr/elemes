@@ -23,9 +23,12 @@ from services.database import SessionLocal
 from services.models import QuizAttempt, StudentProgress
 from services.tests.conftest import STUDENT_TOKEN
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata"
+    ),
+    pytest.mark.integration,
+]
 
 LESSON = "hello_world"
 

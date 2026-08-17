@@ -12,3 +12,4 @@ frontend/node_modules/
 velxio-deployer-firmware/build
 velxio-deployer-firmware/managed_components/
 lms-c-precompiled.tar
+.browser-test/

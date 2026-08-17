@@ -10,6 +10,7 @@ Di host tanpa flask, test di-skip otomatis (importorskip).
 
 import pytest
 
+pytestmark = pytest.mark.unit
 # Skip seluruh modul bila flask tidak tersedia (host tanpa deps backend)
 pytest.importorskip("flask")
 

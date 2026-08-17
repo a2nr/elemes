@@ -1,4 +1,5 @@
 import pytest
+pytestmark = pytest.mark.unit
 from services.lesson_service import _process_embed_embeds
 
 

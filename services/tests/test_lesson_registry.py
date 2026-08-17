@@ -7,6 +7,8 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.integration
+
 from services import lesson_service
 from services.lesson_registry import lesson_specs, sync_lesson_registry
 

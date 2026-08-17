@@ -30,7 +30,13 @@ from services.tests.conftest import STUDENT2_TOKEN, STUDENT_TOKEN, TEACHER_TOKEN
 
 DB_REQUIRED = os.environ.get("DATABASE_URL", "").strip()
 
-pytestmark = pytest.mark.skipif(not DB_REQUIRED, reason="butuh DATABASE_URL (PostgreSQL nyata)")
+pytestmark = [
+    pytest.mark.skipif(
+        not DB_REQUIRED,
+        reason="butuh DATABASE_URL (PostgreSQL nyata)",
+    ),
+    pytest.mark.integration,
+]
 
 FIXTURES = Path(__file__).parent / "fixtures"
 UUID_1 = "7eab651c-5eb1-4eb8-8fd2-17fd77aec6df"

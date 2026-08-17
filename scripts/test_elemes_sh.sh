@@ -24,7 +24,7 @@ FAKEBIN="$TESTROOT/fakebin"
 mkdir -p "$WORKSPACE" "$FAKEBIN"
 touch "$PARENT_DIR/.env" # PARENT_DIR/.env (dibaca run_compose & db_init)
 
-cp "$(dirname "$0")/elemes.sh" "$WORKSPACE/elemes.sh"
+cp "$(dirname "$0")/../elemes.sh" "$WORKSPACE/elemes.sh"
 export FAKE_PROJECT="$PROJECT_NAME"
 
 # --- Fake podman-compose: catat semua panggilan, jawab config/exec/restart ----

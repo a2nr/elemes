@@ -14,9 +14,12 @@ import pytest
 
 from services.tests.conftest import STUDENT_TOKEN, TEACHER_TOKEN
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not os.environ.get("DATABASE_URL"), reason="butuh PostgreSQL nyata"
+    ),
+    pytest.mark.integration,
+]
 
 
 @pytest.fixture(autouse=True)

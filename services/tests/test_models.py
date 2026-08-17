@@ -1,9 +1,13 @@
 """Metadata model: nama tabel, constraint, relasi — tanpa butuh DB hidup."""
 
+import pytest
+
 from sqlalchemy import ForeignKeyConstraint
 
 from services import models as _models  # noqa: F401  (mendaftarkan metadata)
 from services.database import Base
+
+pytestmark = pytest.mark.unit
 
 
 def _table(name):

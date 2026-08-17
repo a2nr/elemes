@@ -16,6 +16,7 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.unit
 from services import lesson_service
 from services.lesson_service import (
     _read_md_cached,

@@ -22,7 +22,13 @@ from services.tests.conftest import STUDENT_TOKEN, TEACHER_TOKEN
 
 DB_REQUIRED = os.environ.get("DATABASE_URL", "").strip()
 
-pytestmark = pytest.mark.skipif(not DB_REQUIRED, reason="butuh DATABASE_URL (PostgreSQL nyata)")
+pytestmark = [
+    pytest.mark.skipif(
+        not DB_REQUIRED,
+        reason="butuh DATABASE_URL (PostgreSQL nyata)",
+    ),
+    pytest.mark.integration,
+]
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
