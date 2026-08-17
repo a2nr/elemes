@@ -9,7 +9,7 @@ Endpoints:
 
 import re
 
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 
 from services.docs_service import get_docs_index, get_doc_content
 
@@ -40,32 +40,11 @@ def api_reference():
     them as structured API reference entries.
 
     Each entry: {method, path, name, auth, doc}
+
+    Uses ``current_app`` (bukan ``create_app()``) agar tidak membuat instance
+    app baru / memicu DB sync ulang pada setiap request.
     """
-    from app import create_app
-
-    app = create_app()
     entries = []
-
-    # Import all route modules to capture docstrings
-    route_modules = [
-        "routes.auth",
-        "routes.compile",
-        "routes.lessons",
-        "routes.progress",
-        "routes.help",
-        "routes.student_management",
-        "routes.quiz_attempts",
-        "routes.docs",
-    ]
-
-    # Build a map of rule -> endpoint function for docstring extraction
-    rule_map = {}
-    for rule in app.url_map.iter_rules():
-        if rule.endpoint != "static" and rule.endpoint != "api_reference":
-            rule_map[rule.rule] = {
-                "methods": sorted(rule.methods - {"HEAD", "OPTIONS"}),
-                "endpoint": rule.endpoint,
-            }
 
     # Known auth requirements per route (derived from code inspection)
     auth_map = {
@@ -100,7 +79,7 @@ def api_reference():
 
     # Extract from Flask view functions directly
     seen = set()
-    for rule in app.url_map.iter_rules():
+    for rule in current_app.url_map.iter_rules():
         if rule.endpoint == "static":
             continue
         path = rule.rule
@@ -111,7 +90,7 @@ def api_reference():
         methods = sorted(rule.methods - {"HEAD", "OPTIONS"})
 
         # Try to get the view function's docstring
-        view_func = app.view_functions.get(rule.endpoint)
+        view_func = current_app.view_functions.get(rule.endpoint)
         doc = ""
         if view_func:
             doc = (view_func.__doc__ or "").strip()

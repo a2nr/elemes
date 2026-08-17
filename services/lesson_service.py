@@ -640,25 +640,20 @@ def _process_flowchart_embeds(text):
 
 def _sanitize_embed_html(html_text):
     """Sanitize raw embed HTML: whitelist tags/attrs/styles + check iframe src domain."""
-    cleaned = bleach.clean(
-        html_text,
-        tags=EMBED_ALLOWED_TAGS,
-        attributes=EMBED_ALLOWED_ATTRS,
-        strip=True,
-    )
-    # Optional CSS sanitization — requires tinycss2 (skip if not installed)
+    # CSS sanitization requires tinycss2 — bila tidak ada, style dipertahankan
+    # tanpa disanitasi (tags/attrs tetap di-strip). Jangan pernah pass
+    # css_sanitizer=None bersamaan dengan atribut `style` — bleach mengeluarkan
+    # NoCssSanitizerWarning.
     try:
         from bleach.css_sanitizer import CSSSanitizer
         css_sanitizer = CSSSanitizer(allowed_css_properties=EMBED_ALLOWED_STYLES)
-        cleaned = bleach.clean(
-            html_text,
-            tags=EMBED_ALLOWED_TAGS,
-            attributes=EMBED_ALLOWED_ATTRS,
-            css_sanitizer=css_sanitizer,
-            strip=True,
-        )
     except ImportError:
-        pass  # tinycss2 missing — CSS styles left unsanitized but tags/attrs still stripped
+        css_sanitizer = None
+
+    kwargs = dict(tags=EMBED_ALLOWED_TAGS, attributes=EMBED_ALLOWED_ATTRS, strip=True)
+    if css_sanitizer is not None:
+        kwargs["css_sanitizer"] = css_sanitizer
+    cleaned = bleach.clean(html_text, **kwargs)
     # Check every iframe src: must be https + not blacklisted
     for match in re.finditer(r'<iframe[^>]+src="([^"]*)"', cleaned):
         src = match.group(1)

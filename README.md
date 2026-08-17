@@ -493,14 +493,20 @@ student_id;token;nama_siswa;hello_world;variabel
 || `./elemes.sh test` | Full test suite (alias ke `test-all`) |
 || `./elemes.sh test-unit` | Unit test saja (cepat, no DB) |
 || `./elemes.sh test-integration` | Integration test (butuh PostgreSQL `elemes_test`) |
-|| `./elemes.sh test-all` | Full test suite (CI gate) |
+|| `./elemes.sh test-all` | Full test suite |
 || `./elemes.sh test-smoke` | Smoke test post-deploy (unit + sub-home subset) |
 || `./elemes.sh docs-validate` | Validasi frontmatter & broken link di `docs/*.md` |
+
+> **Catatan testing (CI):** CI otomatis (GitHub Actions) **belum diaktifkan** —
+> solo dev, test dijalankan manual sebelum push via
+> `make test-unit && make test-integration` (atau `./elemes.sh test-all`).
+> Rencana diaktifkan lagi saat ada kontributor lain; file `ci.yml` versi lama
+> tetap tersimpan di git history (`git show a5aedf6:.github/workflows/ci.yml`).
 
 ## Dokumentasi & Referensi API
 
 - **Docs Viewer**: Buka `http://localhost:3000/docs` untuk panduan teknis lengkap (arsitektur, backend, frontend, kuis, velxio, embed, dll) yang merender file `docs/*.md` secara dinamis.
-- **API Reference**: `http://localhost:3000/docs/api-reference` menampilkan daftar semua endpoint Flask dengan docstring, metode, path, dan requirement auth.
+- **API Reference**: Buka `/docs` lalu klik **API Reference** di sidebar (entry pertama) untuk melihat daftar semua endpoint Flask dengan docstring, metode, path, dan requirement auth.
 - **Troubleshooting**: Buka `http://localhost:3000/help` untuk tutorial siswa; tautan ke Docs Viewer ada di sana.
 
 ## Database & Penyimpanan (PostgreSQL)

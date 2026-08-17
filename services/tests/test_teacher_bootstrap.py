@@ -28,21 +28,26 @@ CLI = REPO_ROOT / "scripts" / "bootstrap_teacher.py"
 
 # ── unit: validasi (tanpa DB) ────────────────────────────────────────────
 
+
+@pytest.mark.unit
 def test_validation_empty_name():
     with pytest.raises(TeacherBootstrapError, match="Nama guru"):
         upsert_teacher(None, display_name="   ", raw_token="TOKEN_X")
 
 
+@pytest.mark.unit
 def test_validation_empty_token():
     with pytest.raises(TeacherBootstrapError, match="Token guru"):
         upsert_teacher(None, display_name="Pak Guru", raw_token="")
 
 
+@pytest.mark.unit
 def test_validation_name_too_long():
     with pytest.raises(TeacherBootstrapError, match="terlalu panjang"):
         upsert_teacher(None, display_name="G" * 256, raw_token="TOKEN_X")
 
 
+@pytest.mark.unit
 def test_cli_exit_2_without_database():
     """Tanpa DATABASE_URL, CLI harus gagal dengan exit code 2 (bukan crash)."""
     env = os.environ.copy()

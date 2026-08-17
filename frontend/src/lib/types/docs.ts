@@ -17,3 +17,16 @@ export interface DocMeta {
 	order: number;
 	category: string;
 }
+
+/** Satu entry dari GET /api/docs/api-reference. */
+export interface ApiReferenceEntry {
+	method: string[];
+	path: string;
+	name: string;
+	auth: boolean;
+	doc: string;
+}
+
+export interface ApiReferenceResponse {
+	endpoints: ApiReferenceEntry[];
+}

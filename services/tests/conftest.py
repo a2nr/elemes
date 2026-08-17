@@ -78,14 +78,22 @@ def seed_demo_users():
 
 
 @pytest.fixture(autouse=True)
-def _isolate_database():
+def _isolate_database(request):
     """Isolasi integration test: truncate semua tabel sebelum SETIAP test.
 
     Test importer/lesson-registry/progress berbagi DATABASE_URL yang sama;
     tanpa reset, data sisa antar test saling mengotori (mis. total lessons
     bertambah). Contract test (backend CSV) tidak terpengaruh — SessionLocal
     None bila DATABASE_URL tidak diset.
+
+    Test bertanda `unit` tidak pernah menyentuh DB — lewati isolasi sepenuhnya
+    supaya `make test-unit` tetap jalan cepat & tanpa DB walau DATABASE_URL
+    diset di environment (atau server PostgreSQL sedang mati).
     """
+    if request.node.get_closest_marker("unit") is not None:
+        yield
+        return
+
     from sqlalchemy import text
 
     from services.database import SessionLocal

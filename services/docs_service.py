@@ -61,12 +61,12 @@ def _parse_frontmatter(filename):
     if not abs_path.startswith(_DOCS_DIR + os.sep) and abs_path != _DOCS_DIR:
         return None
 
+    current_mtime = os.path.getmtime(file_path) if os.path.exists(file_path) else None
+
     with _file_cache_lock:
         cached = _file_cache.get(abs_path)
-        if cached and cached.get("mtime") == os.path.getmtime(file_path) if os.path.exists(file_path) else False:
-            cached_mtime = os.path.getmtime(file_path)
-            if cached and cached.get("mtime") == cached_mtime:
-                return cached["data"]
+        if cached and current_mtime is not None and cached.get("mtime") == current_mtime:
+            return cached["data"]
 
     if not os.path.exists(file_path):
         return None
@@ -78,7 +78,6 @@ def _parse_frontmatter(filename):
         print(f"Warning: Could not read {file_path}: {e}")
         return None
 
-    current_mtime = os.path.getmtime(file_path)
 
     # Parse frontmatter
     title = None
@@ -132,35 +131,6 @@ def _parse_frontmatter(filename):
         _file_cache[abs_path] = {"content": content, "mtime": current_mtime, "data": result}
 
     return result
-
-
-def _read_md_cached(path):
-    """Read any markdown file with mtime-based caching (mirrors lesson_service pattern)."""
-    if not os.path.exists(path):
-        return ""
-    try:
-        current_mtime = os.path.getmtime(path)
-    except OSError:
-        cached = _file_cache.get(path)
-        return (cached["content"] if cached else "") or ""
-
-    with _file_cache_lock:
-        cached = _file_cache.get(path)
-        if cached and cached.get("mtime") == current_mtime:
-            return cached["content"]
-
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-    except (OSError, PermissionError) as e:
-        print(f"Warning: Could not read {path}: {e}")
-        cached = _file_cache.get(path)
-        return (cached["content"] if cached else "") or ""
-
-    with _file_cache_lock:
-        _file_cache[path] = {"content": content, "mtime": current_mtime}
-
-    return content
 
 
 # ---------------------------------------------------------------------------

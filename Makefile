@@ -72,8 +72,13 @@ test-list:
 ## Show test counts by marker
 test-stats:
 	@echo "=== Test counts by marker ==="
-	@$(PYTEST) --collect-only -q -m unit 2>/dev/null | grep -c "test" || echo "0"
+	@$(PYTEST) --collect-only -q -m unit 2>/dev/null | tail -1
 	@echo "^ unit tests"
-	@$(PYTEST) --collect-only -q -m integration 2>/dev/null | grep -c "test" || echo "0"
+	@$(PYTEST) --collect-only -q -m integration 2>/dev/null | tail -1
 	@echo "^ integration tests"
+	@$(PYTEST) --collect-only -q -m e2e 2>/dev/null | tail -1
+	@echo "^ e2e tests"
+	@$(PYTEST) --collect-only -q -m "not unit and not integration and not e2e" 2>/dev/null | tail -1
+	@echo "^ ORPHAN tests (tanpa marker) — harus 0, unit + integration == total"
 	@$(PYTEST) --collect-only -q 2>/dev/null | tail -1
+	@echo "^ total collected"
