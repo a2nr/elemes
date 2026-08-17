@@ -3,7 +3,7 @@ import type { DocsIndexEntry } from '$types/docs';
 import { error } from '@sveltejs/kit';
 
 export const load: PageLoad = async ({ fetch }) => {
-	const res = await fetch('/api/docs');
+	const res = await fetch('/docs');
 	if (!res.ok) {
 		throw error(500, 'Gagal memuat daftar dokumentasi');
 	}

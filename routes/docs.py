@@ -16,14 +16,14 @@ from services.docs_service import get_docs_index, get_doc_content
 docs_bp = Blueprint("docs_api", __name__)
 
 
-@docs_bp.route("/api/docs")
+@docs_bp.route("/docs")
 def api_docs_index():
     """List all docs files with metadata, sorted by order."""
     docs = get_docs_index()
     return jsonify({"docs": docs})
 
 
-@docs_bp.route("/api/docs/<slug>")
+@docs_bp.route("/docs/<slug>")
 def api_doc_detail(slug):
     """Return rendered HTML + metadata for a single doc by slug."""
     data = get_doc_content(slug)
@@ -32,7 +32,7 @@ def api_doc_detail(slug):
     return jsonify(data)
 
 
-@docs_bp.route("/api/docs/api-reference")
+@docs_bp.route("/docs/api-reference")
 def api_reference():
     """Generate API reference from route docstrings.
 
