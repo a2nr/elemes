@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from services import repositories as repo
 from services.database import SessionLocal
 from services.models import QuizAttempt, StudentProgress
-from services.tests.conftest import STUDENT_TOKEN
+from services.tests.conftest import STUDENT_TOKEN, TEACHER_TOKEN
 
 pytestmark = [
     pytest.mark.skipif(
@@ -293,3 +293,49 @@ def test_submit_error_does_not_leak_internal_details(client):
     )
     assert resp.status_code == 400
     assert "traceback" not in resp.get_data(as_text=True).lower()
+
+
+# ── Preview mode tests ─────────────────────────────────────────────
+
+
+def test_preview_attempt_rejected_for_student_token(client, seed_demo_users):
+    payload = _payload({"token": STUDENT_TOKEN, "is_preview": True})
+    res = client.post("/quiz-attempts/submit", json=payload)
+    assert res.status_code == 403
+    assert res.get_json()["success"] is False
+
+
+def test_preview_attempt_bypasses_one_attempt_policy(client, seed_demo_users):
+    first = _payload({"token": TEACHER_TOKEN, "is_preview": True, "status": "submitted",
+                       "termination_reason": None, "score": "1/2"})
+    second = _payload({"token": TEACHER_TOKEN, "is_preview": True, "status": "submitted",
+                        "termination_reason": None, "score": "2/2"})
+    r1 = client.post("/quiz-attempts/submit", json=first)
+    r2 = client.post("/quiz-attempts/submit", json=second)
+    assert r1.status_code == 200
+    assert r2.status_code == 200  # bukan 409 — one-attempt tidak berlaku utk preview
+
+    db = SessionLocal()
+    try:
+        rows = db.scalars(
+            select(QuizAttempt).where(QuizAttempt.is_preview.is_(True))
+        ).all()
+        assert len(rows) == 1  # preview lama otomatis terhapus
+        assert rows[0].score_earned == 2
+    finally:
+        db.close()
+
+
+def test_preview_attempt_does_not_touch_student_progress(client, seed_demo_users):
+    payload = _payload({"token": TEACHER_TOKEN, "is_preview": True})
+    client.post("/quiz-attempts/submit", json=payload)
+
+    db = SessionLocal()
+    try:
+        teacher = repo.get_user_by_token(db, TEACHER_TOKEN)
+        progress = db.scalars(
+            select(StudentProgress).where(StudentProgress.user_id == teacher.id)
+        ).all()
+        assert progress == []  # tidak ada row student_progress dibuat
+    finally:
+        db.close()

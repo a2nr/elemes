@@ -41,6 +41,8 @@ export class LessonManager {
 	quizFinalized = $state(false);
 	quizTerminationReason = $state<QuizTerminationReason | null>(null);
 	visibilityEventCount = $state(0);
+	/** [NEW] true bila sesi kuis ini adalah preview guru (lihat PREVIEW-06/07/08). */
+	isPreviewMode = $state(false);
 	currentCode = $state('');
 	currentLanguage = $state<string>('c');
 
@@ -194,6 +196,7 @@ export class LessonManager {
 				this.quizFinalized = false;
 				this.quizTerminationReason = null;
 				this.visibilityEventCount = 0;
+				this.isPreviewMode = false;
 
 		this.cCode = lesson.initial_code_c || '';
 			this.pythonCode = lesson.initial_python || '';
@@ -429,6 +432,7 @@ export class LessonManager {
 			occurred_at: now,
 			started_at: this.quizStartedAt ?? now,
 			visibility_event_count: this.visibilityEventCount,
+			is_preview: this.isPreviewMode,
 			answers: this.quizSession.questions.map((q) => {
 				const a = this.quizSession!.answers[q.id];
 				return {

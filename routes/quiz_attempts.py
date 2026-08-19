@@ -66,6 +66,7 @@ def submit_quiz_attempt():
     score = str(data.get("score") or "").strip()
     visibility_count = data.get("visibility_event_count", 0)
     user_agent = (request.headers.get("User-Agent") or "")[:MAX_AGENT_LENGTH]
+    is_preview = bool(data.get("is_preview", False))
 
     # ── validasi field dasar ─────────────────────────────────────────
     if not token or not lesson_name:
@@ -139,6 +140,11 @@ def submit_quiz_attempt():
         user = repo.get_user_by_token(db, token)
         if user is None:
             return jsonify({"success": False, "message": "Token tidak valid"}), 401
+
+        # Preview mode hanya untuk teacher
+        if is_preview and user.role != "teacher":
+            return jsonify({"success": False, "message": "Preview hanya untuk guru"}), 403
+
         lesson = repo.get_lesson_by_slug(db, lesson_name)
         if lesson is None:
             return jsonify({"success": False, "message": "Lesson tidak dikenal"}), 404
@@ -158,6 +164,7 @@ def submit_quiz_attempt():
                 visibility_event_count=visibility_count,
                 user_agent=user_agent,
                 answers_json=answers_json,
+                is_preview=is_preview,
             )
         except ValueError as exc:
             db.rollback()
@@ -165,7 +172,8 @@ def submit_quiz_attempt():
 
         # Update progress HANYA untuk attempt yang benar-benar baru — retry
         # idempotent tidak menulis ulang progress maupun row attempt.
-        if created:
+        # Preview tidak menyentuh student_progress sama sekali.
+        if created and not is_preview:
             repo.set_progress(
                 db,
                 user_id=user.id,
@@ -209,6 +217,7 @@ def get_quiz_attempt(lesson_name: str):
     started_at, finished_at, answers (parsed dari answers_json).
     """
     token = (request.args.get("token") or "").strip()
+    is_preview = (request.args.get("preview") or "").strip() == "1"
     if not token:
         return jsonify({"success": False, "message": "Token wajib"}), 400
     if SessionLocal is None:
@@ -219,11 +228,15 @@ def get_quiz_attempt(lesson_name: str):
         user = repo.get_user_by_token(db, token)
         if user is None:
             return jsonify({"success": False, "message": "Token tidak valid"}), 401
+        if is_preview and user.role != "teacher":
+            return jsonify(
+                {"success": False, "message": "Mode preview hanya untuk akun guru"}
+            ), 403
         lesson = repo.get_lesson_by_slug(db, lesson_name)
         if lesson is None:
             return jsonify({"success": False, "message": "Lesson tidak dikenal"}), 404
         attempt = repo.get_quiz_attempt_for_user_lesson(
-            db, user_id=user.id, lesson_id=lesson.id
+            db, user_id=user.id, lesson_id=lesson.id, is_preview=is_preview
         )
         if attempt is None:
             return jsonify({"success": False, "message": "Belum ada attempt"}), 404

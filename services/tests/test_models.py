@@ -84,6 +84,7 @@ def test_quiz_attempts_table_shape():
         "started_at",
         "finished_at",
         "visibility_event_count",
+        "is_preview",
     }.issubset(cols.keys())
     assert table.primary_key.columns.keys() == ["id"]
     assert cols["termination_reason"].nullable
@@ -93,13 +94,19 @@ def test_quiz_attempts_table_shape():
 def test_quiz_attempts_constraints():
     table = _table("quiz_attempts")
     names = {c.name for c in table.constraints}
-    assert "uq_quiz_attempts_user_lesson" in names
     assert "ck_quiz_attempts_status" in names
     assert "ck_quiz_attempts_reason" in names
     assert "ck_quiz_attempts_status_reason" in names
-    assert {"ix_quiz_attempts_user_id", "ix_quiz_attempts_finished_at"}.issubset(
-        {i.name for i in table.indexes}
+    index_names = {i.name for i in table.indexes}
+    assert {
+        "ix_quiz_attempts_user_id",
+        "ix_quiz_attempts_finished_at",
+        "uq_quiz_attempts_user_lesson_real",
+    }.issubset(index_names)
+    real_index = next(
+        i for i in table.indexes if i.name == "uq_quiz_attempts_user_lesson_real"
     )
+    assert real_index.unique
     user_fk = _fk_to(table, "user_id")
     lesson_fk = _fk_to(table, "lesson_id")
     assert user_fk is not None and user_fk.ondelete == "CASCADE"

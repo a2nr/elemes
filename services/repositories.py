@@ -10,7 +10,7 @@ terhadap PostgreSQL nyata (test_repositories.py) dan suite kontrak
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -247,35 +247,53 @@ def get_quiz_attempt_by_id(db: Session, attempt_id: str) -> QuizAttempt | None:
     return db.get(QuizAttempt, attempt_id)
 
 
-def list_quiz_attempts_for_user(db: Session, *, user_id: str) -> list[QuizAttempt]:
-    return list(
-        db.scalars(select(QuizAttempt).where(QuizAttempt.user_id == user_id))
-    )
+def list_quiz_attempts_for_user(
+    db: Session, *, user_id: str, include_preview: bool = False
+) -> list[QuizAttempt]:
+    """`include_preview=False` (default) — dipakai laporan guru, otomatis
+    mengecualikan attempt preview supaya has_violation/skor tidak tercemar.
+    """
+    stmt = select(QuizAttempt).where(QuizAttempt.user_id == user_id)
+    if not include_preview:
+        stmt = stmt.where(QuizAttempt.is_preview.is_(False))
+    return list(db.scalars(stmt))
 
 
-def get_quiz_attempt_for_user_lesson(db: Session, *, user_id: str, lesson_id: str) -> QuizAttempt | None:
-    """Satu attempt kuis per (user, lesson) — one-attempt policy (unique constraint)."""
+def get_quiz_attempt_for_user_lesson(
+    db: Session, *, user_id: str, lesson_id: str, is_preview: bool = False
+) -> QuizAttempt | None:
+    """Satu attempt kuis per (user, lesson) — one-attempt policy (unique constraint).
+
+    `is_preview=False` (default) → attempt real siswa. `is_preview=True` →
+    attempt preview guru TERBARU untuk lesson ini (dipakai review-after-refresh
+    saat preview).
+    """
     return db.scalars(
         select(QuizAttempt)
         .where(
             QuizAttempt.user_id == user_id,
             QuizAttempt.lesson_id == lesson_id,
+            QuizAttempt.is_preview.is_(is_preview),
         )
         .order_by(QuizAttempt.finished_at.desc())
         .limit(1)
     ).first()
 
 
-def delete_quiz_attempts(db: Session, *, user_id: str, lesson_id: str) -> int:
-    """Hapus attempt (one-attempt) — dipakai saat guru me-reset progress."""
-    attempts = list(
-        db.scalars(
-            select(QuizAttempt).where(
-                QuizAttempt.user_id == user_id,
-                QuizAttempt.lesson_id == lesson_id,
-            )
-        )
+def delete_quiz_attempts(
+    db: Session, *, user_id: str, lesson_id: str, is_preview: bool | None = None
+) -> int:
+    """Hapus attempt. `is_preview=None` (default, dipakai reset progress guru)
+    hapus semua; `is_preview=True` hapus preview saja (dipakai
+    `finalize_quiz_attempt` untuk membersihkan preview run lama).
+    """
+    stmt = select(QuizAttempt).where(
+        QuizAttempt.user_id == user_id,
+        QuizAttempt.lesson_id == lesson_id,
     )
+    if is_preview is not None:
+        stmt = stmt.where(QuizAttempt.is_preview.is_(is_preview))
+    attempts = list(db.scalars(stmt))
     for attempt in attempts:
         db.delete(attempt)
     return len(attempts)
@@ -296,6 +314,7 @@ def finalize_quiz_attempt(
     visibility_event_count: int,
     user_agent: str | None = None,
     answers_json: str | None = None,
+    is_preview: bool = False,
 ) -> tuple[QuizAttempt, bool]:
     """Insert/confirm SATU attempt kuis — idempotent per `attempt_id`.
 
@@ -317,6 +336,11 @@ def finalize_quiz_attempt(
             raise ValueError("attempt_id sudah dipakai attempt lain")
         return existing, False
 
+    if is_preview:
+        # Preview tidak dibatasi unique constraint — simpan hanya run
+        # TERBARU per (user, lesson), hapus preview lama dulu.
+        delete_quiz_attempts(db, user_id=user_id, lesson_id=lesson_id, is_preview=True)
+
     attempt = QuizAttempt(
         id=attempt_id,
         user_id=user_id,
@@ -330,6 +354,7 @@ def finalize_quiz_attempt(
         visibility_event_count=visibility_event_count,
         user_agent=user_agent,
         answers_json=answers_json,
+        is_preview=is_preview,
     )
     db.add(attempt)
     try:

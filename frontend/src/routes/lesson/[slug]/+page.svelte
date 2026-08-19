@@ -6,6 +6,7 @@
 	import VelxioTab from './VelxioTab.svelte';
 	import FlowchartTab from './FlowchartTab.svelte';
 	import QuizTab from './QuizTab.svelte';
+	import ContentTestChecklist from './ContentTestChecklist.svelte';
 import QuizQuestionView from './QuizQuestionView.svelte';
 	import DeployTab from './DeployTab.svelte';
 	import OutputPanel from '$components/OutputPanel.svelte';
@@ -25,7 +26,8 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 	import { LessonManager } from './lesson.svelte';
 	import { isFocusLossEvent } from '$services/quiz-integrity';
 	import { ensureActiveTab } from '$services/lesson-tabs';
-	import { authLoggedIn } from '$stores/auth';
+	import { authLoggedIn, authIsTeacher } from '$stores/auth';
+	import { page } from '$app/stores';
 	import SlideCarousel from '$components/SlideCarousel.svelte';
 
 	let { data: pageData } = $props();
@@ -39,6 +41,15 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 			if (pageData.lesson) {
 				mgr.init(pageData.lesson);
 			}
+		});
+
+		// [NEW] Preview mode: guru buka /lesson/<slug>?preview=1 untuk menguji
+		// konten sendiri. Hanya berlaku untuk akun guru — siswa yang iseng
+		// menambah query param ini tetap diperlakukan sebagai attempt biasa
+		// (backend juga menolak is_preview dari token siswa, lihat PREVIEW-03).
+		$effect(() => {
+			const wantsPreview = $page.url.searchParams.get('preview') === '1';
+			mgr.isPreviewMode = wantsPreview && $authIsTeacher;
 		});
 
 		// Safety-net: whenever lesson data changes, ensure the active tab is valid.
@@ -238,14 +249,25 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 					</div>
 				{/if}
 
-	{#if mgr.isQuizMode}
-		<div class="quiz-question-area" bind:this={quizQuestionEl}>
-			<QuizQuestionView mgr={mgr} />
-		</div>
-	{:else}
-		<div class="prose">{@html mgr.data?.lesson_content ?? ''}</div>
-		<LessonList lessons={mgr.data?.ordered_lessons ?? []} currentSlug={mgr.slug} />
-	{/if}
+				{#if mgr.isPreviewMode}
+					<div class="alert alert-info preview-banner">
+						🔍 Mode Preview — hasil pengerjaan ini <strong>tidak</strong> tersimpan sebagai attempt resmi
+						dan tidak masuk laporan siswa.
+					</div>
+				{/if}
+
+				{#if mgr.isQuizMode && mgr.isPreviewMode}
+					<ContentTestChecklist mgr={mgr} />
+				{/if}
+
+				{#if mgr.isQuizMode}
+					<div class="quiz-question-area" bind:this={quizQuestionEl}>
+						<QuizQuestionView mgr={mgr} />
+					</div>
+				{:else}
+					<div class="prose">{@html mgr.data?.lesson_content ?? ''}</div>
+					<LessonList lessons={mgr.data?.ordered_lessons ?? []} currentSlug={mgr.slug} />
+				{/if}
 				</div>
 
 				{#if float.floating && float.minimized && !mgr.isMobile}

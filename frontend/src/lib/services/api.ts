@@ -157,6 +157,8 @@ export interface QuizAttemptSubmission {
 	visibility_event_count: number;
 	/** Ringkasan per-soal untuk review-after-refresh + breakdown kategori. */
 	answers: QuizAnswerPayload[];
+	/** [NEW] true bila ini attempt uji-coba guru — lihat docs preview mode. */
+	is_preview?: boolean;
 }
 
 export interface QuizAnswerPayload {
@@ -208,9 +210,10 @@ export function submitQuizAttempt(
 export function fetchQuizAttempt(
 	token: string,
 	lessonName: string,
-	customFetch = fetch
+	customFetch = fetch,
+	isPreview = false
 ): Promise<QuizAttemptFetchResponse> {
-	const query = `token=${encodeURIComponent(token)}`;
+	const query = `token=${encodeURIComponent(token)}${isPreview ? '&preview=1' : ''}`;
 	return get<QuizAttemptFetchResponse>(`/quiz-attempts/${lessonName}?${query}`, customFetch);
 }
 

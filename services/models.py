@@ -16,12 +16,14 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -104,12 +106,22 @@ class QuizAttempt(Base):
     - `status`: submitted (selesai normal) atau terminated (exit dini/penalti).
     - `termination_reason` hanya untuk terminated: focus_lost, spa_navigation,
       page_unload, user_exit, completed (reserved).
-    - unique (user_id, lesson_id) = one-attempt policy.
+    - unique (user_id, lesson_id) = one-attempt policy — HANYA untuk attempt
+      real (is_preview=false); attempt preview guru tidak dibatasi.
     """
 
     __tablename__ = "quiz_attempts"
     __table_args__ = (
-        UniqueConstraint("user_id", "lesson_id", name="uq_quiz_attempts_user_lesson"),
+        # One-attempt policy HANYA untuk attempt real (bukan preview guru).
+        # Partial unique index — preview boleh berkali-kali untuk (user, lesson)
+        # yang sama, real tetap satu kali seperti sebelumnya.
+        Index(
+            "uq_quiz_attempts_user_lesson_real",
+            "user_id",
+            "lesson_id",
+            unique=True,
+            postgresql_where=text("is_preview = false"),
+        ),
         CheckConstraint(
             "status IN ('submitted','terminated')", name="ck_quiz_attempts_status"
         ),
@@ -143,6 +155,13 @@ class QuizAttempt(Base):
     )
     # Diagnosis device/browser saja — bukan dasar hukuman tambahan.
     user_agent: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # [NEW] Attempt uji-coba guru — bypass one-attempt policy, tidak masuk
+    # laporan siswa/has_violation, dihapus otomatis saat preview run baru
+    # dibuat untuk (user, lesson) yang sama (lihat finalize_quiz_attempt).
+    is_preview: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     # Ringkasan per-soal (question_id -> selected_option_id, is_correct, category).
     # Digunakan frontend untuk render review-after-refresh + breakdown kategori;
