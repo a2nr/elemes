@@ -3,6 +3,7 @@
 	import { authIsTeacher } from '$stores/auth';
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
 	import CodeEditor from '$components/CodeEditor.svelte';
+	import CircuitEditor from '$components/CircuitEditor.svelte';
 	import ContentFileTree from '$components/ContentFileTree.svelte';
 	import LessonContentView from '$components/LessonContentView.svelte';
 	import QuizPreviewReadonly from '$components/QuizPreviewReadonly.svelte';
@@ -14,6 +15,7 @@
 	const float = createFloatingPanel();
 
 	let editorRef = $state<any>(null);
+	let circuitEditorRef = $state<any>(null);
 
 	// Mobile: show tree or editor
 	let mobileShowTree = $state(true);
@@ -84,7 +86,6 @@
 	// Tab label map for chrome tabs
 	let allTabs = $derived([
 		{ id: 'editor', label: 'Editor' },
-		{ id: 'preview', label: 'Preview', show: !!mgr.previewHtml },
 		...dynamicTabs,
 		{ id: 'exercise', label: 'Exercise', show: hasExercise },
 		{ id: 'quiz', label: 'Quiz', show: hasQuiz },
@@ -525,21 +526,6 @@
 							{/if}
 						</div>
 
-						<!-- Preview Tab -->
-						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'preview'}>
-							{#if mgr.previewLoading}
-								<div class="tab-empty">Memuat preview...</div>
-							{:else if mgr.previewHtml}
-								<div class="tab-content prose">
-									{@html mgr.previewHtml}
-								</div>
-							{:else}
-								<div class="tab-empty">
-									<p>Buka file materi dan edit untuk melihat preview.</p>
-								</div>
-							{/if}
-						</div>
-
 						<!-- Exercise Tab -->
 						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'exercise'}>
 							{#if mgr.previewExerciseHtml}
@@ -565,10 +551,38 @@
 							{/if}
 						</div>
 
-						<!-- Dynamic code tabs (C, Python, Circuit, etc.) -->
+						<!-- Dynamic tabs (C, Python, Circuit, Velxio, Flowchart) -->
 						{#each dynamicTabs as dynTab}
 							<div class="tab-panel" class:tab-hidden={mgr.activeTab !== dynTab.id}>
-								{#if extractedCodes[dynTab.id]}
+								{#if dynTab.id === 'circuit'}
+									<div class="circuit-tab-content">
+										{#if extractedCodes.circuit}
+										<CircuitEditor
+											bind:this={circuitEditorRef}
+											initialCircuit={extractedCodes.circuit}
+										/>
+									{:else}
+										<div class="tab-empty"><p>Belum ada data circuit.</p></div>
+									{/if}
+								</div>
+								{:else if dynTab.id === 'velxio'}
+									<div class="velxio-tab-content">
+										<iframe
+											class="velxio-iframe"
+											src="/velxio/editor?embed=true&hideEditor=true&lockComponents=true"
+											allow="cross-origin-isolated; fullscreen"
+											allowfullscreen
+										></iframe>
+									</div>
+								{:else if dynTab.id === 'flowchart'}
+									<div class="flowchart-tab-content">
+										<iframe
+											class="flowchart-iframe"
+											src="/flowchart/?iframe=true"
+											title="Flowchart Editor"
+										></iframe>
+									</div>
+								{:else if extractedCodes[dynTab.id]}
 									<div class="code-tab-content">
 										<CodeEditor
 											code={extractedCodes[dynTab.id]}
@@ -578,7 +592,7 @@
 									</div>
 								{:else}
 									<div class="tab-empty">
-										<p>Belum ada kode {dynTab.label} di konten ini.</p>
+										<p>Belum ada konten {dynTab.label}.</p>
 									</div>
 								{/if}
 							</div>
@@ -964,6 +978,46 @@
 	}
 	.code-tab-content :global(.cm-scroller) {
 		height: 100%;
+	}
+
+	/* Circuit tab */
+	.circuit-tab-content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-height: 0;
+	}
+	.circuit-tab-content :global(.panel) {
+		flex: 1;
+	}
+
+	/* Velxio / Arduino tab */
+	.velxio-tab-content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-height: 0;
+	}
+	.velxio-iframe {
+		width: 100%;
+		flex: 1;
+		border: none;
+	}
+
+	/* Flowchart tab */
+	.flowchart-tab-content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-height: 0;
+	}
+	.flowchart-iframe {
+		width: 100%;
+		flex: 1;
+		border: none;
 	}
 
 	/* Asset Preview */
