@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from services.models import AccessToken, Lesson, QuizAttempt, StudentProgress, User
+from services.models import AccessToken, ContentDraft, Lesson, QuizAttempt, StudentProgress, User
 from services.progress_status import ParsedProgress
 from services.student_roundtrip import (
     RoundTripImportError,
@@ -633,3 +633,79 @@ def delete_students(db: Session, student_ids: list[str]) -> list[str]:
         db.delete(user)
     db.flush()
     return [u.id for u in users]
+
+
+# ── content_drafts (editor konten guru) ──────────────────────────
+
+
+def get_active_draft(db: Session, *, target_path: str) -> ContentDraft | None:
+    return (
+        db.query(ContentDraft)
+        .filter(ContentDraft.target_path == target_path, ContentDraft.status == "draft")
+        .first()
+    )
+
+
+def upsert_draft(
+    db: Session, *, author_id: str, target_path: str, body: str, base_mtime: float | None
+) -> ContentDraft:
+    draft = get_active_draft(db, target_path=target_path)
+    if draft:
+        draft.body = body
+        draft.author_id = author_id
+        # base_mtime TIDAK ditimpa di sini — hanya di-set ulang lewat "reload
+        # from disk" eksplisit, supaya deteksi konflik publish tetap mengacu
+        # ke mtime saat draft pertama dibuat.
+    else:
+        draft = ContentDraft(
+            author_id=author_id, target_path=target_path, body=body, base_mtime=base_mtime
+        )
+        db.add(draft)
+    db.commit()
+    db.refresh(draft)
+    return draft
+
+
+def mark_draft_published(db: Session, *, draft: ContentDraft) -> None:
+    draft.status = "published"
+    draft.published_at = datetime.now(timezone.utc)
+    db.commit()
+
+
+def discard_draft(db: Session, *, draft_id: str, author_id: str) -> bool:
+    draft = db.query(ContentDraft).filter(
+        ContentDraft.id == draft_id, ContentDraft.author_id == author_id
+    ).first()
+    if not draft:
+        return False
+    db.delete(draft)
+    db.commit()
+    return True
+
+
+def retarget_drafts(db: Session, *, old_prefix: str, new_prefix: str) -> int:
+    """Dipakai saat rename file/folder — pindahkan draft yang menunjuk ke path lama."""
+    from sqlalchemy import or_
+
+    rows = db.query(ContentDraft).filter(
+        ContentDraft.status == "draft",
+        or_(ContentDraft.target_path == old_prefix, ContentDraft.target_path.like(f"{old_prefix}/%"))
+    ).all()
+    count = 0
+    for row in rows:
+        row.target_path = new_prefix + row.target_path[len(old_prefix):]
+        count += 1
+    db.commit()
+    return count
+
+
+def drop_drafts_under(db: Session, *, path: str) -> int:
+    """Dipakai saat delete file/folder — buang draft yang jadi yatim."""
+    from sqlalchemy import or_
+
+    n = db.query(ContentDraft).filter(
+        ContentDraft.status == "draft",
+        or_(ContentDraft.target_path == path, ContentDraft.target_path.like(f"{path}/%"))
+    ).delete(synchronize_session=False)
+    db.commit()
+    return n

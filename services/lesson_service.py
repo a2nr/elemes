@@ -984,21 +984,12 @@ def _extract_section(content, start_marker, end_marker):
     return extracted, remaining
 
 
-def render_markdown_content(file_path):
-    """Parse a lesson markdown file and return structured HTML parts as a dictionary."""
-    try:
-        current_mtime = os.path.getmtime(file_path)
-    except OSError:
-        current_mtime = 0.0
-
-    with _markdown_lock:
-        cached = _markdown_cache.get(file_path)
-        if cached and cached['mtime'] == current_mtime:
-            return cached['data']
-
-    with open(file_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-
+def _render_markdown_string(content):
+    """Parse markdown text (no file I/O) -> dict struktur sama seperti sebelumnya.
+    Dipakai render_markdown_content() (dari disk) DAN endpoint preview editor
+    (dari buffer draft belum tersimpan). Bisa raise ValueError bila quiz tidak
+    valid (lihat _parse_flashcards) — pemanggil wajib menangani.
+    """
     lesson_content = content
     active_tabs = []
 
@@ -1194,6 +1185,26 @@ def render_markdown_content(file_path):
         'active_tabs': active_tabs,
         'slides': slides_html
     }
+
+    return parsed_data
+
+
+def render_markdown_content(file_path):
+    """Parse a lesson markdown file and return structured HTML parts as a dictionary."""
+    try:
+        current_mtime = os.path.getmtime(file_path)
+    except OSError:
+        current_mtime = 0.0
+
+    with _markdown_lock:
+        cached = _markdown_cache.get(file_path)
+        if cached and cached['mtime'] == current_mtime:
+            return cached['data']
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    parsed_data = _render_markdown_string(content)
 
     with _markdown_lock:
         if len(_markdown_cache) >= 128:

@@ -15,6 +15,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     JSON,
@@ -180,3 +181,32 @@ class StudentProgress(Base):
 
     user: Mapped["User"] = relationship(back_populates="progress")
     lesson: Mapped["Lesson"] = relationship(back_populates="progress")
+
+
+class ContentDraft(Base):
+    """Buffer editor konten — isi mentah .md sebelum di-publish ke filesystem.
+
+    `target_path` relatif terhadap CONTENT_DIR (mis. "dasar/hello_world.md").
+    `base_mtime` = mtime file di disk saat draft dibuat/di-refresh dari file;
+    dipakai deteksi konflik saat publish (file berubah di luar webapp, mis.
+    lewat git pull manual, sejak draft dibuat). Partial unique index (lihat
+    migrasi) menjamin cuma 1 draft aktif per file.
+    """
+
+    __tablename__ = "content_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    author_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    target_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    base_mtime: Mapped[float | None] = mapped_column(Float, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

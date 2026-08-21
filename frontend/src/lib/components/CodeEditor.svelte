@@ -38,7 +38,7 @@
 	}
 
 	async function loadCodeMirror() {
-		const [viewMod, stateMod, cmdsMod, langMod, autoMod, cppMod, pyMod, themeMod] =
+		const [viewMod, stateMod, cmdsMod, langMod, autoMod, cppMod, pyMod, mdMod, themeMod] =
 			await Promise.all([
 				import('@codemirror/view'),
 				import('@codemirror/state'),
@@ -47,15 +47,17 @@
 				import('@codemirror/autocomplete'),
 				import('@codemirror/lang-cpp'),
 				import('@codemirror/lang-python'),
+				import('@codemirror/lang-markdown'),
 				import('@codemirror/theme-one-dark'),
 			]);
 
-		CM = { ...viewMod, ...stateMod, ...cmdsMod, ...langMod, ...autoMod, cpp: cppMod.cpp, python: pyMod.python, oneDark: themeMod.oneDark };
+		CM = { ...viewMod, ...stateMod, ...cmdsMod, ...langMod, ...autoMod, cpp: cppMod.cpp, python: pyMod.python, markdown: mdMod.markdown, oneDark: themeMod.oneDark };
 	}
 
 	function getLanguageExtension(lang: string) {
 		switch (lang) {
 			case 'python': return CM.python();
+			case 'markdown': return CM.markdown();
 			default: return CM.cpp();
 		}
 	}
@@ -280,6 +282,15 @@
 			} else {
 				setCode(code);
 			}
+		}
+	});
+
+	// Sync external code prop changes (e.g. file switch in content editor)
+	$effect(() => {
+		if (!ready || !view) return;
+		const current = view.state.doc.toString();
+		if (code !== current) {
+			setCode(code);
 		}
 	});
 

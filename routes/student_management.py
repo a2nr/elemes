@@ -17,7 +17,6 @@ Keamanan:
 """
 
 import logging
-import os
 from datetime import datetime
 
 from flask import Blueprint, Response, jsonify, request
@@ -32,35 +31,14 @@ from services.student_roundtrip import (
     parse_roundtrip_csv,
     validate_single_student_input,
 )
-from services.token_service import validate_token
+from services.teacher_auth import teacher_from_cookie as _teacher_from_cookie
+from services.teacher_auth import check_origin as _check_origin
 
 student_management_bp = Blueprint("student_management", __name__)
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_EXTENSIONS = {"csv"}
-
-
-def _teacher_from_cookie():
-    """Guru dari cookie HttpOnly `student_token`; None bila tidak terautentikasi."""
-    token = request.cookies.get("student_token", "")
-    if not token:
-        return None
-    info = validate_token(token)
-    if not info or not info.get("is_teacher"):
-        return None
-    return info
-
-
-def _check_origin() -> bool:
-    """Origin harus sesuai konfigurasi aplikasi (ORIGIN) bila origin dikirim."""
-    allowed = os.environ.get("ORIGIN", "").strip()
-    if not allowed or allowed == "*":
-        return True
-    origin = request.headers.get("Origin", "")
-    if not origin:
-        return True  # same-origin / non-browser client
-    return origin in {allowed, allowed.rstrip("/")}
 
 
 def _active_lesson_slugs():

@@ -44,8 +44,8 @@ services:
     image: lms-backend:latest
     network_mode: service:elemes-ts
     volumes:
-      - ../content:/app/content:ro
-      - ../assets:/app/assets:ro
+      - ../content:/app/content:rw
+      - ../assets:/app/assets:rw
     env_file:
       - ../.env
     environment:
