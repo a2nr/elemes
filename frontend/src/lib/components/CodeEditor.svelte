@@ -329,6 +329,10 @@
 		overflow: hidden;
 		font-size: 0.9rem;
 		-webkit-touch-callout: none;
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 	}
 	.storage-indicator {
 		position: absolute;
@@ -368,6 +372,11 @@
 	.editor-wrapper :global(.cm-editor) {
 		min-height: 200px;
 		max-height: 60vh;
+	}
+	.editor-wrapper :global(.cm-editor).fill-parent {
+		height: 100%;
+		min-height: 0;
+		max-height: none;
 	}
 	.editor-wrapper :global(.cm-scroller) {
 		overflow: auto;

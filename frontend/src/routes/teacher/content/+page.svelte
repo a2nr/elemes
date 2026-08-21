@@ -279,20 +279,15 @@
 			class:mobile-h70={mgr.isMobile && mgr.mobileMode === 'h70'}
 			class:mobile-full={mgr.isMobile && mgr.mobileMode === 'full'}
 			style={float.style}
-		>
-			<!-- Drag Handle Bar (floating mode) -->				{#if float.floating && !mgr.isMobile}
+		>				<!-- Drag Handle Bar (floating mode) -->				{#if float.floating && !mgr.isMobile}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="drag-handle" onmousedown={float.onDragStart} ontouchstart={float.onTouchDragStart}>
-					<span class="drag-handle-grip">⣿</span>
-					<span class="drag-handle-title">Workspace</span>
-					<div class="drag-handle-actions">
-						<button class="drag-btn" title="Kembali ke dock (inline)" onclick={float.toggle}>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-						</button>
-						<button class="drag-btn" title="Minimize" onclick={float.minimize}>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-						</button>
-					</div>
+					<div class="panel-header draggable" onmousedown={float.onDragStart} ontouchstart={float.onTouchDragStart}>
+						<span class="resize-handle" onmousedown={(e) => { e.stopPropagation(); float.onResizeStart(e); }} ontouchstart={float.onTouchResizeStart}>&#x25F3;</span>
+						<div class="panel-title">Workspace</div>
+						<div class="panel-actions">
+							<button class="panel-btn" title="Kembali ke dock (inline)" onclick={float.toggle}>&#x229E;</button>
+							<button class="panel-btn" title="Minimize" onclick={float.minimize}>▽</button>
+						</div>
 				</div>
 			{/if}
 
@@ -300,26 +295,15 @@
 			<div class="editor-header" class:draggable-header={float.floating && !mgr.isMobile}
 				onmousedown={float.floating && !mgr.isMobile ? float.onDragStart : undefined}
 			>
-				<!-- Mobile: back to tree button -->
-				{#if mgr.isMobile && !mobileShowTree}
-					<button class="btn-icon mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">
-						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-					</button>
-				{/if}
+				<!-- Mobile: back to tree button -->					{#if mgr.isMobile && !mobileShowTree}
+						<button class="panel-btn mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">◀</button>
+					{/if}
 
 				<span class="editor-filename">{activeFileName || 'Editor'}</span>
 				<div class="editor-actions">
 					<!-- Desktop: Dock/Float toggle -->
 					{#if !mgr.isMobile}
-						{#if float.floating}
-							<button class="btn btn-sm btn-secondary" onclick={float.toggle} title="Dock ke layout">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-							</button>
-						{:else}
-							<button class="btn btn-sm btn-secondary" onclick={float.toggle} title="Float (detach)">
-								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><polyline points="9 2 9 9 2 9"/></svg>
-							</button>
-						{/if}
+						<button class="btn-float-toggle" onclick={float.toggle} title={float.floating ? 'Dock ke layout' : 'Float (detach)'}>&#x229E;</button>
 					{/if}
 
 					{#if !isAssetFile}
@@ -339,17 +323,9 @@
 					</button>
 					{/if}
 					{#if mgr.isMobile}
-						<div class="mobile-mode-toggle">
-							<button
-								class="btn btn-sm btn-secondary"
-								onclick={() => {
-									if (mgr.mobileMode === 'hidden') mgr.mobileMode = 'h50';
-									else if (mgr.mobileMode === 'h50') mgr.mobileMode = 'full';
-									else mgr.mobileMode = 'hidden';
-								}}
-							>
-								{mgr.mobileMode === 'hidden' ? '▲' : mgr.mobileMode === 'full' ? '▼' : '⬜'}
-							</button>
+						<div class="panel-actions">
+							<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'hidden') mgr.mobileMode = mgr.mobileMode === 'full' ? 'h50' : 'hidden'; else mgr.mobileMode = 'h50'; }} title="Minimize" disabled={mgr.mobileMode === 'hidden'}>▽</button>
+							<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'full') mgr.mobileMode = mgr.mobileMode === 'hidden' ? 'h50' : 'full'; else mgr.mobileMode = 'h50'; }} title="Maximize" disabled={mgr.mobileMode === 'full'}>△</button>
 						</div>
 					{/if}
 				</div>
@@ -484,7 +460,7 @@
 
 			<!-- Resize handle (floating mode) -->				{#if float.floating && !mgr.isMobile && !float.minimized}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="resize-handle" onmousedown={float.onResizeStart} ontouchstart={float.onTouchResizeStart}></div>
+					<div class="resize-handle" onmousedown={float.onResizeStart} ontouchstart={float.onTouchResizeStart}>&#x25F3;</div>
 			{/if}
 		</div>
 	</div>
@@ -567,60 +543,62 @@
 		height: 70vh;
 	}
 
-	/* Drag Handle */
-	.drag-handle {
+	/* Panel header (shared with WorkspaceHeader) */
+	.panel-header {
 		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 4px 10px;
+		align-items: flex-end;
+		gap: 0.25rem;
+		padding: 4px 8px 0;
 		background: var(--color-bg-secondary);
 		border-bottom: 1px solid var(--color-border);
-		cursor: grab;
 		user-select: none;
+		cursor: default;
+		min-height: 36px;
 		flex-shrink: 0;
 	}
-	.drag-handle:active {
-		cursor: grabbing;
+	.panel-header.draggable { cursor: grab; }
+	.panel-header.draggable:active { cursor: grabbing; }
+	.panel-actions {
+		display: flex;
+		gap: 0.25rem;
+		align-self: center;
 	}
-	.drag-handle-grip {
-		color: var(--color-text-muted);
-		font-size: 0.7rem;
+	.panel-btn {
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 0.15rem 0.5rem;
+		cursor: pointer;
+		font-size: 0.8rem;
+		color: var(--color-text);
 		line-height: 1;
-		letter-spacing: -1px;
 	}
-	.drag-handle-title {
+	.panel-btn:hover { background: var(--color-border); }
+	.panel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+	.panel-title {
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--color-text-muted);
 		flex: 1;
+		line-height: 1.8;
 	}
-	.drag-handle-actions {
-		display: flex;
-		gap: 2px;
-	}
-	.drag-btn {
+	.btn-float-toggle {
 		background: none;
-		border: 1px solid transparent;
-		cursor: pointer;
-		padding: 3px 5px;
+		border: 1px solid var(--color-border);
 		border-radius: 4px;
+		padding: 0.2rem 0.5rem;
+		cursor: pointer;
+		font-size: 0.95rem;
 		color: var(--color-text-muted);
-		display: flex;
-		align-items: center;
-		transition: all 0.15s;
+		line-height: 1;
+		align-self: center;
 	}
-	.drag-btn:hover {
-		background: var(--color-border);
+	.btn-float-toggle:hover {
+		background: var(--color-bg-secondary);
 		color: var(--color-text);
-		border-color: var(--color-border);
 	}
 
-	.draggable-header {
-		cursor: grab;
-	}
-	.draggable-header:active {
-		cursor: grabbing;
-	}
+
 
 	.editor-header {
 		display: flex;
@@ -645,20 +623,7 @@
 		align-items: center;
 	}
 
-	.btn-icon {
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 4px;
-		border-radius: 4px;
-		color: var(--color-text);
-		display: flex;
-		align-items: center;
-		transition: background 0.15s;
-	}
-	.btn-icon:hover {
-		background: var(--color-border);
-	}
+
 
 	.editor-body {
 		flex: 1;
@@ -744,6 +709,19 @@
 		overflow: hidden;
 		min-width: 0;
 	}
+	/* Force CodeEditor to fill its parent container */
+	.code-panel :global(.editor-wrapper) {
+		flex: 1;
+		min-height: 0;
+	}
+	.code-panel :global(.cm-editor) {
+		height: 100% !important;
+		min-height: 0 !important;
+		max-height: none !important;
+	}
+	.code-panel :global(.cm-scroller) {
+		height: 100%;
+	}
 	.code-empty {
 		display: flex;
 		align-items: center;
@@ -816,27 +794,26 @@
 		color: #c92a2a;
 	}
 
-	/* Resize Handle (floating mode) */
+	/* Resize Handle (floating mode) - matches WorkspaceHeader */
 	.resize-handle {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		width: 18px;
-		height: 18px;
 		cursor: nwse-resize;
-		z-index: 10;
+		font-size: 0.9rem;
+		color: var(--color-text-muted);
+		line-height: 1;
+		padding: 0.1rem 0.3rem;
+		border-radius: 3px;
+		align-self: center;
 	}
-	.resize-handle::before {
-		content: '';
+	.resize-handle:hover {
+		background: var(--color-border);
+		color: var(--color-text);
+	}
+	/* Bottom resize handle in floating mode */
+	.editor-area > .resize-handle {
 		position: absolute;
-		bottom: 3px;
-		left: 3px;
-		width: 10px;
-		height: 10px;
-		border-right: 2px solid var(--color-text-muted);
-		border-bottom: 2px solid var(--color-text-muted);
-		border-radius: 0 0 3px 0;
-		opacity: 0.5;
+		bottom: 2px;
+		left: 2px;
+		z-index: 10;
 	}
 
 	/* Mobile modes (reuse lesson.css patterns) */
