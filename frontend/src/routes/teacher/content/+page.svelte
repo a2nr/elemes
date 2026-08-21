@@ -15,9 +15,19 @@
 
 	let editorRef = $state<any>(null);
 
+	// Mobile: show tree or editor
+	let mobileShowTree = $state(true);
+
 	// Load trees on mount
 	onMount(async () => {
 		await loadTrees();
+	});
+
+	// When mobile & no file selected, default to tree view
+	$effect(() => {
+		if (mgr.isMobile && !mgr.activePath) {
+			mobileShowTree = true;
+		}
 	});
 
 	// Mobile behavior for floating panel
@@ -49,7 +59,31 @@
 		if (mgr.dirty && !window.confirm('Ada perubahan yang belum disimpan. Lanjut buka file lain?')) {
 			return;
 		}
-		mgr.loadDraft(path);
+		if (mgr.treeRoot === 'assets') {
+			// Asset file: load for preview only, don't go through draft system
+			mgr.activePath = path;
+			mgr.body = '';
+			mgr.draftId = null;
+			mgr.dirty = false;
+			// Clear preview since assets don't have markdown
+			mgr.previewHtml = '';
+			mgr.previewExerciseHtml = '';
+			mgr.previewQuizData = [];
+			mgr.previewError = null;
+		} else {
+			mgr.loadDraft(path);
+		}
+		if (mgr.isMobile) {
+			mobileShowTree = false;
+			mgr.mobileMode = 'h50';
+		}
+	}
+
+	function handleMobileBackToTree() {
+		if (mgr.dirty && !window.confirm('Ada perubahan yang belum disimpan. Kembali ke tree?')) {
+			return;
+		}
+		mobileShowTree = true;
 	}
 
 	function handleEditorChange(value: string) {
@@ -83,6 +117,9 @@
 		if (res.success) {
 			await loadTrees();
 			await mgr.loadDraft(path);
+			if (mgr.isMobile) {
+				mobileShowTree = false;
+			}
 		} else {
 			alert(res.message || 'Gagal membuat file');
 		}
@@ -115,6 +152,7 @@
 				mgr.activePath = null;
 				mgr.body = '';
 				mgr.draftId = null;
+				if (mgr.isMobile) mobileShowTree = true;
 			}
 		} else if (res.needs_force) {
 			if (window.confirm(`Folder "${name}" tidak kosong. Hapus semua isi?`)) {
@@ -125,6 +163,7 @@
 						mgr.activePath = null;
 						mgr.body = '';
 						mgr.draftId = null;
+						if (mgr.isMobile) mobileShowTree = true;
 					}
 				} else {
 					alert(forceRes.message || 'Gagal menghapus');
@@ -157,16 +196,20 @@
 		input.click();
 	}
 
-	function handleCopyAssetPath(path: string) {
+	function handleCopyAssetPath(e?: MouseEvent) {
+		const path = mgr.activePath;
+		if (!path) return;
 		navigator.clipboard.writeText(`/assets/${path}`);
 		const toast = document.createElement('div');
-		toast.textContent = 'Path disalin';
+		toast.textContent = 'Path disalin ke clipboard';
 		toast.style.cssText = 'position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:6px 16px;border-radius:8px;font-size:0.8rem;z-index:10000;';
 		document.body.appendChild(toast);
 		setTimeout(() => toast.remove(), 1500);
 	}
 
 	let activeFileName = $derived(mgr.activePath?.split('/').pop() ?? '');
+	let isAssetFile = $derived(mgr.treeRoot === 'assets' && mgr.activePath !== null && !mgr.activePath.endsWith('/'));
+	let isImageFile = $derived(isAssetFile && /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(mgr.activePath ?? ''));
 </script>
 
 <svelte:head>
@@ -179,8 +222,11 @@
 		<p>Halaman ini hanya untuk guru.</p>
 	</div>
 {:else}
-	<div class="content-editor-layout" class:single-col={float.floating || mgr.isMobile}>
-		<!-- Preview Panel -->
+	<div class="content-editor-layout"
+		class:single-col={float.floating || mgr.isMobile}
+		class:has-floating={float.floating && !mgr.isMobile}
+	>
+		<!-- Preview Panel (always behind editor) -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="preview-panel"
 			class:full-width={float.floating || mgr.isMobile}
@@ -193,6 +239,11 @@
 				<div class="preview-loading">Memuat preview...</div>
 			{:else if mgr.previewError}
 				<div class="preview-error">{mgr.previewError}</div>
+			{:else if isImageFile && mgr.activePath}
+				<div class="preview-asset">
+					<img src="/assets/{mgr.activePath}" alt={activeFileName} style="max-width:100%;border-radius:var(--radius);" loading="lazy" />
+					<p class="preview-asset-meta">/assets/{mgr.activePath}</p>
+				</div>
 			{:else if mgr.previewHtml}
 				<LessonContentView
 					lessonHtml={mgr.previewHtml}
@@ -229,10 +280,49 @@
 			class:mobile-full={mgr.isMobile && mgr.mobileMode === 'full'}
 			style={float.style}
 		>
+			<!-- Drag Handle Bar (floating mode) -->				{#if float.floating && !mgr.isMobile}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="drag-handle" onmousedown={float.onDragStart} ontouchstart={float.onTouchDragStart}>
+					<span class="drag-handle-grip">⣿</span>
+					<span class="drag-handle-title">Workspace</span>
+					<div class="drag-handle-actions">
+						<button class="drag-btn" title="Kembali ke dock (inline)" onclick={float.toggle}>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+						</button>
+						<button class="drag-btn" title="Minimize" onclick={float.minimize}>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+						</button>
+					</div>
+				</div>
+			{/if}
+
 			<!-- Editor Header -->
-			<div class="editor-header">
+			<div class="editor-header" class:draggable-header={float.floating && !mgr.isMobile}
+				onmousedown={float.floating && !mgr.isMobile ? float.onDragStart : undefined}
+			>
+				<!-- Mobile: back to tree button -->
+				{#if mgr.isMobile && !mobileShowTree}
+					<button class="btn-icon mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">
+						<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+					</button>
+				{/if}
+
 				<span class="editor-filename">{activeFileName || 'Editor'}</span>
 				<div class="editor-actions">
+					<!-- Desktop: Dock/Float toggle -->
+					{#if !mgr.isMobile}
+						{#if float.floating}
+							<button class="btn btn-sm btn-secondary" onclick={float.toggle} title="Dock ke layout">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+							</button>
+						{:else}
+							<button class="btn btn-sm btn-secondary" onclick={float.toggle} title="Float (detach)">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><polyline points="9 2 9 9 2 9"/></svg>
+							</button>
+						{/if}
+					{/if}
+
+					{#if !isAssetFile}
 					<button
 						class="btn btn-sm btn-secondary"
 						onclick={() => mgr.handleSave()}
@@ -247,10 +337,18 @@
 					>
 						{mgr.publishing ? 'Mempublikasikan...' : '🚀 Publish'}
 					</button>
+					{/if}
 					{#if mgr.isMobile}
 						<div class="mobile-mode-toggle">
-							<button class="btn btn-sm btn-secondary" onclick={() => mgr.mobileMode = mgr.mobileMode === 'hidden' ? 'h50' : 'hidden'}>
-								{mgr.mobileMode === 'hidden' ? '▲' : '▼'}
+							<button
+								class="btn btn-sm btn-secondary"
+								onclick={() => {
+									if (mgr.mobileMode === 'hidden') mgr.mobileMode = 'h50';
+									else if (mgr.mobileMode === 'h50') mgr.mobileMode = 'full';
+									else mgr.mobileMode = 'hidden';
+								}}
+							>
+								{mgr.mobileMode === 'hidden' ? '▲' : mgr.mobileMode === 'full' ? '▼' : '⬜'}
 							</button>
 						</div>
 					{/if}
@@ -259,63 +357,122 @@
 
 			<!-- Editor Body -->
 			<div class="editor-body">
-				<!-- File Tree -->
-				<div class="tree-panel">
-					<div class="tree-header">
-						<div class="tree-tabs">
-							<button
-								class="tree-tab"
-								class:active={mgr.treeRoot === 'content'}
-								onclick={() => mgr.treeRoot = 'content'}
-							>Materi</button>
-							<button
-								class="tree-tab"
-								class:active={mgr.treeRoot === 'assets'}
-								onclick={() => mgr.treeRoot = 'assets'}
-							>Assets</button>
+				{#if mgr.isMobile && mobileShowTree}
+					<!-- MOBILE: Show full-width tree -->
+					<div class="tree-panel mobile-tree-full">
+						<div class="tree-header">
+							<div class="tree-tabs">
+								<button
+									class="tree-tab"
+									class:active={mgr.treeRoot === 'content'}
+									onclick={() => mgr.treeRoot = 'content'}
+								>Materi</button>
+								<button
+									class="tree-tab"
+									class:active={mgr.treeRoot === 'assets'}
+									onclick={() => mgr.treeRoot = 'assets'}
+								>Assets</button>
+							</div>
+							<div class="tree-actions-header">
+								{#if mgr.treeRoot === 'content'}
+									<button class="action-btn-sm" title="Buat file baru" onclick={() => handleCreateFile('')}>📄+</button>
+								{/if}
+								<button class="action-btn-sm" title="Buat folder baru" onclick={() => handleCreateFolder('')}>📁+</button>
+								{#if mgr.treeRoot === 'assets'}
+									<button class="action-btn-sm" title="Upload gambar" onclick={handleUpload}>⬆️</button>
+								{/if}
+							</div>
 						</div>
-						<div class="tree-actions-header">
-							{#if mgr.treeRoot === 'content'}
-								<button class="action-btn-sm" title="Buat file baru" onclick={() => handleCreateFile('')}>📄+</button>
-							{/if}
-							<button class="action-btn-sm" title="Buat folder baru" onclick={() => handleCreateFolder('')}>📁+</button>
-							{#if mgr.treeRoot === 'assets'}
-								<button class="action-btn-sm" title="Upload gambar" onclick={handleUpload}>⬆️</button>
+						<div class="tree-content">
+							{#if mgr.treeLoading}
+								<div class="tree-loading">Memuat...</div>
+							{:else}
+								<ContentFileTree
+									nodes={mgr.treeRoot === 'content' ? mgr.contentTree : mgr.assetsTree}
+									activePath={mgr.activePath}
+									root={mgr.treeRoot}
+									onselect={handleSelect}
+									oncreate={mgr.treeRoot === 'content' ? (type, parentPath) => type === 'file' ? handleCreateFile(parentPath) : handleCreateFolder(parentPath) : undefined}
+									onrename={handleRename}
+									ondelete={handleDelete}
+								/>
 							{/if}
 						</div>
 					</div>
-					<div class="tree-content">
-						{#if mgr.treeLoading}
-							<div class="tree-loading">Memuat...</div>
+				{:else}
+					<!-- DESKTOP or MOBILE: Tree + Code side by side -->
+					<!-- File Tree -->
+					<div class="tree-panel" class:mobile-tree-hidden={mgr.isMobile}>
+						<div class="tree-header">
+							<div class="tree-tabs">
+								<button
+									class="tree-tab"
+									class:active={mgr.treeRoot === 'content'}
+									onclick={() => mgr.treeRoot = 'content'}
+								>Materi</button>
+								<button
+									class="tree-tab"
+									class:active={mgr.treeRoot === 'assets'}
+									onclick={() => mgr.treeRoot = 'assets'}
+								>Assets</button>
+							</div>
+							<div class="tree-actions-header">
+								{#if mgr.treeRoot === 'content'}
+									<button class="action-btn-sm" title="Buat file baru" onclick={() => handleCreateFile('')}>📄+</button>
+								{/if}
+								<button class="action-btn-sm" title="Buat folder baru" onclick={() => handleCreateFolder('')}>📁+</button>
+								{#if mgr.treeRoot === 'assets'}
+									<button class="action-btn-sm" title="Upload gambar" onclick={handleUpload}>⬆️</button>
+								{/if}
+							</div>
+						</div>
+						<div class="tree-content">
+							{#if mgr.treeLoading}
+								<div class="tree-loading">Memuat...</div>
+							{:else}
+								<ContentFileTree
+									nodes={mgr.treeRoot === 'content' ? mgr.contentTree : mgr.assetsTree}
+									activePath={mgr.activePath}
+									root={mgr.treeRoot}
+									onselect={handleSelect}
+									oncreate={mgr.treeRoot === 'content' ? (type, parentPath) => type === 'file' ? handleCreateFile(parentPath) : handleCreateFolder(parentPath) : undefined}
+									onrename={handleRename}
+									ondelete={handleDelete}
+								/>
+							{/if}
+						</div>
+					</div>
+
+					<!-- Code Editor / Asset Preview -->
+					<div class="code-panel">
+						{#if mgr.activePath}
+							{#if isImageFile}
+								<div class="asset-preview">
+									<div class="asset-preview-image">
+										<img src="/assets/{mgr.activePath}" alt={activeFileName} loading="lazy" />
+									</div>
+									<div class="asset-preview-info">
+										<span class="asset-name">{activeFileName}</span>
+										<span class="asset-path">/assets/{mgr.activePath}</span>										<div class="asset-actions">
+										<button class="btn btn-sm btn-secondary" onclick={handleCopyAssetPath}>📋 Salin Path</button>
+										</div>
+								</div>
+								</div>
+							{:else}
+								<CodeEditor
+									bind:this={editorRef}
+									code={mgr.body}
+									language="markdown"
+									onchange={handleEditorChange}
+								/>
+							{/if}
 						{:else}
-							<ContentFileTree
-								nodes={mgr.treeRoot === 'content' ? mgr.contentTree : mgr.assetsTree}
-								activePath={mgr.activePath}
-								root={mgr.treeRoot}
-								onselect={handleSelect}
-								oncreate={mgr.treeRoot === 'content' ? (type, parentPath) => type === 'file' ? handleCreateFile(parentPath) : handleCreateFolder(parentPath) : undefined}
-								onrename={handleRename}
-								ondelete={handleDelete}
-							/>
+							<div class="code-empty">
+								<p>Pilih file dari tree untuk mulai mengedit.</p>
+							</div>
 						{/if}
 					</div>
-				</div>
-
-				<!-- Code Editor -->
-				<div class="code-panel">
-					{#if mgr.activePath}
-						<CodeEditor
-							bind:this={editorRef}
-							code={mgr.body}
-							language="markdown"
-							onchange={handleEditorChange}
-						/>
-					{:else}
-						<div class="code-empty">
-							<p>Pilih file dari tree untuk mulai mengedit.</p>
-						</div>
-					{/if}
-				</div>
+				{/if}
 			</div>
 
 			<!-- Status bar -->
@@ -323,6 +480,11 @@
 				<div class="status-bar" class:success={mgr.lastMessage.type === 'success'} class:error={mgr.lastMessage.type === 'error'}>
 					{mgr.lastMessage.text}
 				</div>
+			{/if}
+
+			<!-- Resize handle (floating mode) -->				{#if float.floating && !mgr.isMobile && !float.minimized}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div class="resize-handle" onmousedown={float.onResizeStart} ontouchstart={float.onTouchResizeStart}></div>
 			{/if}
 		</div>
 	</div>
@@ -340,6 +502,10 @@
 
 	.content-editor-layout.single-col {
 		grid-template-columns: 1fr;
+	}
+
+	.content-editor-layout.has-floating .preview-panel {
+		grid-column: 1 / -1;
 	}
 
 	.access-denied {
@@ -367,6 +533,18 @@
 		min-height: 200px;
 		color: var(--color-text-muted);
 	}
+	.preview-asset {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.75rem;
+		padding: 1rem;
+	}
+	.preview-asset-meta {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		word-break: break-all;
+	}
 	.preview-error {
 		padding: 1rem;
 		background: #fff5f5;
@@ -389,6 +567,61 @@
 		height: 70vh;
 	}
 
+	/* Drag Handle */
+	.drag-handle {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 4px 10px;
+		background: var(--color-bg-secondary);
+		border-bottom: 1px solid var(--color-border);
+		cursor: grab;
+		user-select: none;
+		flex-shrink: 0;
+	}
+	.drag-handle:active {
+		cursor: grabbing;
+	}
+	.drag-handle-grip {
+		color: var(--color-text-muted);
+		font-size: 0.7rem;
+		line-height: 1;
+		letter-spacing: -1px;
+	}
+	.drag-handle-title {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		flex: 1;
+	}
+	.drag-handle-actions {
+		display: flex;
+		gap: 2px;
+	}
+	.drag-btn {
+		background: none;
+		border: 1px solid transparent;
+		cursor: pointer;
+		padding: 3px 5px;
+		border-radius: 4px;
+		color: var(--color-text-muted);
+		display: flex;
+		align-items: center;
+		transition: all 0.15s;
+	}
+	.drag-btn:hover {
+		background: var(--color-border);
+		color: var(--color-text);
+		border-color: var(--color-border);
+	}
+
+	.draggable-header {
+		cursor: grab;
+	}
+	.draggable-header:active {
+		cursor: grabbing;
+	}
+
 	.editor-header {
 		display: flex;
 		align-items: center;
@@ -396,6 +629,7 @@
 		padding: 0.5rem 1rem;
 		border-bottom: 1px solid var(--color-border);
 		background: var(--color-bg-secondary);
+		flex-shrink: 0;
 	}
 	.editor-filename {
 		font-weight: 600;
@@ -409,6 +643,21 @@
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
+	}
+
+	.btn-icon {
+		background: none;
+		border: none;
+		cursor: pointer;
+		padding: 4px;
+		border-radius: 4px;
+		color: var(--color-text);
+		display: flex;
+		align-items: center;
+		transition: background 0.15s;
+	}
+	.btn-icon:hover {
+		background: var(--color-border);
 	}
 
 	.editor-body {
@@ -503,6 +752,52 @@
 		color: var(--color-text-muted);
 	}
 
+	/* Asset Preview */
+	.asset-preview {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		overflow: hidden;
+	}
+	.asset-preview-image {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1rem;
+		overflow: auto;
+		background: repeating-conic-gradient(var(--color-border) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+	}
+	.asset-preview-image img {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+		border-radius: var(--radius);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	}
+	.asset-preview-info {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: 0.5rem 1rem;
+		border-top: 1px solid var(--color-border);
+		background: var(--color-bg-secondary);
+	}
+	.asset-name {
+		font-weight: 600;
+		font-size: 0.85rem;
+	}
+	.asset-path {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		word-break: break-all;
+	}
+	.asset-actions {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: 4px;
+	}
+
 	/* Status Bar */
 	.status-bar {
 		padding: 0.4rem 1rem;
@@ -510,6 +805,7 @@
 		font-weight: 500;
 		text-align: center;
 		border-top: 1px solid var(--color-border);
+		flex-shrink: 0;
 	}
 	.status-bar.success {
 		background: #ebfbee;
@@ -518,6 +814,29 @@
 	.status-bar.error {
 		background: #fff5f5;
 		color: #c92a2a;
+	}
+
+	/* Resize Handle (floating mode) */
+	.resize-handle {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		width: 18px;
+		height: 18px;
+		cursor: nwse-resize;
+		z-index: 10;
+	}
+	.resize-handle::before {
+		content: '';
+		position: absolute;
+		bottom: 3px;
+		left: 3px;
+		width: 10px;
+		height: 10px;
+		border-right: 2px solid var(--color-text-muted);
+		border-bottom: 2px solid var(--color-text-muted);
+		border-radius: 0 0 3px 0;
+		opacity: 0.5;
 	}
 
 	/* Mobile modes (reuse lesson.css patterns) */
@@ -543,6 +862,17 @@
 	.editor-area.mobile-h50 { height: 50vh; }
 	.editor-area.mobile-h70 { height: 70vh; }
 	.editor-area.mobile-full { height: 100dvh; border-radius: 0; max-height: none; }
+
+	/* Mobile tree full-width */
+	.tree-panel.mobile-tree-full {
+		width: 100%;
+		min-width: 0;
+		border-right: none;
+		flex: 1;
+	}
+	.tree-panel.mobile-tree-hidden {
+		display: none;
+	}
 
 	/* Floating mode */
 	.editor-area.floating {
@@ -612,9 +942,6 @@
 		.content-editor-layout {
 			grid-template-columns: 1fr;
 			padding: 0;
-		}
-		.tree-panel {
-			display: none;
 		}
 	}
 </style>

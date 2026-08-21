@@ -31,13 +31,14 @@ export function createFloatingPanel() {
 		return '';
 	});
 
-	function getPanel(e: MouseEvent): HTMLElement | null {
-		return (e.currentTarget as HTMLElement).closest('.editor-area') as HTMLElement | null;
+	function getPanelFromTarget(target: HTMLElement | null): HTMLElement | null {
+		return target?.closest('.editor-area') as HTMLElement | null;
 	}
 
 	function onDragStart(e: MouseEvent) {
 		if (!floating) return;
-		const panel = getPanel(e);
+		e.preventDefault();
+		const panel = getPanelFromTarget(e.currentTarget as HTMLElement);
 		if (!panel) return;
 		dragging = true;
 		const rect = panel.getBoundingClientRect();
@@ -61,10 +62,38 @@ export function createFloatingPanel() {
 		window.addEventListener('mouseup', onUp);
 	}
 
+	function onTouchDragStart(e: TouchEvent) {
+		if (!floating) return;
+		const panel = getPanelFromTarget(e.currentTarget as HTMLElement);
+		if (!panel) return;
+		dragging = true;
+		const rect = panel.getBoundingClientRect();
+		const touch = e.touches[0];
+		dragOffset = { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+		if (!size) {
+			size = { width: rect.width, height: rect.height };
+		}
+
+		const onMove = (ev: TouchEvent) => {
+			if (!dragging) return;
+			const t = ev.touches[0];
+			const newLeft = Math.max(0, Math.min(window.innerWidth - 100, t.clientX - dragOffset.x));
+			const newTop = Math.max(0, Math.min(window.innerHeight - 48, t.clientY - dragOffset.y));
+			pos = { top: newTop, left: newLeft };
+		};
+		const onUp = () => {
+			dragging = false;
+			window.removeEventListener('touchmove', onMove);
+			window.removeEventListener('touchend', onUp);
+		};
+		window.addEventListener('touchmove', onMove, { passive: false });
+		window.addEventListener('touchend', onUp);
+	}
+
 	function onResizeStart(e: MouseEvent) {
 		if (!floating) return;
 		e.preventDefault();
-		const panel = (e.currentTarget as HTMLElement).closest('.editor-area') as HTMLElement;
+		const panel = getPanelFromTarget(e.currentTarget as HTMLElement);
 		if (!panel) return;
 		const rect = panel.getBoundingClientRect();
 		const startX = e.clientX;
@@ -93,6 +122,39 @@ export function createFloatingPanel() {
 		window.addEventListener('mouseup', onUp);
 	}
 
+	function onTouchResizeStart(e: TouchEvent) {
+		if (!floating) return;
+		const panel = getPanelFromTarget(e.currentTarget as HTMLElement);
+		if (!panel) return;
+		const rect = panel.getBoundingClientRect();
+		const touch = e.touches[0];
+		const startX = touch.clientX;
+		const startY = touch.clientY;
+		const startW = rect.width;
+		const startH = rect.height;
+		const startLeft = rect.left;
+		const startTop = rect.top;
+
+		const onMove = (ev: TouchEvent) => {
+			const t = ev.touches[0];
+			const dx = startX - t.clientX;
+			const dy = startY - t.clientY;
+			const newW = Math.max(320, startW + dx);
+			const newH = Math.max(200, startH + dy);
+			size = { width: newW, height: newH };
+			pos = {
+				left: startLeft - (newW - startW),
+				top: startTop - (newH - startH),
+			};
+		};
+		const onUp = () => {
+			window.removeEventListener('touchmove', onMove);
+			window.removeEventListener('touchend', onUp);
+		};
+		window.addEventListener('touchmove', onMove, { passive: false });
+		window.addEventListener('touchend', onUp);
+	}
+
 	function toggle() {
 		floating = !floating;
 		minimized = false;
@@ -118,6 +180,8 @@ export function createFloatingPanel() {
 		minimize,
 		restore,
 		onDragStart,
+		onTouchDragStart,
 		onResizeStart,
+		onTouchResizeStart,
 	};
 }
