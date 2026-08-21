@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { authIsTeacher, authLoggedIn } from '$stores/auth';
+	import { authIsTeacher } from '$stores/auth';
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
 	import CodeEditor from '$components/CodeEditor.svelte';
 	import ContentFileTree from '$components/ContentFileTree.svelte';
@@ -38,6 +38,73 @@
 		}
 	});
 
+	// Available tabs based on preview data
+	let hasExercise = $derived(!!mgr.previewExerciseHtml);
+	let hasQuiz = $derived(mgr.previewQuizData.length > 0);
+
+	// Dynamic tabs from previewActiveTabs (e.g. 'c', 'python', 'circuit', 'velxio', 'flowchart')
+	type DynamicTab = { id: string; label: string; show?: boolean };
+	const TAB_LABELS: Record<string, string> = {
+		c: 'C',
+		python: 'Python',
+		circuit: 'Circuit',
+		velxio: 'Arduino',
+		flowchart: 'Flowchart',
+	};
+	let dynamicTabs = $derived(
+		(mgr.previewActiveTabs ?? [])
+			.filter((t) => !['quiz'].includes(t)) // quiz handled separately
+			.map((t): DynamicTab => ({ id: t, label: TAB_LABELS[t] ?? t }))
+	);
+
+	// Extract code blocks from raw markdown body for dynamic tabs
+	function extractCode(body: string, marker: string): string {
+		const startTag = `---${marker}---`;
+		const endTag = `---END_${marker}---`;
+		const startIdx = body.indexOf(startTag);
+		if (startIdx === -1) return '';
+		const codeStart = startIdx + startTag.length;
+		const endIdx = body.indexOf(endTag, codeStart);
+		if (endIdx === -1) return body.substring(codeStart).trim();
+		return body.substring(codeStart, endIdx).trim();
+	}
+
+	let extractedCodes = $derived((() => {
+		const codes: Record<string, string> = {};
+		for (const tab of dynamicTabs) {
+			if (tab.id === 'c') codes.c = extractCode(mgr.body, 'INITIAL_CODE');
+			else if (tab.id === 'python') codes.python = extractCode(mgr.body, 'INITIAL_PYTHON');
+			else if (tab.id === 'circuit') codes.circuit = extractCode(mgr.body, 'INITIAL_CIRCUIT');
+			else if (tab.id === 'velxio') codes.velxio = extractCode(mgr.body, 'INITIAL_CODE_ARDUINO');
+			else if (tab.id === 'flowchart') codes.flowchart = extractCode(mgr.body, 'INITIAL_FLOWCHART');
+		}
+		return codes;
+	})());
+
+	// Tab label map for chrome tabs
+	let allTabs = $derived([
+		{ id: 'editor', label: 'Editor' },
+		{ id: 'preview', label: 'Preview', show: !!mgr.previewHtml },
+		...dynamicTabs,
+		{ id: 'exercise', label: 'Exercise', show: hasExercise },
+		{ id: 'quiz', label: 'Quiz', show: hasQuiz },
+	].filter((t) => t.show !== false));
+
+	// Auto-switch to editor tab when switching files
+	$effect(() => {
+		if (mgr.activePath) {
+			mgr.activeTab = 'editor';
+		}
+	});
+
+	// Auto-switch away from a tab that's no longer available
+	$effect(() => {
+		const validIds = allTabs.map((t) => t.id);
+		if (!validIds.includes(mgr.activeTab)) {
+			mgr.activeTab = 'editor';
+		}
+	});
+
 	async function loadTrees() {
 		mgr.treeLoading = true;
 		try {
@@ -70,6 +137,7 @@
 			mgr.previewExerciseHtml = '';
 			mgr.previewQuizData = [];
 			mgr.previewError = null;
+			mgr.activeTab = 'editor';
 		} else {
 			mgr.loadDraft(path);
 		}
@@ -93,6 +161,13 @@
 	function handleEditorMount() {
 		if (editorRef && mgr.body) {
 			editorRef.setCode(mgr.body);
+		}
+	}
+
+	function handleTabClick(tab: string) {
+		mgr.activeTab = tab;
+		if (mgr.isMobile && mgr.mobileMode === 'hidden') {
+			mgr.mobileMode = 'h50';
 		}
 	}
 
@@ -196,7 +271,7 @@
 		input.click();
 	}
 
-	function handleCopyAssetPath(e?: MouseEvent) {
+	function handleCopyAssetPath() {
 		const path = mgr.activePath;
 		if (!path) return;
 		navigator.clipboard.writeText(`/assets/${path}`);
@@ -279,75 +354,79 @@
 			class:mobile-h70={mgr.isMobile && mgr.mobileMode === 'h70'}
 			class:mobile-full={mgr.isMobile && mgr.mobileMode === 'full'}
 			style={float.style}
-		>				<!-- Drag Handle Bar (floating mode) -->				{#if float.floating && !mgr.isMobile}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="panel-header draggable" onmousedown={float.onDragStart} ontouchstart={float.onTouchDragStart}>
-						<span class="resize-handle" onmousedown={(e) => { e.stopPropagation(); float.onResizeStart(e); }} ontouchstart={float.onTouchResizeStart}>&#x25F3;</span>
-						<div class="panel-title">Workspace</div>
-						<div class="panel-actions">
-							<button class="panel-btn" title="Kembali ke dock (inline)" onclick={float.toggle}>&#x229E;</button>
-							<button class="panel-btn" title="Minimize" onclick={float.minimize}>▽</button>
-						</div>
+		>
+			<!-- Panel Header (floating drag handle) -->
+			{#if float.floating && !mgr.isMobile}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="panel-header draggable" onmousedown={float.onDragStart} ontouchstart={float.onTouchDragStart}>
+					<span class="resize-handle" onmousedown={(e) => { e.stopPropagation(); float.onResizeStart(e); }} ontouchstart={float.onTouchResizeStart}>&#x25F3;</span>
+					<div class="chrome-tabs">
+						{#each allTabs as tab}
+							<button class="chrome-tab" class:active={mgr.activeTab === tab.id} onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
+						{/each}
+					</div>
+					<div class="panel-actions">
+						<button class="panel-btn" title="Minimize" onclick={float.minimize}>▽</button>
+						<button class="panel-btn" title="Kembali ke dock (inline)" onclick={float.toggle}>&#x229E;</button>
+					</div>
+				</div>
+			{:else if mgr.isMobile}
+				<!-- Mobile: panel header with tabs + swipe -->
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="panel-header" ontouchstart={(e) => { /* future swipe support */ }}>
+					{#if !mobileShowTree && mgr.activePath}
+						<button class="panel-btn mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">◀</button>
+					{/if}
+					<div class="chrome-tabs">
+						{#if !mobileShowTree}
+							{#each allTabs as tab}
+								<button class="chrome-tab" class:active={mgr.activeTab === tab.id} onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
+							{/each}
+						{:else}
+							<span class="chrome-tab active">File Tree</span>
+						{/if}
+					</div>
+					<div class="panel-actions">
+						<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'hidden') mgr.mobileMode = mgr.mobileMode === 'full' ? 'h50' : 'hidden'; else mgr.mobileMode = 'h50'; }} title="Minimize" disabled={mgr.mobileMode === 'hidden'}>▽</button>
+						<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'full') mgr.mobileMode = mgr.mobileMode === 'hidden' ? 'h50' : 'full'; else mgr.mobileMode = 'h50'; }} title="Maximize" disabled={mgr.mobileMode === 'full'}>△</button>
+					</div>
+				</div>
+			{:else}
+				<!-- Desktop: panel header with tabs + actions -->
+				<div class="panel-header">
+					{#if mgr.activePath && !isAssetFile}
+						<button class="panel-btn mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">◀</button>
+					{/if}
+					<div class="chrome-tabs">
+						{#if mgr.activePath}
+							{#each allTabs as tab}
+								<button class="chrome-tab" class:active={mgr.activeTab === tab.id} onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
+							{/each}
+						{/if}
+					</div>
+					<div class="panel-actions">
+						{#if !isAssetFile}
+							<button class="panel-btn save-btn" onclick={() => mgr.handleSave()} disabled={mgr.saving || !mgr.dirty || !mgr.activePath}>
+								{mgr.saving ? 'Menyimpan...' : '💾 Simpan'}
+							</button>
+							<button class="panel-btn publish-btn" onclick={() => mgr.handlePublish()} disabled={mgr.publishing || !mgr.draftId}>
+								{mgr.publishing ? 'Mempublikasikan...' : '🚀 Publish'}
+							</button>
+						{/if}
+						<button type="button" class="btn-float-toggle" onclick={float.toggle} title={float.floating ? 'Dock ke layout' : 'Float (detach)'}>&#x229E;</button>
+					</div>
 				</div>
 			{/if}
 
-			<!-- Editor Header -->
-			<div class="editor-header" class:draggable-header={float.floating && !mgr.isMobile}
-				onmousedown={float.floating && !mgr.isMobile ? float.onDragStart : undefined}
-			>
-				<!-- Mobile: back to tree button -->					{#if mgr.isMobile && !mobileShowTree}
-						<button class="panel-btn mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">◀</button>
-					{/if}
-
-				<span class="editor-filename">{activeFileName || 'Editor'}</span>
-				<div class="editor-actions">
-					<!-- Desktop: Dock/Float toggle -->
-					{#if !mgr.isMobile}
-						<button class="btn-float-toggle" onclick={float.toggle} title={float.floating ? 'Dock ke layout' : 'Float (detach)'}>&#x229E;</button>
-					{/if}
-
-					{#if !isAssetFile}
-					<button
-						class="btn btn-sm btn-secondary"
-						onclick={() => mgr.handleSave()}
-						disabled={mgr.saving || !mgr.dirty || !mgr.activePath}
-					>
-						{mgr.saving ? 'Menyimpan...' : '💾 Simpan Draft'}
-					</button>
-					<button
-						class="btn btn-sm btn-primary"
-						onclick={() => mgr.handlePublish()}
-						disabled={mgr.publishing || !mgr.draftId}
-					>
-						{mgr.publishing ? 'Mempublikasikan...' : '🚀 Publish'}
-					</button>
-					{/if}
-					{#if mgr.isMobile}
-						<div class="panel-actions">
-							<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'hidden') mgr.mobileMode = mgr.mobileMode === 'full' ? 'h50' : 'hidden'; else mgr.mobileMode = 'h50'; }} title="Minimize" disabled={mgr.mobileMode === 'hidden'}>▽</button>
-							<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'full') mgr.mobileMode = mgr.mobileMode === 'hidden' ? 'h50' : 'full'; else mgr.mobileMode = 'h50'; }} title="Maximize" disabled={mgr.mobileMode === 'full'}>△</button>
-						</div>
-					{/if}
-				</div>
-			</div>
-
-			<!-- Editor Body -->
+			<!-- Editor Body: tab panels -->
 			<div class="editor-body">
 				{#if mgr.isMobile && mobileShowTree}
 					<!-- MOBILE: Show full-width tree -->
 					<div class="tree-panel mobile-tree-full">
 						<div class="tree-header">
 							<div class="tree-tabs">
-								<button
-									class="tree-tab"
-									class:active={mgr.treeRoot === 'content'}
-									onclick={() => mgr.treeRoot = 'content'}
-								>Materi</button>
-								<button
-									class="tree-tab"
-									class:active={mgr.treeRoot === 'assets'}
-									onclick={() => mgr.treeRoot = 'assets'}
-								>Assets</button>
+								<button class="tree-tab" class:active={mgr.treeRoot === 'content'} onclick={() => mgr.treeRoot = 'content'}>Materi</button>
+								<button class="tree-tab" class:active={mgr.treeRoot === 'assets'} onclick={() => mgr.treeRoot = 'assets'}>Assets</button>
 							</div>
 							<div class="tree-actions-header">
 								{#if mgr.treeRoot === 'content'}
@@ -376,21 +455,13 @@
 						</div>
 					</div>
 				{:else}
-					<!-- DESKTOP or MOBILE: Tree + Code side by side -->
+					<!-- DESKTOP or MOBILE: Tree + Tab panels side by side -->
 					<!-- File Tree -->
 					<div class="tree-panel" class:mobile-tree-hidden={mgr.isMobile}>
 						<div class="tree-header">
 							<div class="tree-tabs">
-								<button
-									class="tree-tab"
-									class:active={mgr.treeRoot === 'content'}
-									onclick={() => mgr.treeRoot = 'content'}
-								>Materi</button>
-								<button
-									class="tree-tab"
-									class:active={mgr.treeRoot === 'assets'}
-									onclick={() => mgr.treeRoot = 'assets'}
-								>Assets</button>
+								<button class="tree-tab" class:active={mgr.treeRoot === 'content'} onclick={() => mgr.treeRoot = 'content'}>Materi</button>
+								<button class="tree-tab" class:active={mgr.treeRoot === 'assets'} onclick={() => mgr.treeRoot = 'assets'}>Assets</button>
 							</div>
 							<div class="tree-actions-header">
 								{#if mgr.treeRoot === 'content'}
@@ -419,34 +490,99 @@
 						</div>
 					</div>
 
-					<!-- Code Editor / Asset Preview -->
-					<div class="code-panel">
-						{#if mgr.activePath}
-							{#if isImageFile}
-								<div class="asset-preview">
-									<div class="asset-preview-image">
-										<img src="/assets/{mgr.activePath}" alt={activeFileName} loading="lazy" />
-									</div>
-									<div class="asset-preview-info">
-										<span class="asset-name">{activeFileName}</span>
-										<span class="asset-path">/assets/{mgr.activePath}</span>										<div class="asset-actions">
-										<button class="btn btn-sm btn-secondary" onclick={handleCopyAssetPath}>📋 Salin Path</button>
+					<!-- Tab Panels -->
+					<div class="tab-panels">
+						<!-- Editor Tab -->
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'editor'}>
+							{#if mgr.activePath}
+								{#if isImageFile}
+									<div class="asset-preview">
+										<div class="asset-preview-image">
+											<img src="/assets/{mgr.activePath}" alt={activeFileName} loading="lazy" />
 										</div>
+										<div class="asset-preview-info">
+											<span class="asset-name">{activeFileName}</span>
+											<span class="asset-path">/assets/{mgr.activePath}</span>
+											<div class="asset-actions">
+												<button class="panel-btn" onclick={handleCopyAssetPath}>📋 Salin Path</button>
+											</div>
+										</div>
+									</div>
+								{:else}
+									<div class="code-tab-content">
+										<CodeEditor
+											bind:this={editorRef}
+											code={mgr.body}
+											language="markdown"
+											onchange={handleEditorChange}
+										/>
+									</div>
+								{/if}
+							{:else}
+								<div class="tab-empty">
+									<p>Pilih file dari tree untuk mulai mengedit.</p>
 								</div>
+							{/if}
+						</div>
+
+						<!-- Preview Tab -->
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'preview'}>
+							{#if mgr.previewLoading}
+								<div class="tab-empty">Memuat preview...</div>
+							{:else if mgr.previewHtml}
+								<div class="tab-content prose">
+									{@html mgr.previewHtml}
 								</div>
 							{:else}
-								<CodeEditor
-									bind:this={editorRef}
-									code={mgr.body}
-									language="markdown"
-									onchange={handleEditorChange}
-								/>
+								<div class="tab-empty">
+									<p>Buka file materi dan edit untuk melihat preview.</p>
+								</div>
 							{/if}
-						{:else}
-							<div class="code-empty">
-								<p>Pilih file dari tree untuk mulai mengedit.</p>
+						</div>
+
+						<!-- Exercise Tab -->
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'exercise'}>
+							{#if mgr.previewExerciseHtml}
+								<div class="tab-content prose">
+									<h2 class="tab-heading">Latihan</h2>
+									{@html mgr.previewExerciseHtml}
+								</div>
+							{:else}
+								<div class="tab-empty">
+									<p>Tidak ada exercise untuk file ini.</p>
+								</div>
+							{/if}
+						</div>
+
+						<!-- Quiz Tab -->
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'quiz'}>
+							{#if mgr.previewQuizData.length > 0}
+								<QuizPreviewReadonly quizData={mgr.previewQuizData as any} />
+							{:else}
+								<div class="tab-empty">
+									<p>Tidak ada quiz untuk file ini.</p>
+								</div>
+							{/if}
+						</div>
+
+						<!-- Dynamic code tabs (C, Python, Circuit, etc.) -->
+						{#each dynamicTabs as dynTab}
+							<div class="tab-panel" class:tab-hidden={mgr.activeTab !== dynTab.id}>
+								{#if extractedCodes[dynTab.id]}
+									<div class="code-tab-content">
+										<CodeEditor
+											code={extractedCodes[dynTab.id]}
+											language={dynTab.id === 'c' ? 'c' : dynTab.id === 'python' ? 'python' : 'plaintext'}
+											onchange={() => {}}
+									/>
+									</div>
+								{:else}
+									<div class="tab-empty">
+										<p>Belum ada kode {dynTab.label} di konten ini.</p>
+									</div>
+								{/if}
 							</div>
-						{/if}
+						{/each}
 					</div>
 				{/if}
 			</div>
@@ -458,9 +594,10 @@
 				</div>
 			{/if}
 
-			<!-- Resize handle (floating mode) -->				{#if float.floating && !mgr.isMobile && !float.minimized}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<div class="resize-handle" onmousedown={float.onResizeStart} ontouchstart={float.onTouchResizeStart}>&#x25F3;</div>
+			<!-- Resize handle (floating mode) -->
+			{#if float.floating && !mgr.isMobile && !float.minimized}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="resize-handle" onmousedown={float.onResizeStart} ontouchstart={float.onTouchResizeStart}>&#x25F3;</div>
 			{/if}
 		</div>
 	</div>
@@ -575,6 +712,8 @@
 	}
 	.panel-btn:hover { background: var(--color-border); }
 	.panel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+	.panel-btn.save-btn { color: var(--color-text-muted); }
+	.panel-btn.publish-btn { color: var(--color-primary, #339af0); font-weight: 600; }
 	.panel-title {
 		font-size: 0.75rem;
 		font-weight: 600;
@@ -598,7 +737,92 @@
 		color: var(--color-text);
 	}
 
+	/* ── Chrome-style tabs (reuse from WorkspaceHeader) ── */
+	.chrome-tabs {
+		display: flex;
+		align-items: flex-end;
+		gap: 2px;
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
+	}
+	.chrome-tabs::-webkit-scrollbar { display: none; }
 
+	.chrome-tab {
+		position: relative;
+		padding: 5px 12px;
+		border: 1px solid transparent;
+		border-bottom: none;
+		border-radius: 8px 8px 0 0;
+		background: transparent;
+		color: var(--color-text-muted);
+		font-size: 0.78rem;
+		font-weight: 500;
+		cursor: pointer;
+		white-space: nowrap;
+		flex-shrink: 0;
+		margin-bottom: -1px;
+		z-index: 0;
+		transition: background 0.15s, color 0.15s;
+	}
+	.chrome-tab:hover:not(.active) {
+		background: var(--color-border);
+		color: var(--color-text);
+	}
+	.chrome-tab.active {
+		background: var(--color-bg);
+		color: var(--color-text);
+		font-weight: 600;
+		border-color: var(--color-border);
+		z-index: 1;
+	}
+
+	/* Tab Panels */
+	.tab-panels {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-height: 0;
+	}
+	.tab-panel {
+		flex: 1;
+		overflow-y: auto;
+		min-height: 0;
+	}
+	.tab-panel.tab-hidden {
+		display: none;
+	}
+	.tab-content {
+		padding: 1rem;
+	}
+	.tab-heading {
+		font-size: 1.1rem;
+		font-weight: 700;
+		margin-bottom: 0.75rem;
+		color: var(--color-text);
+	}
+	.tab-empty {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+		min-height: 200px;
+		color: var(--color-text-muted);
+		text-align: center;
+		padding: 1rem;
+	}
+
+	/* Code tab content fills available space */
+	.code-tab-content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-height: 0;
+	}
 
 	.editor-header {
 		display: flex;
@@ -622,8 +846,6 @@
 		gap: 0.5rem;
 		align-items: center;
 	}
-
-
 
 	.editor-body {
 		flex: 1;
@@ -701,7 +923,7 @@
 		font-size: 0.8rem;
 	}
 
-	/* Code Panel */
+	/* Code Panel (legacy, kept for reference) */
 	.code-panel {
 		flex: 1;
 		display: flex;
@@ -728,6 +950,20 @@
 		justify-content: center;
 		height: 100%;
 		color: var(--color-text-muted);
+	}
+
+	/* Force CodeEditor in tab to fill parent */
+	.code-tab-content :global(.editor-wrapper) {
+		flex: 1;
+		min-height: 0;
+	}
+	.code-tab-content :global(.cm-editor) {
+		height: 100% !important;
+		min-height: 0 !important;
+		max-height: none !important;
+	}
+	.code-tab-content :global(.cm-scroller) {
+		height: 100%;
 	}
 
 	/* Asset Preview */

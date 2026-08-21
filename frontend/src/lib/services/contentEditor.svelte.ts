@@ -24,6 +24,9 @@ export class ContentEditorManager {
 	mobileMode = $state<'hidden' | 'h30' | 'h50' | 'h70' | 'full'>('hidden');
 	isMobile = $state(false);
 
+	// Tab state — 'editor' | 'preview' | 'exercise' | 'quiz' | dynamic tabs from active_tabs ('c', 'python', 'circuit', 'velxio', 'flowchart')
+	activeTab = $state<string>('editor');
+
 	// Tree state
 	contentTree = $state<any[]>([]);
 	assetsTree = $state<any[]>([]);
