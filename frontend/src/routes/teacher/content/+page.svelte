@@ -174,6 +174,266 @@
 		}
 	}
 
+	// ── Feature template sidebar ──────────────────────────────────────
+	// Insert a feature section template at the editor cursor. Works in all
+	// layout modes (desktop docked, floating, mobile). Shown in a hide-able
+	// right sidebar grouped into "Konten" and "Penilaian".
+	type FeatureTemplate = { id: string; label: string; group: 'konten' | 'penilaian'; snippet: string };
+
+	let featureSidebarOpen = $state(true);
+	let featureSidebarNarrow = $state(false);
+
+	// Desktop: panel fitur terbuka by default. Mobile: default tersembunyi (drawer).
+	$effect(() => {
+		if (mgr.isMobile) featureSidebarOpen = false;
+	});
+
+	const FEATURE_TEMPLATES: FeatureTemplate[] = [
+		// ── Konten ──
+		{
+			id: 'info',
+			label: 'Info',
+			group: 'konten',
+			snippet:
+				'---LESSON_INFO---\n' +
+				'**Learning Objectives:**\n- \n\n' +
+				'**Prerequisites:**\n- \n' +
+				'---END_LESSON_INFO---\n',
+		},
+		{
+			id: 'c',
+			label: 'C',
+			group: 'konten',
+			snippet:
+				'\n---INITIAL_CODE---\n' +
+				'#include <stdio.h>\n\nint main() {\n    \n    return 0;\n}\n' +
+				'---END_INITIAL_CODE---\n',
+		},
+		{
+			id: 'python',
+			label: 'Python',
+			group: 'konten',
+			snippet:
+				'\n---INITIAL_PYTHON---\n' +
+				'# Tulis kode Python di sini\n' +
+				'---END_INITIAL_PYTHON---\n',
+		},
+		{
+			id: 'circuit',
+			label: 'Circuit Tab',
+			group: 'konten',
+			snippet:
+				'\n---INITIAL_CIRCUIT---\n' +
+				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
+				'  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>\n' +
+				'  <r x="80 112 176 112" f="0" r="1000"/>\n' +
+				'  <w x="176 200 80 200" f="0"/>\n' +
+				'</cir>\n' +
+				'---END_INITIAL_CIRCUIT---\n',
+		},
+		{
+			id: 'arduino',
+			label: 'Arduino',
+			group: 'konten',
+			snippet:
+				'\n---INITIAL_CODE_ARDUINO---\n' +
+				'void setup() {\n  \n}\n\n' +
+				'void loop() {\n  \n}\n' +
+				'---END_INITIAL_CODE_ARDUINO---\n',
+		},
+		{
+			id: 'velxio-circuit',
+			label: 'Velxio',
+			group: 'konten',
+			snippet:
+				'\n---VELXIO_CIRCUIT---\n' +
+				'{\n  "board": "arduino:avr:uno",\n  "components": [],\n  "wires": []\n}\n' +
+				'---END_VELXIO_CIRCUIT---\n',
+		},
+		{
+			id: 'flowchart',
+			label: 'Flowchart Tab',
+			group: 'konten',
+			snippet:
+				'\n---INITIAL_FLOWCHART---\n' +
+				'start[roundrect] "Mulai"\n' +
+				'init[rect] "Inisialisasi"\n' +
+				'start --> init\n' +
+				'---END_INITIAL_FLOWCHART---\n',
+		},
+		{
+			id: 'quiz',
+			label: 'Quiz',
+			group: 'konten',
+			snippet:
+				'\n---QUIZ_FLASHCARD---\n' +
+				'### Pertanyaan contoh?\n' +
+				'- [] Pilihan A\n- [x] Pilihan B\n' +
+				'> Penjelasan: tulis penjelasan di sini.\n' +
+				'---END_QUIZ_FLASHCARD---\n',
+		},
+		{
+			id: 'exercise',
+			label: 'Exercise',
+			group: 'konten',
+			snippet:
+				'\n---EXERCISE---\n' +
+				'### Tantangan\n' +
+				'Tulis deskripsi latihan di sini.\n' +
+				'---\n',
+		},
+		{
+			id: 'slide',
+			label: 'Slide',
+			group: 'konten',
+			snippet:
+				'\n---slide-start---\n' +
+				'# Judul Slide 1\nTulis konten slide pertama di sini.\n\n' +
+				'```embed\n<iframe src="https://www.canva.com/design/XXXX/view?embed"></iframe>\n```\n' +
+				'---\n' +
+				'# Judul Slide 2\nTulis konten slide kedua.\n' +
+				'---slide-end---\n',
+		},
+		{
+			id: 'circuit-inline',
+			label: 'Circuit',
+			group: 'konten',
+			snippet:
+				'\n```circuit\n' +
+				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
+				'  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>\n' +
+				'  <r x="80 112 176 112" f="0" r="1000"/>\n' +
+				'  <w x="176 200 80 200" f="0"/>\n' +
+				'</cir>\n' +
+				'```\n',
+		},
+		{
+			id: 'flowchart-inline',
+			label: 'Flowchart',
+			group: 'konten',
+			snippet:
+				'\n```flowchart,100%,300px\n' +
+				'start[roundrect] "Mulai"\n' +
+				'init[rect] "Inisialisasi"\n' +
+				'start --> init\n' +
+				'```\n',
+		},
+		{
+			id: 'embed',
+			label: 'Embed',
+			group: 'konten',
+			snippet:
+				'\n```embed\n' +
+				'<div style="position: relative; width: 100%; height: 0; padding-top: 56.25%; overflow: hidden; border-radius: 8px;">\n' +
+				'  <iframe loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; border: none;" src="https://www.canva.com/design/XXXX/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>\n' +
+				'</div>\n' +
+				'```\n',
+		},
+		// ── Penilaian ──
+		{
+			id: 'expected-c',
+			label: 'Exp C',
+			group: 'penilaian',
+			snippet:
+				'\n---EXPECTED_OUTPUT---\n' +
+				'Output yang diharapkan\n' +
+				'---END_EXPECTED_OUTPUT---\n',
+		},
+		{
+			id: 'expected-py',
+			label: 'Exp Py',
+			group: 'penilaian',
+			snippet:
+				'\n---EXPECTED_OUTPUT_PYTHON---\n' +
+				'Output yang diharapkan\n' +
+				'---END_EXPECTED_OUTPUT_PYTHON---\n',
+		},
+		{
+			id: 'expected-circuit',
+			label: 'Exp Circuit',
+			group: 'penilaian',
+			snippet:
+				'\n---EXPECTED_CIRCUIT_OUTPUT---\n' +
+				'{\n  "nodes": {\n    "Vout": { "voltage": 2.5, "tolerance": 0.2 }\n  }\n}\n' +
+				'---END_EXPECTED_CIRCUIT_OUTPUT---\n',
+		},
+		{
+			id: 'expected-serial',
+			label: 'Exp Serial',
+			group: 'penilaian',
+			snippet:
+				'\n---EXPECTED_SERIAL_OUTPUT---\n' +
+				'LED ON\nLED OFF\n' +
+				'---END_EXPECTED_SERIAL_OUTPUT---\n',
+		},
+		{
+			id: 'expected-flowchart',
+			label: 'Exp Flow',
+			group: 'penilaian',
+			snippet:
+				'\n---EXPECTED_FLOWCHART---\n' +
+				'start[roundrect] "mulai"\ninit[rect] "inisialisasi"\nstart --> init\n' +
+				'---END_EXPECTED_FLOWCHART---\n',
+		},
+		{
+			id: 'solution-c',
+			label: 'Sol C',
+			group: 'penilaian',
+			snippet:
+				'\n---SOLUTION_CODE---\n' +
+				'#include <stdio.h>\n\nint main() {\n    \n    return 0;\n}\n' +
+				'---END_SOLUTION_CODE---\n',
+		},
+		{
+			id: 'solution-py',
+			label: 'Sol Py',
+			group: 'penilaian',
+			snippet:
+				'\n---SOLUTION_PYTHON---\n' +
+				'# Solusi Python\n' +
+				'---END_SOLUTION_PYTHON---\n',
+		},
+		{
+			id: 'solution-circuit',
+			label: 'Sol Circuit',
+			group: 'penilaian',
+			snippet:
+				'\n---SOLUTION_CIRCUIT---\n' +
+				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
+				'  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>\n' +
+				'  <r x="80 112 176 112" f="0" r="1000"/>\n' +
+				'  <w x="176 200 80 200" f="0"/>\n' +
+				'</cir>\n' +
+				'---END_SOLUTION_CIRCUIT---\n',
+		},
+		{
+			id: 'key-text',
+			label: 'Key Text',
+			group: 'penilaian',
+			snippet:
+				'\n---KEY_TEXT---\n' +
+				'kata_kunci1\nkata_kunci2\n' +
+				'---END_KEY_TEXT---\n',
+		},
+		{
+			id: 'key-text-circuit',
+			label: 'Key Circuit',
+			group: 'penilaian',
+			snippet:
+				'\n---KEY_TEXT_CIRCUIT---\n' +
+				'Vout\n' +
+				'---END_KEY_TEXT_CIRCUIT---\n',
+		},
+	];
+
+	function insertTemplate(tpl: FeatureTemplate) {
+		if (!mgr.activePath || isAssetFile) return;
+		editorRef?.insertAtCursor(tpl.snippet);
+		// Ensure editor tab is visible so the user sees the insertion
+		mgr.activeTab = 'editor';
+	}
+
+
 	// Tree operations
 	async function handleCreateFolder(parentPath: string) {
 		const name = window.prompt('Nama folder baru:');
@@ -360,7 +620,20 @@
 			class:mobile-full={mgr.isMobile && mgr.mobileMode === 'full'}
 			style={float.style}
 		>
-			<!-- Panel Header (floating drag handle) -->
+			<!-- Save / Publish actions (shared across all header modes) -->
+		{#snippet saveActions()}
+			{#if mgr.activePath && !isAssetFile}
+				<button class="panel-btn toolbar-toggle" class:active={featureSidebarOpen} onclick={() => featureSidebarOpen = !featureSidebarOpen} title="Tampilkan/sembunyikan panel Fitur">🧩</button>
+				<button class="panel-btn save-btn" onclick={() => mgr.handleSave()} disabled={mgr.saving || !mgr.dirty} title="Simpan">
+					{mgr.saving ? '⏳' : '💾'}
+				</button>
+				<button class="panel-btn publish-btn" onclick={() => mgr.handlePublish()} disabled={mgr.publishing || !mgr.draftId} title="Publish">
+					{mgr.publishing ? '⏳' : '🚀'}
+				</button>
+			{/if}
+		{/snippet}
+
+		<!-- Panel Header (floating drag handle) -->
 			{#if float.floating && !mgr.isMobile}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="panel-header draggable" onmousedown={float.onDragStart} ontouchstart={float.onTouchDragStart}>
@@ -371,6 +644,7 @@
 						{/each}
 					</div>
 					<div class="panel-actions">
+						{@render saveActions()}
 						<button class="panel-btn" title="Minimize" onclick={float.minimize}>▽</button>
 						<button class="panel-btn" title="Kembali ke dock (inline)" onclick={float.toggle}>&#x229E;</button>
 					</div>
@@ -392,6 +666,7 @@
 						{/if}
 					</div>
 					<div class="panel-actions">
+						{@render saveActions()}
 						<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'hidden') mgr.mobileMode = mgr.mobileMode === 'full' ? 'h50' : 'hidden'; else mgr.mobileMode = 'h50'; }} title="Minimize" disabled={mgr.mobileMode === 'hidden'}>▽</button>
 						<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'full') mgr.mobileMode = mgr.mobileMode === 'hidden' ? 'h50' : 'full'; else mgr.mobileMode = 'h50'; }} title="Maximize" disabled={mgr.mobileMode === 'full'}>△</button>
 					</div>
@@ -410,20 +685,16 @@
 						{/if}
 					</div>
 					<div class="panel-actions">
-						{#if !isAssetFile}
-							<button class="panel-btn save-btn" onclick={() => mgr.handleSave()} disabled={mgr.saving || !mgr.dirty || !mgr.activePath}>
-								{mgr.saving ? 'Menyimpan...' : '💾 Simpan'}
-							</button>
-							<button class="panel-btn publish-btn" onclick={() => mgr.handlePublish()} disabled={mgr.publishing || !mgr.draftId}>
-								{mgr.publishing ? 'Mempublikasikan...' : '🚀 Publish'}
-							</button>
-						{/if}
-						<button type="button" class="btn-float-toggle" onclick={float.toggle} title={float.floating ? 'Dock ke layout' : 'Float (detach)'}>&#x229E;</button>
+						{@render saveActions()}
+						<button type="button" class="btn-float-toggle" onclick={float.toggle} title={float.floating ? 'Dock ke layout' : 'Float (detach)'}>
+							&#x229E;
+						</button>
 					</div>
 				</div>
-			{/if}
+				{/if}
 
-			<!-- Editor Body: tab panels -->
+				<!-- Editor main: tab panels + feature sidebar -->
+			<div class="editor-main">
 			<div class="editor-body">
 				{#if mgr.isMobile && mobileShowTree}
 					<!-- MOBILE: Show full-width tree -->
@@ -605,6 +876,30 @@
 				{/if}
 			</div>
 
+			<!-- Feature sidebar (right, hide-able) -->
+			{#if featureSidebarOpen && mgr.activePath && !isAssetFile}
+				<aside class="feature-sidebar" class:mobile-drawer={mgr.isMobile} class:narrow={featureSidebarNarrow}>
+					<div class="feature-sidebar-header">
+						<span>Fitur</span>
+					</div>
+					<div class="feature-sidebar-body">
+						<div class="feature-group-label">Konten</div>
+						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'konten') as tpl}
+							<button class="feature-btn" title={"Sisipkan template " + tpl.label} onclick={() => insertTemplate(tpl)}>
+								{tpl.label}
+							</button>
+						{/each}
+						<div class="feature-group-label">Penilaian</div>
+						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'penilaian') as tpl}
+							<button class="feature-btn" title={"Sisipkan template " + tpl.label} onclick={() => insertTemplate(tpl)}>
+								{tpl.label}
+							</button>
+						{/each}
+					</div>
+				</aside>
+			{/if}
+			</div>
+
 			<!-- Status bar -->
 			{#if mgr.lastMessage}
 				<div class="status-bar" class:success={mgr.lastMessage.type === 'success'} class:error={mgr.lastMessage.type === 'error'}>
@@ -732,6 +1027,106 @@
 	.panel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 	.panel-btn.save-btn { color: var(--color-text-muted); }
 	.panel-btn.publish-btn { color: var(--color-primary, #339af0); font-weight: 600; }
+
+	/* Editor main: tab panels (left) + feature sidebar (right) */
+	.editor-main {
+		display: flex;
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.feature-btn {
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 0.35rem 0.6rem;
+		cursor: pointer;
+		font-size: 0.78rem;
+		color: var(--color-text);
+		line-height: 1;
+		white-space: nowrap;
+		width: 100%;
+		text-align: left;
+	}
+	.feature-btn:hover:not(:disabled) { background: var(--color-border); }
+	.feature-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+	/* Right feature sidebar */
+	.feature-sidebar {
+		width: 20%;
+		min-width: 150px;
+		max-width: 300px;
+		flex-shrink: 0;
+		background: var(--color-bg-secondary);
+		border-left: 1px solid var(--color-border);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.feature-sidebar.narrow {
+		width: 10%;
+		min-width: 64px;
+		max-width: 160px;
+	}
+	.feature-sidebar.narrow .feature-btn {
+		font-size: 0.62rem;
+		padding: 0.3rem 0.2rem;
+		text-align: center;
+	}
+	.feature-sidebar.narrow .feature-group-label { display: none; }
+	.feature-sidebar-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 8px;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+		border-bottom: 1px solid var(--color-border);
+		flex-shrink: 0;
+	}
+	.feature-sidebar-body {
+		padding: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		overflow-y: auto;
+	}
+	.feature-group-label {
+		font-size: 0.7rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--color-text-muted);
+		margin-top: 0.5rem;
+		margin-bottom: 0.1rem;
+	}
+	.feature-group-label:first-child { margin-top: 0; }
+
+	/* Toolbar Fitur toggle (icon, highlighted when sidebar open) */
+	.toolbar-toggle {
+		font-size: 0.95rem;
+		line-height: 1;
+		padding: 0.2rem 0.5rem;
+	}
+	.toolbar-toggle.active {
+		background: var(--color-border);
+		color: var(--color-text);
+	}
+
+	/* Mobile: same 20% inline sidebar as desktop (no drawer overlay) */
+	@media (max-width: 768px) {
+		.feature-sidebar.mobile-drawer {
+			position: static;
+			top: auto;
+			right: auto;
+			bottom: auto;
+			width: 30%;
+			min-width: 70px;
+			max-width: 200px;
+			z-index: auto;
+			box-shadow: none;
+		}
+	}
 	.panel-title {
 		font-size: 0.75rem;
 		font-weight: 600;

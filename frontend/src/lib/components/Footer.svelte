@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { authIsTeacher } from '$stores/auth';
 	import { env } from '$env/dynamic/public';
 	import { APP_VERSION } from '$lib/version';
 </script>
@@ -7,9 +6,6 @@
 <footer class="footer">
 	<div class="container">
 		<p>&copy; {env.PUBLIC_COPYRIGHT_TEXT || `${new Date().getFullYear()} Elemes LMS`} <span class="version-badge">v{APP_VERSION}</span></p>
-		{#if $authIsTeacher}
-			<p><a href="/progress" class="teacher-link">Laporan Progress Siswa</a></p>
-		{/if}
 	</div>
 </footer>
 

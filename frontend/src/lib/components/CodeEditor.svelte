@@ -302,6 +302,17 @@
 		});
 	}
 
+	/** Insert text at the current cursor / selection. Triggers onchange. */
+	export function insertAtCursor(text: string) {
+		if (!view) return;
+		const { from, to } = view.state.selection.main;
+		view.dispatch({
+			changes: { from, to, insert: text },
+			selection: { anchor: from + text.length },
+		});
+		view.focus();
+	}
+
 	/** Return current editor content. */
 	export function getCode(): string {
 		return view?.state.doc.toString() ?? code;
