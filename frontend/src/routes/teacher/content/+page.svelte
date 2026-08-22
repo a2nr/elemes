@@ -137,6 +137,8 @@
 			mgr.previewHtml = '';
 			mgr.previewExerciseHtml = '';
 			mgr.previewQuizData = [];
+			mgr.previewSlides = [];
+			mgr.previewActiveTabs = [];
 			mgr.previewError = null;
 			mgr.activeTab = 'editor';
 		} else {
@@ -228,6 +230,8 @@
 				mgr.activePath = null;
 				mgr.body = '';
 				mgr.draftId = null;
+				mgr.previewSlides = [];
+				mgr.previewActiveTabs = [];
 				if (mgr.isMobile) mobileShowTree = true;
 			}
 		} else if (res.needs_force) {

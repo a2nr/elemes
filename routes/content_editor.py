@@ -454,13 +454,18 @@ def upload_asset():
 
         # Validasi isi benar-benar gambar (bukan cuma cek ekstensi) — SVG
         # dikecualikan (Pillow tidak parse SVG).
+        # Pakai .load() (decode sungguhan)而不是 .verify(): .verify() melakukan
+        # CRC check strict pada IDAT yang sering FALSE-POSITIVE pada PNG valid
+        # (terutama PNG sederhana / hasil re-encode) → backend 500. .load()
+        # sudah cukup membuktikan file adalah gambar yang bisa di-decode.
         if ext != ".svg":
             try:
                 from PIL import Image, UnidentifiedImageError
-                Image.open(io.BytesIO(raw)).verify()
+                im = Image.open(io.BytesIO(raw))
+                im.load()  # raises jika bukan gambar yang bisa di-decode
             except ImportError:
                 pass  # Pillow tidak terinstal — skip validasi gambar
-            except (UnidentifiedImageError, OSError):
+            except (UnidentifiedImageError, OSError, SyntaxError):
                 return jsonify({"success": False, "message": "File bukan gambar yang valid"}), 400
 
         safe_name = _re.sub(r"[^a-zA-Z0-9_.-]", "_", os.path.basename(filename))
