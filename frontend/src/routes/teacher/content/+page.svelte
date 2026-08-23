@@ -367,6 +367,21 @@
 				'---END_EXPECTED_SERIAL_OUTPUT---\n',
 		},
 		{
+			id: 'expected-wiring',
+			label: 'Exp Wiring',
+			group: 'penilaian',
+			snippet:
+				'\n---EXPECTED_WIRING---\n' +
+				'{\n' +
+				'  "wires": [\n' +
+				'    { "start": { "componentId": "arduino-uno", "pinName": "13" }, "end": { "componentId": "resistor-1", "pinName": "1" } },\n' +
+				'    { "start": { "componentId": "resistor-1", "pinName": "2" }, "end": { "componentId": "led-builtin", "pinName": "A" } },\n' +
+				'    { "start": { "componentId": "arduino-uno", "pinName": "GND" }, "end": { "componentId": "led-builtin", "pinName": "C" } }\n' +
+				'  ]\n' +
+				'}\n' +
+				'---END_EXPECTED_WIRING---\n',
+		},
+		{
 			id: 'expected-flowchart',
 			label: 'Exp Flow',
 			group: 'penilaian',
@@ -1394,6 +1409,7 @@
 	/* Velxio / Arduino tab */
 	.velxio-tab-content {
 		flex: 1;
+		height: 100%;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
