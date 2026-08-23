@@ -687,9 +687,15 @@ def retarget_drafts(db: Session, *, old_prefix: str, new_prefix: str) -> int:
     """Dipakai saat rename file/folder — pindahkan draft yang menunjuk ke path lama."""
     from sqlalchemy import or_
 
+    # Escape % dan _ di prefix agar LIKE tidak men-interpret wildcard dalam
+    # nama folder/file (mis. folder "50%"). Lihat P2-3 di audit.
+    escaped = old_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     rows = db.query(ContentDraft).filter(
         ContentDraft.status == "draft",
-        or_(ContentDraft.target_path == old_prefix, ContentDraft.target_path.like(f"{old_prefix}/%"))
+        or_(
+            ContentDraft.target_path == old_prefix,
+            ContentDraft.target_path.like(f"{escaped}/%", escape="\\"),
+        ),
     ).all()
     count = 0
     for row in rows:
@@ -703,9 +709,14 @@ def drop_drafts_under(db: Session, *, path: str) -> int:
     """Dipakai saat delete file/folder — buang draft yang jadi yatim."""
     from sqlalchemy import or_
 
+    # Escape % dan _ — lihat komentar di retarget_drafts (P2-3).
+    escaped = path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     n = db.query(ContentDraft).filter(
         ContentDraft.status == "draft",
-        or_(ContentDraft.target_path == path, ContentDraft.target_path.like(f"{path}/%"))
+        or_(
+            ContentDraft.target_path == path,
+            ContentDraft.target_path.like(f"{escaped}/%", escape="\\"),
+        ),
     ).delete(synchronize_session=False)
     db.commit()
     return n

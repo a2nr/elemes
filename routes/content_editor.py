@@ -40,6 +40,14 @@ _CONTENT_DIR_ABS = os.path.abspath(CONTENT_DIR)
 _ASSETS_DIR_ABS = os.path.abspath(ASSETS_DIR)
 _ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 _MAX_ASSET_BYTES = 5 * 1024 * 1024
+_PROTECTED_BASENAMES = {"home.md", "sub-home.md"}
+
+
+def _is_protected(rel: str) -> bool:
+    """True bila path relatif (terhadap root content) merujuk ke file navigasi
+    kritis (home.md atau sub-home.md) yang kehilanganannya merusak seluruh
+    navigasi situs."""
+    return os.path.basename(rel) in _PROTECTED_BASENAMES
 
 
 def _safe_target_path(raw: str) -> str | None:
@@ -179,12 +187,12 @@ def publish(draft_id):
         except ValueError as e:
             return jsonify({"success": False, "message": str(e)}), 422
 
-        # Guard minimal khusus home.md/sub-home.md: marker navigasi wajib ada.
+        # Guard khusus home.md/sub-home.md: marker navigasi wajib ada.
         base_name = os.path.basename(target_path)
-        if base_name == "home.md" and "---Available_Lessons---" not in draft.body:
+        if base_name in _PROTECTED_BASENAMES and "---Available_Lessons---" not in draft.body:
             return jsonify({
                 "success": False,
-                "message": "Marker ---Available_Lessons--- hilang dari home.md — "
+                "message": f"Marker ---Available_Lessons--- hilang dari {base_name} — "
                             "publish dibatalkan supaya navigasi tidak rusak.",
             }), 422
 
@@ -358,6 +366,19 @@ def rename_entry():
         new_rel = _safe_rel_path(root_abs, data.get("new_path", ""))
         if not old_rel or not new_rel:
             return jsonify({"success": False, "message": "path tidak valid"}), 400
+
+        # P1-2: rename di root content wajib hasil & sumber berekstensi .md
+        if root == "content" and not new_rel.endswith(".md"):
+            return jsonify({"success": False, "message": "Materi hanya boleh berekstensi .md"}), 400
+
+        # P0-1: blokir rename file navigasi kritis tanpa konfirmasi eksplisit
+        if root == "content" and _is_protected(old_rel) and not data.get("confirm_critical"):
+            return jsonify({
+                "success": False, "message": "protected",
+                "detail": f"'{os.path.basename(old_rel)}' adalah file navigasi penting. "
+                          "Konfirmasi ulang untuk melanjutkan.",
+            }), 409
+
         old_abs = os.path.join(root_abs, old_rel)
         new_abs = os.path.join(root_abs, new_rel)
         if not os.path.exists(old_abs):
@@ -392,6 +413,16 @@ def delete_entry():
         rel = _safe_rel_path(root_abs, request.args.get("path", ""))
         if not rel:
             return jsonify({"success": False, "message": "path tidak valid"}), 400
+
+        # P0-1: blokir delete file navigasi kritis (home.md, sub-home.md)
+        # tanpa konfirmasi eksplisit dari user.
+        if root == "content" and _is_protected(rel) and request.args.get("confirm_critical") != "true":
+            return jsonify({
+                "success": False, "message": "protected",
+                "detail": f"'{os.path.basename(rel)}' adalah file navigasi penting. "
+                          "Konfirmasi ulang untuk melanjutkan.",
+            }), 409
+
         abs_path = os.path.join(root_abs, rel)
         if not os.path.exists(abs_path):
             return jsonify({"success": False, "message": "Tidak ditemukan"}), 404

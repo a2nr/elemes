@@ -168,7 +168,7 @@ def test_preview_valid_quiz(client):
     _seed_and_setup()
     _login_teacher(client)
     resp = client.post("/content/preview", json={
-        "body": "# Quiz\n\n### Soal 1\n- [] Opsi A\n- [x] Opsi B\n- [] Opsi C\n",
+        "body": "# Quiz\n\n---QUIZ_FLASHCARD---\n### Soal 1\n- [] Opsi A\n- [x] Opsi B\n- [] Opsi C\n---END_QUIZ_FLASHCARD---\n",
     })
     assert resp.status_code == 200
     data = resp.get_json()
@@ -181,7 +181,7 @@ def test_preview_invalid_quiz_two_correct(client):
     _seed_and_setup()
     _login_teacher(client)
     resp = client.post("/content/preview", json={
-        "body": "# Quiz\n\n### Soal 1\n- [x] Opsi A\n- [x] Opsi B\n- [] Opsi C\n",
+        "body": "# Quiz\n\n---QUIZ_FLASHCARD---\n### Soal 1\n- [x] Opsi A\n- [x] Opsi B\n- [] Opsi C\n---END_QUIZ_FLASHCARD---\n",
     })
     assert resp.status_code == 422
     data = resp.get_json()
@@ -240,7 +240,7 @@ def test_publish_invalid_quiz_rejected(client):
 
     resp = client.post("/content/drafts", json={
         "target_path": "test_editor/quiz.md",
-        "body": "# Quiz\n\n### Soal 1\n- [x] A\n- [x] B\n",
+        "body": "# Quiz\n\n---QUIZ_FLASHCARD---\n### Soal 1\n- [x] A\n- [x] B\n---END_QUIZ_FLASHCARD---\n",
         "base_mtime": os.path.getmtime(str(TEST_CONTENT / "test_editor/quiz.md")),
     })
     draft_id = resp.get_json()["draft_id"]
@@ -254,14 +254,40 @@ def test_publish_home_without_marker_rejected(client):
     _seed_and_setup()
     _login_teacher(client)
 
-    # Create home without marker
-    home = TEST_CONTENT / "test_home.md"
-    home.write_text("# Home\n\nNo marker here.\n", encoding="utf-8")
+    # gunakan home.md asli yang sudah di-seed oleh _seed_and_setup
+    home = TEST_CONTENT / "home.md"
+    assert home.exists(), "home.md harus ada dari _seed_and_setup"
 
     resp = client.post("/content/drafts", json={
-        "target_path": "test_home.md",
+        "target_path": "home.md",
         "body": "# Home\n\nNo marker here.\n",
         "base_mtime": os.path.getmtime(str(home)),
+    })
+    draft_id = resp.get_json()["draft_id"]
+
+    resp = client.post(f"/content/drafts/{draft_id}/publish")
+    assert resp.status_code == 422
+    assert "---Available_Lessons---" in resp.get_json()["message"]
+
+
+def test_publish_sub_home_without_marker_rejected(client):
+    """P1-1: guard sub-home.md di publish flow."""
+    _seed_and_setup()
+    _login_teacher(client)
+
+    # Buat folder + sub-home.md dengan marker valid
+    sub_dir = TEST_CONTENT / "folder_x"
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    sub_home = sub_dir / "sub-home.md"
+    sub_home.write_text(
+        "# Sub Home\n\n---Available_Lessons---\n\n[Hello](lesson/test_editor/hello.md)\n",
+        encoding="utf-8",
+    )
+
+    resp = client.post("/content/drafts", json={
+        "target_path": "folder_x/sub-home.md",
+        "body": "# Sub Home\n\nNo marker here.\n",
+        "base_mtime": os.path.getmtime(str(sub_home)),
     })
     draft_id = resp.get_json()["draft_id"]
 
@@ -353,6 +379,136 @@ def test_tree_delete_nonempty_folder_without_force(client):
     assert resp.status_code == 409
     data = resp.get_json()
     assert data.get("needs_force") is True
+
+
+# ── P0-1: Proteksi file navigasi kritis (home.md, sub-home.md) ──
+
+def test_tree_delete_home_protected(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    # tanpa confirm_critical → 409
+    resp = client.delete("/content/tree/entry?root=content&path=home.md")
+    assert resp.status_code == 409
+    data = resp.get_json()
+    assert data["message"] == "protected"
+    # file masih ada
+    assert (TEST_CONTENT / "home.md").exists()
+
+
+def test_tree_delete_home_with_confirm(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    # dengan confirm_critical=true → 200, file terhapus
+    resp = client.delete("/content/tree/entry?root=content&path=home.md&confirm_critical=true")
+    assert resp.status_code == 200
+    assert not (TEST_CONTENT / "home.md").exists()
+
+
+def test_tree_delete_sub_home_protected(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    # buat folder_x/sub-home.md
+    sub_dir = TEST_CONTENT / "folder_x"
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    (sub_dir / "sub-home.md").write_text("# Sub\n\n---Available_Lessons---\n\n", encoding="utf-8")
+    # tanpa confirm_critical → 409
+    resp = client.delete("/content/tree/entry?root=content&path=folder_x/sub-home.md")
+    assert resp.status_code == 409
+    assert resp.get_json()["message"] == "protected"
+    # file masih ada
+    assert (sub_dir / "sub-home.md").exists()
+
+
+def test_tree_delete_sub_home_with_confirm(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    sub_dir = TEST_CONTENT / "folder_x"
+    sub_dir.mkdir(parents=True, exist_ok=True)
+    (sub_dir / "sub-home.md").write_text("# Sub\n\n---Available_Lessons---\n\n", encoding="utf-8")
+    resp = client.delete("/content/tree/entry?root=content&path=folder_x/sub-home.md&confirm_critical=true")
+    assert resp.status_code == 200
+    assert not (sub_dir / "sub-home.md").exists()
+
+
+def test_tree_delete_normal_file_not_protected(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    # file biasa tidak perlu confirm_critical → 200
+    resp = client.delete("/content/tree/entry?root=content&path=test_editor/hello.md")
+    assert resp.status_code == 200
+    assert not (TEST_CONTENT / "test_editor/hello.md").exists()
+
+
+def test_tree_rename_home_protected(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = client.patch("/content/tree/rename", json={
+        "root": "content",
+        "old_path": "home.md",
+        "new_path": "home_renamed.md",
+    })
+    assert resp.status_code == 409
+    assert resp.get_json()["message"] == "protected"
+    assert (TEST_CONTENT / "home.md").exists()
+    assert not (TEST_CONTENT / "home_renamed.md").exists()
+
+
+def test_tree_rename_home_with_confirm(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = client.patch("/content/tree/rename", json={
+        "root": "content",
+        "old_path": "home.md",
+        "new_path": "home_renamed.md",
+        "confirm_critical": True,
+    })
+    assert resp.status_code == 200
+    assert not (TEST_CONTENT / "home.md").exists()
+    assert (TEST_CONTENT / "home_renamed.md").exists()
+
+
+def test_tree_rename_normal_file_not_protected(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = client.patch("/content/tree/rename", json={
+        "root": "content",
+        "old_path": "test_editor/hello.md",
+        "new_path": "test_editor/renamed.md",
+    })
+    assert resp.status_code == 200
+    assert (TEST_CONTENT / "test_editor/renamed.md").is_file()
+
+
+# ── P1-2: Enforce .md extension di rename untuk root content ──
+
+def test_tree_rename_reject_non_md_extension(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = client.patch("/content/tree/rename", json={
+        "root": "content",
+        "old_path": "test_editor/hello.md",
+        "new_path": "test_editor/hello.txt",
+    })
+    assert resp.status_code == 400
+    assert "Materi hanya boleh berekstensi .md" in resp.get_json()["message"]
+    assert (TEST_CONTENT / "test_editor/hello.md").exists()
+    assert not (TEST_CONTENT / "test_editor/hello.txt").exists()
+
+
+def test_tree_rename_assets_root_allows_any_extension(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    # Assets root tidak dibatasi ekstensi
+    asset_file = TEST_ASSETS / "test_image.png"
+    asset_file.parent.mkdir(parents=True, exist_ok=True)
+    asset_file.write_bytes(b"fake-png")
+    resp = client.patch("/content/tree/rename", json={
+        "root": "assets",
+        "old_path": "test_image.png",
+        "new_path": "test_image.bin",
+    })
+    assert resp.status_code == 200
+    assert (TEST_ASSETS / "test_image.bin").exists()
 
 
 # ── Draft delete ──────────────────────────────────────────────────

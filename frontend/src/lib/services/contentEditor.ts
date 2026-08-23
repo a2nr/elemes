@@ -94,19 +94,24 @@ export async function createFile(path: string, template?: string) {
 	return res.json();
 }
 
-export async function renameEntry(root: 'content' | 'assets', oldPath: string, newPath: string) {
+export async function renameEntry(
+	root: 'content' | 'assets',
+	oldPath: string,
+	newPath: string,
+	confirmCritical = false,
+) {
 	const res = await fetch('/api/content/tree/rename', {
 		method: 'PATCH',
 		headers: { 'Content-Type': 'application/json' },
 		credentials: 'include',
-		body: JSON.stringify({ root, old_path: oldPath, new_path: newPath }),
+		body: JSON.stringify({ root, old_path: oldPath, new_path: newPath, confirm_critical: confirmCritical }),
 	});
 	return res.json();
 }
 
-export async function deleteEntry(root: 'content' | 'assets', path: string, force = false) {
+export async function deleteEntry(root: 'content' | 'assets', path: string, confirmCritical = false, force = false) {
 	const res = await fetch(
-		`/api/content/tree/entry?root=${root}&path=${encodeURIComponent(path)}&force=${force}`,
+		`/api/content/tree/entry?root=${root}&path=${encodeURIComponent(path)}&force=${force}&confirm_critical=${confirmCritical}`,
 		{ method: 'DELETE', credentials: 'include' },
 	);
 	return res.json();

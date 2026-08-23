@@ -181,7 +181,6 @@
 	type FeatureTemplate = { id: string; label: string; group: 'konten' | 'penilaian'; snippet: string };
 
 	let featureSidebarOpen = $state(true);
-	let featureSidebarNarrow = $state(false);
 
 	// Desktop: panel fitur terbuka by default. Mobile: default tersembunyi (drawer).
 	$effect(() => {
@@ -478,13 +477,25 @@
 		}
 	}
 
+	// File navigasi kritis yang memerlukan konfirmasi ganda
+	const PROTECTED_BASENAMES = new Set(['home.md', 'sub-home.md']);
+
 	async function handleRename(oldPath: string) {
 		const oldName = oldPath.split('/').pop() || oldPath;
 		const newName = window.prompt('Nama baru:', oldName);
 		if (!newName || newName === oldName) return;
 		const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/'));
 		const newPath = parentPath ? `${parentPath}/${newName}` : newName;
-		const res = await renameEntry(mgr.treeRoot, oldPath, newPath);
+
+		// P0-1: konfirmasi kedua untuk file navigasi kritis
+		if (PROTECTED_BASENAMES.has(oldName)) {
+			if (!window.confirm(
+				`"${oldName}" adalah file navigasi utama. Mengganti nama ini bisa ` +
+				`merusak halaman untuk semua siswa dan TIDAK BISA di-undo. Lanjutkan?`
+			)) return;
+		}
+
+		const res = await renameEntry(mgr.treeRoot, oldPath, newPath, PROTECTED_BASENAMES.has(oldName));
 		if (res.success) {
 			await loadTrees();
 			if (mgr.activePath === oldPath) {
@@ -497,8 +508,14 @@
 
 	async function handleDelete(path: string) {
 		const name = path.split('/').pop() || path;
-		if (!window.confirm(`Hapus "${name}"?`)) return;
-		const res = await deleteEntry(mgr.treeRoot, path);
+		// P0-1: konfirmasi kedua untuk file navigasi kritis
+		if (PROTECTED_BASENAMES.has(name)) {
+			if (!window.confirm(
+				`"${name}" adalah file navigasi utama. Menghapus ini bisa ` +
+				`merusak halaman untuk semua siswa dan TIDAK BISA di-undo. Lanjutkan?`
+			)) return;
+		} else if (!window.confirm(`Hapus "${name}"?`)) return;
+		const res = await deleteEntry(mgr.treeRoot, path, PROTECTED_BASENAMES.has(name));
 		if (res.success) {
 			await loadTrees();
 			if (mgr.activePath === path) {
@@ -857,9 +874,7 @@
 								</div>
 								{:else if dynTab.id === 'velxio'}
 									<div class="velxio-tab-content">
-										<iframe
-											class="velxio-iframe"
-											src="/velxio/editor?embed=true&hideEditor=true&lockComponents=true"
+										<iframe class="velxio-iframe" src="/velxio/editor?embed=true&hideEditor=true&lockComponents=true" title="Velxio Arduino Editor"
 											allow="cross-origin-isolated; fullscreen"
 											allowfullscreen
 										></iframe>
@@ -893,7 +908,7 @@
 
 			<!-- Feature sidebar (right, hide-able) -->
 			{#if featureSidebarOpen && mgr.activePath && !isAssetFile}
-				<aside class="feature-sidebar" class:mobile-drawer={mgr.isMobile} class:narrow={featureSidebarNarrow}>
+				<aside class="feature-sidebar" class:mobile-drawer={mgr.isMobile}>
 					<div class="feature-sidebar-header">
 						<span>Fitur</span>
 					</div>
@@ -1078,17 +1093,6 @@
 		flex-direction: column;
 		min-height: 0;
 	}
-	.feature-sidebar.narrow {
-		width: 10%;
-		min-width: 64px;
-		max-width: 160px;
-	}
-	.feature-sidebar.narrow .feature-btn {
-		font-size: 0.62rem;
-		padding: 0.3rem 0.2rem;
-		text-align: center;
-	}
-	.feature-sidebar.narrow .feature-group-label { display: none; }
 	.feature-sidebar-header {
 		display: flex;
 		align-items: center;
@@ -1142,13 +1146,7 @@
 			box-shadow: none;
 		}
 	}
-	.panel-title {
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		flex: 1;
-		line-height: 1.8;
-	}
+
 	.btn-float-toggle {
 		background: none;
 		border: 1px solid var(--color-border);
@@ -1252,29 +1250,6 @@
 		min-height: 0;
 	}
 
-	.editor-header {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.5rem 1rem;
-		border-bottom: 1px solid var(--color-border);
-		background: var(--color-bg-secondary);
-		flex-shrink: 0;
-	}
-	.editor-filename {
-		font-weight: 600;
-		font-size: 0.9rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		flex: 1;
-	}
-	.editor-actions {
-		display: flex;
-		gap: 0.5rem;
-		align-items: center;
-	}
-
 	.editor-body {
 		flex: 1;
 		display: flex;
@@ -1349,35 +1324,6 @@
 		text-align: center;
 		color: var(--color-text-muted);
 		font-size: 0.8rem;
-	}
-
-	/* Code Panel (legacy, kept for reference) */
-	.code-panel {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		min-width: 0;
-	}
-	/* Force CodeEditor to fill its parent container */
-	.code-panel :global(.editor-wrapper) {
-		flex: 1;
-		min-height: 0;
-	}
-	.code-panel :global(.cm-editor) {
-		height: 100% !important;
-		min-height: 0 !important;
-		max-height: none !important;
-	}
-	.code-panel :global(.cm-scroller) {
-		height: 100%;
-	}
-	.code-empty {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		height: 100%;
-		color: var(--color-text-muted);
 	}
 
 	/* Force CodeEditor in tab to fill parent */
@@ -1585,39 +1531,6 @@
 		font-weight: 600;
 		cursor: pointer;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-	}
-
-	/* Buttons */
-	.btn {
-		padding: 0.3rem 0.75rem;
-		font-size: 0.8rem;
-		border-radius: var(--radius);
-		cursor: pointer;
-		text-decoration: none;
-		transition: all 0.15s;
-		border: 1px solid transparent;
-	}
-	.btn:disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-	.btn-sm { padding: 0.25rem 0.6rem; font-size: 0.75rem; }
-	.btn-secondary {
-		background: var(--color-bg);
-		border-color: var(--color-border);
-		color: var(--color-text);
-	}
-	.btn-secondary:hover:not(:disabled) {
-		border-color: var(--color-primary);
-		color: var(--color-primary);
-	}
-	.btn-primary {
-		background: var(--color-primary);
-		color: #fff;
-		border-color: var(--color-primary);
-	}
-	.btn-primary:hover:not(:disabled) {
-		opacity: 0.9;
 	}
 
 	@media (max-width: 768px) {

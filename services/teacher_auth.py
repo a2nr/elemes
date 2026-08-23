@@ -32,10 +32,24 @@ def teacher_user_from_cookie(db):
 
 
 def check_origin() -> bool:
+    """Known limitation: fail-open bila header Origin tidak ada.
+
+    Request tanpa header Origin dianggap sah (return True). Ini pola lama yang
+    sudah dipakai sebelum ini (student_management.py) dan bukan regresi.
+    Risiko diflaskan oleh cookie student_token yang SameSite=Lax di routes/auth.py
+    — browser modern tidak mengirim cookie ini pada request state-changing
+    (POST/PATCH/DELETE) cross-site.
+
+    Namun karena content_editor blueprint kini memiliki akses tulis/hapus langsung
+    ke filesystem (bukan hanya baca data siswa), kebijakan fail-open ini menjadi
+    lebih berisiko. Jika Origin header tidak ada, request dianggap berasal dari
+    klien same-origin (seperti curl, internal service call, atau browser yang
+    menyederhanakan header). Jika Origin ada, wajib match terhadap ORIGIN env.
+    """
     allowed = os.environ.get("ORIGIN", "").strip()
     if not allowed or allowed == "*":
         return True
     origin = request.headers.get("Origin", "")
     if not origin:
-        return True
+        return True  # fail-open: rasa tidak adanya header Origin
     return origin in {allowed, allowed.rstrip("/")}

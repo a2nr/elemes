@@ -19,14 +19,8 @@
 		color: var(--color-text-muted);
 		margin-top: auto;
 	}
-	.teacher-link {
-		color: var(--color-primary);
-		text-decoration: none;
-		font-weight: 500;
-	}
-	.teacher-link:hover {
-		text-decoration: underline;
-	}
+	/* Progress link moved to navbar — style tidak lagi dipakai */
+
 	.version-badge {
 		display: inline-block;
 		font-size: 0.65rem;
