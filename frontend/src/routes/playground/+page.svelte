@@ -276,10 +276,16 @@
 <svelte:head>
 	<title>Developer Playground — Elemes</title>
 	<style>
-		/* Override root container constrainer — playground is full viewport */
+		/* Override root container constrainer — playground is full viewport.
+		   main.container default-nya display:block + height auto, jadi anak
+		   .playground-page{height:100%} cuma ngisi tinggi intrinsic-nya.
+		   Jadikan flex-column agar playground memenuhi ruang sisa setelah navbar. */
 		main.container {
+			display: flex;
+			flex-direction: column;
 			max-width: none !important;
 			padding-inline: 0 !important;
+			min-height: 0;
 		}
 	</style>
 </svelte:head>
@@ -419,7 +425,8 @@
 <style>
 	.playground-page {
 		width: 100%;
-		height: 100%;
+		flex: 1;
+		min-height: 0;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
@@ -483,6 +490,7 @@
 		min-height: 0;
 		overflow: hidden;
 		display: flex;
+		flex-direction: column;
 	}
 
 	.pg-iframe {
@@ -502,15 +510,16 @@
 		overflow: hidden;
 	}
 
-	/* Override CircuitEditor agar fill flex area */
+	/* Override CircuitEditor agar fill ruang kosong di desktop */
 	.pg-content :global(.circuit-container) {
 		flex: 1;
 		min-height: 0;
+		height: 100%;
 	}
 
 	.pg-content :global(.circuit-wrapper) {
-		flex: 1;
-		height: auto;
+		flex: 1 1 auto;
+		height: 100%;
 		min-height: 0;
 	}
 
@@ -651,6 +660,7 @@
 	.pg-content :global(.flowchart-container) {
 		flex: 1;
 		min-height: 0;
+		height: 100%;
 	}
 
 	/* ── Mobile ── */
