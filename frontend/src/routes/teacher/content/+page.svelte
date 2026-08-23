@@ -528,7 +528,7 @@
 			}
 		} else if (res.needs_force) {
 			if (window.confirm(`Folder "${name}" tidak kosong. Hapus semua isi?`)) {
-				const forceRes = await deleteEntry(mgr.treeRoot, path, true);
+				const forceRes = await deleteEntry(mgr.treeRoot, path, PROTECTED_BASENAMES.has(name), true);
 				if (forceRes.success) {
 					await loadTrees();
 					if (mgr.activePath === path) {

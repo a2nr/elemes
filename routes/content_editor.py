@@ -485,7 +485,7 @@ def upload_asset():
 
         # Validasi isi benar-benar gambar (bukan cuma cek ekstensi) — SVG
         # dikecualikan (Pillow tidak parse SVG).
-        # Pakai .load() (decode sungguhan)而不是 .verify(): .verify() melakukan
+        # Pakai .load() (decode sungguhan) bukan .verify(): .verify() melakukan
         # CRC check strict pada IDAT yang sering FALSE-POSITIVE pada PNG valid
         # (terutama PNG sederhana / hasil re-encode) → backend 500. .load()
         # sudah cukup membuktikan file adalah gambar yang bisa di-decode.
