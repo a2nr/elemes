@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+	import { autoRenderMath } from '$lib/actions/renderMath';
+
 	interface QuizOption {
 		id: string;
 		text: string;
@@ -21,9 +24,19 @@
 	}
 
 	let { quizData }: Props = $props();
+
+	let rootEl = $state<HTMLElement | null>(null);
+	// Render LaTeX (KaTeX) pada preview soal kuis di content editor guru.
+	// autoRenderMath idempoten; track quizData agar re-run saat data berubah.
+	$effect(() => {
+		void quizData;
+		if (rootEl) {
+			tick().then(() => rootEl && autoRenderMath(rootEl));
+		}
+	});
 </script>
 
-<div class="quiz-preview-readonly">
+<div class="quiz-preview-readonly" bind:this={rootEl}>
 	<h3 class="quiz-preview-title">Preview Kunci Jawaban</h3>
 	<p class="quiz-preview-note">Tampilan ini hanya untuk pratinjau — tidak mengirim attempt ke server.</p>
 

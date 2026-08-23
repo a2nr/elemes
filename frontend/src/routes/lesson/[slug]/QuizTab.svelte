@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { authLoggedIn, authToken } from '$stores/auth';
 	import { get } from 'svelte/store';
-	import { onMount } from 'svelte';
-	import { renderMath } from '$lib/actions/renderMath';
+	import { onMount, tick } from 'svelte';
+	import { autoRenderMath } from '$lib/actions/renderMath';
 	import { shouldShowQuizReview } from '$services/quiz-integrity';
 	import type { LessonManager } from './lesson.svelte';
 	import type { QuizQuestion, QuizAnswer } from '$types/quiz';
@@ -75,6 +75,18 @@
 		}
 	});
 
+	// Re-render LaTeX math (KaTeX) whenever quiz content changes — covers active
+	// quiz options, live review, and async-loaded stored review. autoRenderMath is
+	// idempotent: already-rendered KaTeX spans leave no raw delimiters to re-process.
+	let quizEl = $state<HTMLElement | null>(null);
+	$effect(() => {
+		// Track content-bearing reactive values so the effect re-runs on data changes.
+		void [result, questions, currentQuestion, currentAnswer, reviewQuestions, storedAttempt];
+		if (quizEl) {
+			tick().then(() => quizEl && autoRenderMath(quizEl));
+		}
+	});
+
 	function handleExit() {
 		if (!mgr.isQuizMode) return;
 
@@ -91,9 +103,9 @@
 	}
 </script>
 
-<div class="quiz-container">
+<div class="quiz-container" bind:this={quizEl}>
 	{#if result || quizAlreadyCompleted}
-		<div class="summary-view" use:renderMath>
+		<div class="summary-view">
 			<div class="summary-header">
 				<div class="summary-icon">🏁</div>
 				<h2>Kuis Selesai!</h2>
