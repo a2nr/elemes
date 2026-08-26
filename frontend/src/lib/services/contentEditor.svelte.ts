@@ -1,5 +1,6 @@
 import { tick } from 'svelte';
-import { getDraft, saveDraft, previewContent, publishDraft, type DraftResponse } from './contentEditor';
+import { getDraft, saveDraft, publishDraft, type DraftResponse } from './contentEditor';
+import { renderMarkdownPreview } from './markdown';
 
 export class ContentEditorManager {
 	activePath = $state<string | null>(null);
@@ -82,7 +83,7 @@ export class ContentEditorManager {
 		this.previewTimeout = setTimeout(() => this.runPreview(), 500);
 	}
 
-	private async runPreview() {
+	private runPreview() {
 		if (!this.body.trim()) {
 			this.previewHtml = '';
 			this.previewExerciseHtml = '';
@@ -94,7 +95,7 @@ export class ContentEditorManager {
 		}
 		this.previewLoading = true;
 		try {
-			const res = await previewContent(this.body);
+			const res = renderMarkdownPreview(this.body);
 			if (res.success) {
 				this.previewHtml = res.lesson_content ?? '';
 				this.previewExerciseHtml = res.exercise_content ?? '';
@@ -105,8 +106,8 @@ export class ContentEditorManager {
 			} else {
 				this.previewError = res.message || 'Preview gagal';
 			}
-		} catch {
-			this.previewError = 'Gagal menghubungi server untuk preview';
+		} catch (e: any) {
+			this.previewError = e.message || 'Gagal merender preview';
 		} finally {
 			this.previewLoading = false;
 		}

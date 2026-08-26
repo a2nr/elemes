@@ -48,6 +48,10 @@ export async function saveDraft(targetPath: string, body: string, baseMtime: num
 	return res.json();
 }
 
+/**
+ * @deprecated Use client-side renderMarkdownPreview from './markdown' instead.
+ * Kept for fallback or direct API verification purposes.
+ */
 export async function previewContent(body: string): Promise<PreviewResponse> {
 	const res = await fetch('/api/content/preview', {
 		method: 'POST',

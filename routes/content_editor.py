@@ -130,6 +130,8 @@ def save_draft():
 
 @content_editor_bp.route("/preview", methods=["POST"])
 def preview():
+    # DEPRECATED: SvelteKit frontend now renders markdown preview locally.
+    # Kept here as a fallback and for verification/testing.
     db = SessionLocal()
     try:
         user, err = _require_teacher(db)
