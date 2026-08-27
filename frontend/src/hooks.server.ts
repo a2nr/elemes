@@ -6,6 +6,17 @@
  * elemes-ts network namespace, so the backend lives on localhost.
  */
 
+// Polyfill markAsUncloneable on node:worker_threads for Node 20 runtime compatibility (undici/jsdom)
+try {
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	const wt = require('node:worker_threads');
+	if (wt && typeof wt.markAsUncloneable === 'undefined') {
+		wt.markAsUncloneable = () => {};
+	}
+} catch {
+	// ignore
+}
+
 import type { Handle } from '@sveltejs/kit';
 
 function resolveBackend(): string {

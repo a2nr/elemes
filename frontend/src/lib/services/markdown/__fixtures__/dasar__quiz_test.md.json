@@ -1,0 +1,222 @@
+{
+  "source_path": "dasar/quiz_test.md",
+  "source_body": "# Uji Coba Kuis Komprehensif\n\nPelajaran ini berisi berbagai tipe kuis untuk menguji fitur Pilihan Ganda, Flashcard, dan sistem penguncian pembatalan.\n\n---QUIZ_FLASHCARD---\n### Bahasa C adalah bahasa pemrograman tingkat rendah.\nimage: https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg\n- [] Benar\n- [x] Salah\n> Penjelasan: Bahasa C sebenarnya dikategorikan sebagai bahasa tingkat menengah (*middle-level language*) karena memiliki fitur bahasa tingkat rendah (seperti manipulasi memori) sekaligus fitur bahasa tingkat tinggi (seperti struktur kontrol yang manusiawi).\n\n### Apa output dari `printf(\"%d\", 5 + 5);`\n::diagnostic\n- [] 55\n- [x] 10\n- [] 5 + 5\n- [] Error\n> Penjelasan: Operasi `5 + 5` dihitung terlebih dahulu menjadi `10`, lalu dicetak sebagai integer menggunakan format specifier `%d`.\n\n### Perhatikan program berikut:\n```c\nint x = 2;\nprintf(\"%d\", x * 3);\n```\nBerapakah keluaran program di atas?\n- [] 5\n- [] 8\n- [x] 6\n- [] Error\n> Pembahasan: `x * 3` menghasilkan `6` karena nilai `x` adalah `2`.\n\n### Berdasarkan tabel berikut, tipe data mana yang tepat untuk menyimpan `3.14`?\n::diagnostic\n|| Tipe   | Ukuran | Rentang            ||\n|--------|--------|--------------------|\n| int    | 4 byte | -2^31 s/d 2^31-1   |\n| float  | 4 byte | ~1e-38 s/d ~1e38   |\n| double | 8 byte | ~1e-308 s/d ~1e308 |\n- [x] double\n- [] int\n- [] char\n> Pembahasan: `double` punya presisi lebih tinggi dan rentang lebih luas untuk bilangan pecahan.\n\n### Berapakah nilai dari $\\int_0^1 2x \\, dx$?\n::diagnostic\n- [x] 1\n- [] 2\n- [] 0.5\n- [] Tidak terdefinisi\n> Pembahasan: Hasil integralnya adalah $[x^2]_0^1 = 1$.\n\n### Pilih gambar yang melambangkan bahasa C:\n![C Logo](https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg)\n- [x] Logo C\n- [] Logo Python\n- [] Logo Java\n\n### Bagaimana cara menulis komentar satu baris di bahasa C?\nCukup gunakan dua garis miring di awal baris, contoh: `// ini komentar`.\n> Penjelasan: Komentar berguna untuk mendokumentasikan kode agar mudah dibaca oleh manusia, dan akan diabaikan oleh compiler.\n\n### Apa fungsi dari `return 0;` di dalam fungsi `main()`?\nMenandakan bahwa program telah selesai berjalan dengan sukses tanpa ada error.\n\n### Apa warna langit pada siang hari?\nimage: demo_quiz.png\n- [x] Biru\n- [] Hijau\n- [] Merah\n- [] Kuning\n> Penjelasan: Langit terlihat biru karena hamburan Rayleigh — cahaya matahari dihamburkan oleh atmosfer bumi.\n\n---END_QUIZ_FLASHCARD---",
+  "lesson_content": "<h1 id=\"uji-coba-kuis-komprehensif\">Uji Coba Kuis Komprehensif</h1>\n<p>Pelajaran ini berisi berbagai tipe kuis untuk menguji fitur Pilihan Ganda, Flashcard, dan sistem penguncian pembatalan.</p>",
+  "exercise_content": "",
+  "quiz_data": [
+    {
+      "id": "q-0",
+      "type": "mcq",
+      "question": "<p>Bahasa C adalah bahasa pemrograman tingkat rendah.</p>",
+      "options": [
+        {
+          "id": "q-0-o-0",
+          "text": "<p>Benar</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-0-o-1",
+          "text": "<p>Salah</p>",
+          "is_correct": true
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Penjelasan: Bahasa C sebenarnya dikategorikan sebagai bahasa tingkat menengah (<em>middle-level language</em>) karena memiliki fitur bahasa tingkat rendah (seperti manipulasi memori) sekaligus fitur bahasa tingkat tinggi (seperti struktur kontrol yang manusiawi).</p>\n</blockquote>",
+      "image": "https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg",
+      "category": "evaluasi"
+    },
+    {
+      "id": "q-1",
+      "type": "mcq",
+      "question": "<p>Apa output dari <code>printf(\"%d\", 5 + 5);</code></p>",
+      "options": [
+        {
+          "id": "q-1-o-0",
+          "text": "<p>55</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-1-o-1",
+          "text": "<p>10</p>",
+          "is_correct": true
+        },
+        {
+          "id": "q-1-o-2",
+          "text": "<p>5 + 5</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-1-o-3",
+          "text": "<p>Error</p>",
+          "is_correct": false
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Penjelasan: Operasi <code>5 + 5</code> dihitung terlebih dahulu menjadi <code>10</code>, lalu dicetak sebagai integer menggunakan format specifier <code>%d</code>.</p>\n</blockquote>",
+      "image": "",
+      "category": "diagnostik"
+    },
+    {
+      "id": "q-2",
+      "type": "mcq",
+      "question": "<p>Perhatikan program berikut:</p>\n<pre><code class=\"language-c\">int x = 2;\nprintf(&quot;%d&quot;, x * 3);\n</code></pre>\n<p>Berapakah keluaran program di atas?</p>",
+      "options": [
+        {
+          "id": "q-2-o-0",
+          "text": "<p>5</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-2-o-1",
+          "text": "<p>8</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-2-o-2",
+          "text": "<p>6</p>",
+          "is_correct": true
+        },
+        {
+          "id": "q-2-o-3",
+          "text": "<p>Error</p>",
+          "is_correct": false
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Pembahasan: <code>x * 3</code> menghasilkan <code>6</code> karena nilai <code>x</code> adalah <code>2</code>.</p>\n</blockquote>",
+      "image": "",
+      "category": "evaluasi"
+    },
+    {
+      "id": "q-3",
+      "type": "mcq",
+      "question": "<p>Berdasarkan tabel berikut, tipe data mana yang tepat untuk menyimpan <code>3.14</code>?</p>\n<p>|| Tipe   | Ukuran | Rentang            ||<br />\n|--------|--------|--------------------|<br />\n| int    | 4 byte | -2^31 s/d 2^31-1   |<br />\n| float  | 4 byte | ~1e-38 s/d ~1e38   |<br />\n| double | 8 byte | ~1e-308 s/d ~1e308 |</p>",
+      "options": [
+        {
+          "id": "q-3-o-0",
+          "text": "<p>double</p>",
+          "is_correct": true
+        },
+        {
+          "id": "q-3-o-1",
+          "text": "<p>int</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-3-o-2",
+          "text": "<p>char</p>",
+          "is_correct": false
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Pembahasan: <code>double</code> punya presisi lebih tinggi dan rentang lebih luas untuk bilangan pecahan.</p>\n</blockquote>",
+      "image": "",
+      "category": "diagnostik"
+    },
+    {
+      "id": "q-4",
+      "type": "mcq",
+      "question": "<p>Berapakah nilai dari $\\int_0^1 2x \\, dx$?</p>",
+      "options": [
+        {
+          "id": "q-4-o-0",
+          "text": "<p>1</p>",
+          "is_correct": true
+        },
+        {
+          "id": "q-4-o-1",
+          "text": "<p>2</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-4-o-2",
+          "text": "<p>0.5</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-4-o-3",
+          "text": "<p>Tidak terdefinisi</p>",
+          "is_correct": false
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Pembahasan: Hasil integralnya adalah $[x^2]_0^1 = 1$.</p>\n</blockquote>",
+      "image": "",
+      "category": "diagnostik"
+    },
+    {
+      "id": "q-5",
+      "type": "mcq",
+      "question": "<p>Pilih gambar yang melambangkan bahasa C:</p>",
+      "options": [
+        {
+          "id": "q-5-o-0",
+          "text": "<p>Logo C</p>",
+          "is_correct": true
+        },
+        {
+          "id": "q-5-o-1",
+          "text": "<p>Logo Python</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-5-o-2",
+          "text": "<p>Logo Java</p>",
+          "is_correct": false
+        }
+      ],
+      "explanation": "",
+      "image": "https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg",
+      "category": "evaluasi"
+    },
+    {
+      "id": "q-6",
+      "type": "flashcard",
+      "front": "<p>Bagaimana cara menulis komentar satu baris di bahasa C?</p>",
+      "back": "<p>Cukup gunakan dua garis miring di awal baris, contoh: <code>// ini komentar</code>.</p>",
+      "explanation": "<blockquote>\n<p>Penjelasan: Komentar berguna untuk mendokumentasikan kode agar mudah dibaca oleh manusia, dan akan diabaikan oleh compiler.</p>\n</blockquote>",
+      "image": "",
+      "options": null,
+      "category": "evaluasi"
+    },
+    {
+      "id": "q-7",
+      "type": "flashcard",
+      "front": "<p>Apa fungsi dari <code>return 0;</code> di dalam fungsi <code>main()</code>?</p>",
+      "back": "<p>Menandakan bahwa program telah selesai berjalan dengan sukses tanpa ada error.</p>",
+      "explanation": "",
+      "image": "",
+      "options": null,
+      "category": "evaluasi"
+    },
+    {
+      "id": "q-8",
+      "type": "mcq",
+      "question": "<p>Apa warna langit pada siang hari?</p>",
+      "options": [
+        {
+          "id": "q-8-o-0",
+          "text": "<p>Biru</p>",
+          "is_correct": true
+        },
+        {
+          "id": "q-8-o-1",
+          "text": "<p>Hijau</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-8-o-2",
+          "text": "<p>Merah</p>",
+          "is_correct": false
+        },
+        {
+          "id": "q-8-o-3",
+          "text": "<p>Kuning</p>",
+          "is_correct": false
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Penjelasan: Langit terlihat biru karena hamburan Rayleigh — cahaya matahari dihamburkan oleh atmosfer bumi.</p>\n</blockquote>",
+      "image": "/assets/demo_quiz.png",
+      "category": "evaluasi"
+    }
+  ],
+  "slides": [],
+  "active_tabs": [
+    "quiz"
+  ]
+}

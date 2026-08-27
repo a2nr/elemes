@@ -1,0 +1,9 @@
+{
+  "source_path": "arduino/sub-home.md",
+  "source_body": "# Velxio Simulator \n[Velxio](https://velxio.dev/) adalah Arduino Simulator untuk mencoba program arduino beserta deployer nya. Jadi kalian bisa upload program menggunakan webapp.\n\n----Available_Lessons----\n- [Velxio Simulasi arduino LED Blink](lesson/led_blink_arduino.md)\n- [Velxio Simulasi Hello Serial](lesson/hello_serial_arduino.md)\n- [Velxio Simulasi Button Input](lesson/button_input_arduino.md)\n- [Velxio Simulasi Traffic Light](lesson/traffic_light_arduino.md)\n",
+  "lesson_content": "<h1 id=\"velxio-simulator\">Velxio Simulator</h1>\n<p><a href=\"https://velxio.dev/\">Velxio</a> adalah Arduino Simulator untuk mencoba program arduino beserta deployer nya. Jadi kalian bisa upload program menggunakan webapp.</p>\n<p>----Available_Lessons----<br />\n- <a href=\"lesson/led_blink_arduino.md\">Velxio Simulasi arduino LED Blink</a><br />\n- <a href=\"lesson/hello_serial_arduino.md\">Velxio Simulasi Hello Serial</a><br />\n- <a href=\"lesson/button_input_arduino.md\">Velxio Simulasi Button Input</a><br />\n- <a href=\"lesson/traffic_light_arduino.md\">Velxio Simulasi Traffic Light</a></p>",
+  "exercise_content": "",
+  "quiz_data": [],
+  "slides": [],
+  "active_tabs": []
+}

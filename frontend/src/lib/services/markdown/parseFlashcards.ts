@@ -65,9 +65,9 @@ export function extractBodyImage(text: string): [string | null, string] {
 			continue;
 		}
 		const match = line.match(/!\[[^\]]*\]\(([^)]+)\)/);
-		if (match) {
+		if (match && match.index !== undefined) {
 			const url = match[1].trim();
-			const matchStart = line.indexOf(match[0]);
+			const matchStart = match.index;
 			const matchEnd = matchStart + match[0].length;
 			const cleanedLine = line.substring(0, matchStart) + line.substring(matchEnd);
 
@@ -152,7 +152,9 @@ export function parseFlashcards(text: string): QuizCard[] {
 		const firstOptionIdx = optionLines.length > 0 ? optionLines[0].pos : body.length;
 
 		// Explanation blockquote: after options for MCQ, anywhere for flashcard
-		const explanationSearchRegion = body.substring(firstOptionIdx);
+		const explanationSearchRegion = optionLines.length > 0
+			? body.substring(firstOptionIdx)
+			: body;
 		const explanationMatch = explanationSearchRegion.match(/^\s*(>[\s\S]*)$/m);
 		const explanation = explanationMatch ? explanationMatch[1].trim() : '';
 

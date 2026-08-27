@@ -1,3 +1,16 @@
+// Polyfill markAsUncloneable on node:worker_threads for Node 20 runtime compatibility (undici/jsdom)
+try {
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	const wt = require('node:worker_threads');
+	if (wt && typeof wt.markAsUncloneable === 'undefined') {
+		wt.markAsUncloneable = () => {};
+	}
+} catch {
+	// ignore
+}
+
+import DOMPurify from 'isomorphic-dompurify';
+
 /**
  * Escape HTML characters to prevent XSS in data embeds.
  */
@@ -62,159 +75,117 @@ export function processFlowchartEmbeds(text: string): string {
 	});
 }
 
+const ALLOWED_TAGS = ['div', 'iframe', 'a', 'span', 'p', 'br', 'img'];
+const ALLOWED_ATTR = [
+	'style',
+	'class',
+	'src',
+	'loading',
+	'allowfullscreen',
+	'allow',
+	'title',
+	'href',
+	'target',
+	'rel',
+	'alt',
+	'width',
+	'height'
+];
+
+const SAFE_URI_REGEXP = /^https:\/\//i;
+
+const ALLOWED_STYLE_PROPS = new Set([
+	'position',
+	'width',
+	'height',
+	'padding',
+	'padding-top',
+	'padding-bottom',
+	'padding-left',
+	'padding-right',
+	'margin',
+	'margin-top',
+	'margin-bottom',
+	'margin-left',
+	'margin-right',
+	'border',
+	'border-radius',
+	'overflow',
+	'box-shadow',
+	'top',
+	'left',
+	'right',
+	'bottom',
+	'will-change',
+	'display',
+	'flex-direction',
+	'gap',
+	'max-width',
+	'max-height',
+	'min-height'
+]);
+
+const BLOCKED_HOSTS = new Set([
+	'localhost',
+	'127.0.0.1',
+	'0.0.0.0',
+	'metadata.google.internal',
+	'169.254.169.254'
+]);
+
+function isBlockedHost(hostname: string): boolean {
+	const h = hostname.toLowerCase();
+	return BLOCKED_HOSTS.has(h) || Array.from(BLOCKED_HOSTS).some((bh) => h.endsWith('.' + bh));
+}
+
+// Hook: filter properti CSS yang tidak di-whitelist di dalam atribut style
+DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
+	if (data.attrName === 'style') {
+		const clean = data.attrValue
+			.split(';')
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.filter((s) => {
+				const prop = s.split(':')[0]?.trim().toLowerCase();
+				return prop && ALLOWED_STYLE_PROPS.has(prop);
+			});
+		data.attrValue = clean.join('; ');
+	}
+});
+
+// Hook: buang iframe/a/img yang src atau hrefnya bukan https atau host-nya diblokir
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+	const el = node as Element;
+	const tag = el.tagName?.toLowerCase();
+	if (tag !== 'iframe' && tag !== 'a' && tag !== 'img') return;
+	const attr = tag === 'a' ? 'href' : 'src';
+	const val = el.getAttribute(attr);
+	if (!val) {
+		if (tag === 'iframe' || tag === 'img') {
+			el.remove();
+		}
+		return;
+	}
+	try {
+		const url = new URL(val);
+		if (url.protocol !== 'https:' || isBlockedHost(url.hostname)) {
+			el.remove();
+		}
+	} catch {
+		el.remove(); // URL relatif/tidak valid untuk embed pihak-ketiga -> buang
+	}
+});
+
 /**
- * Sanitize raw embed HTML: whitelist tags/attrs/styles + check iframe src domain.
- * Replicates Python's bleach configuration using native DOMParser in the browser.
+ * Sanitize raw embed HTML using isomorphic-dompurify.
  */
 function sanitizeEmbedHtml(htmlText: string): string {
-	if (typeof window === 'undefined') {
-		return htmlText;
-	}
-
-	const parser = new DOMParser();
-	const doc = parser.parseFromString(htmlText, 'text/html');
-	const body = doc.body;
-
-	const allowedTags = new Set(['div', 'iframe', 'a', 'span', 'p', 'br', 'img']);
-	const allowedAttrs: Record<string, string[]> = {
-		div: ['style', 'class'],
-		iframe: ['src', 'style', 'loading', 'allowfullscreen', 'allow', 'title', 'class'],
-		a: ['href', 'target', 'rel', 'style', 'class'],
-		span: ['style', 'class'],
-		p: ['style', 'class'],
-		img: ['src', 'alt', 'style', 'class', 'loading']
-	};
-
-	const allowedStyles = new Set([
-		'position',
-		'width',
-		'height',
-		'padding',
-		'padding-top',
-		'padding-bottom',
-		'padding-left',
-		'padding-right',
-		'margin',
-		'margin-top',
-		'margin-bottom',
-		'margin-left',
-		'margin-right',
-		'border',
-		'border-radius',
-		'overflow',
-		'box-shadow',
-		'top',
-		'left',
-		'right',
-		'bottom',
-		'will-change',
-		'display',
-		'flex-direction',
-		'gap',
-		'max-width',
-		'max-height',
-		'min-height'
-	]);
-
-	const blockedHosts = new Set([
-		'localhost',
-		'127.0.0.1',
-		'0.0.0.0',
-		'metadata.google.internal',
-		'169.254.169.254'
-	]);
-
-	function sanitize(node: Node): Node | null {
-		if (node.nodeType === Node.TEXT_NODE) {
-			return node.cloneNode(true);
-		}
-		if (node.nodeType !== Node.ELEMENT_NODE) {
-			return null;
-		}
-
-		const el = node as HTMLElement;
-		const tagName = el.tagName.toLowerCase();
-
-		if (!allowedTags.has(tagName)) {
-			// Strip the tag but sanitize and keep its children
-			const fragment = doc.createDocumentFragment();
-			for (let i = 0; i < el.childNodes.length; i++) {
-				const child = sanitize(el.childNodes[i]);
-				if (child) fragment.appendChild(child);
-			}
-			return fragment;
-		}
-
-		const newEl = doc.createElement(tagName);
-
-		// Copy allowed attributes
-		const attrs = allowedAttrs[tagName] || [];
-		for (let i = 0; i < el.attributes.length; i++) {
-			const attr = el.attributes[i];
-			const attrName = attr.name.toLowerCase();
-
-			if (attrs.includes(attrName) || attrName === 'class') {
-				let val = attr.value;
-				if (tagName === 'iframe' && attrName === 'src') {
-					try {
-						const url = new URL(val);
-						if (url.protocol !== 'https:') {
-							return doc.createTextNode('[Konten embed ditolak: iframe harus https]');
-						}
-						const hostname = url.hostname.toLowerCase();
-						if (
-							blockedHosts.has(hostname) ||
-							Array.from(blockedHosts).some((bh) => hostname.endsWith('.' + bh))
-						) {
-							return doc.createTextNode('[Konten embed ditolak: domain iframe diblokir]');
-						}
-					} catch {
-						if (!val.startsWith('https://')) {
-							return doc.createTextNode('[Konten embed ditolak: iframe harus https]');
-						}
-						return doc.createTextNode('[Konten embed ditolak: URL iframe tidak valid]');
-					}
-				}
-				if (attrName === 'style') {
-					const inlineStyles = val.split(';');
-					const cleanStyles: string[] = [];
-					for (const style of inlineStyles) {
-						const parts = style.split(':');
-						if (parts.length === 2) {
-							const prop = parts[0].trim().toLowerCase();
-							if (allowedStyles.has(prop)) {
-								cleanStyles.push(`${prop}: ${parts[1].trim()}`);
-							}
-						}
-					}
-					val = cleanStyles.join('; ');
-				}
-				newEl.setAttribute(attrName, val);
-			}
-		}
-
-		// Process children
-		for (let i = 0; i < el.childNodes.length; i++) {
-			const child = sanitize(el.childNodes[i]);
-			if (child) {
-				newEl.appendChild(child);
-			}
-		}
-
-		return newEl;
-	}
-
-	const resultFragment = doc.createDocumentFragment();
-	for (let i = 0; i < body.childNodes.length; i++) {
-		const child = sanitize(body.childNodes[i]);
-		if (child) {
-			resultFragment.appendChild(child);
-		}
-	}
-
-	const tempDiv = doc.createElement('div');
-	tempDiv.appendChild(resultFragment);
-	return tempDiv.innerHTML;
+	return DOMPurify.sanitize(htmlText, {
+		ALLOWED_TAGS,
+		ALLOWED_ATTR,
+		ADD_ATTR: ['target', 'rel'],
+		ALLOWED_URI_REGEXP: SAFE_URI_REGEXP
+	});
 }
 
 /**
@@ -228,8 +199,10 @@ export function processEmbedEmbeds(text: string): string {
 			return '<div class="embed-error">Konten embed kosong.</div>';
 		}
 		const sanitized = sanitizeEmbedHtml(trimmed);
-		if (sanitized.includes('[Konten embed ditolak')) {
-			return `<div class="embed-error">${sanitized.replace(/[\[\]]/g, '')}</div>`;
+		const textContent = sanitized.replace(/<[^>]*>/g, '').trim();
+		const hasMedia = /<(?:iframe|img|a\s+href)/i.test(sanitized);
+		if (!textContent && !hasMedia) {
+			return '<div class="embed-error">Konten embed ditolak.</div>';
 		}
 		return sanitized;
 	});

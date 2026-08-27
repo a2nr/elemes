@@ -12,10 +12,11 @@ RUN npx svelte-kit sync && npm run build
 FROM node:20-slim
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--require /app/node-polyfill.cjs"
 WORKDIR /app
 
 # Only production deps for the adapter-node server
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json node-polyfill.cjs ./
 RUN npm ci --omit=dev 2>/dev/null || true
 
 # Copy built output from builder

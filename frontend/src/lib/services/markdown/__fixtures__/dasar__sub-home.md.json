@@ -1,0 +1,9 @@
+{
+  "source_path": "dasar/sub-home.md",
+  "source_body": "# Contoh Penggunakan fitur Elemes\n\nMateri fundamental untuk memulai belajar pemrograman C.\n\n----Available_Lessons----\n1. [Hello, World!](lesson/hello_world.md)\n2. [Variabel](lesson/variabel.md)\n3. [Uji Coba Flowchart](lesson/flowchart_test.md)\n4. [Uji Coba Kuis](lesson/quiz_test.md)\n5. [Uji Coba LaTeX](lesson/latex_test.md)\n6. [Uji Coba Slide](lesson/test_slides.md)\n\n\n",
+  "lesson_content": "<h1 id=\"contoh-penggunakan-fitur-elemes\">Contoh Penggunakan fitur Elemes</h1>\n<p>Materi fundamental untuk memulai belajar pemrograman C.</p>\n<p>----Available_Lessons----<br />\n1. <a href=\"lesson/hello_world.md\">Hello, World!</a><br />\n2. <a href=\"lesson/variabel.md\">Variabel</a><br />\n3. <a href=\"lesson/flowchart_test.md\">Uji Coba Flowchart</a><br />\n4. <a href=\"lesson/quiz_test.md\">Uji Coba Kuis</a><br />\n5. <a href=\"lesson/latex_test.md\">Uji Coba LaTeX</a><br />\n6. <a href=\"lesson/test_slides.md\">Uji Coba Slide</a></p>",
+  "exercise_content": "",
+  "quiz_data": [],
+  "slides": [],
+  "active_tabs": []
+}

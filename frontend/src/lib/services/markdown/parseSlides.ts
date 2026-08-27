@@ -31,7 +31,21 @@ export function parseSlides(content: string): { slides: string[]; contentWithout
 				s = processCircuitEmbeds(s);
 				s = processFlowchartEmbeds(s);
 				s = processEmbedEmbeds(s);
-				slidesHtml.push(marked.parse(s, { breaks: true, gfm: true }) as string);
+
+				const placeholders: Record<string, string> = {};
+				let counter = 0;
+				let text = s.replace(/<div class="(?:circuit|flowchart)-embed"[\s\S]*?<\/div>/g, (match) => {
+					const id = `%%EMBED_BLOCK_${counter++}%%`;
+					placeholders[id] = match;
+					return `\n\n${id}\n\n`;
+				});
+
+				let html = marked.parse(text, { breaks: true, gfm: true }) as string;
+				for (const [id, originalHtml] of Object.entries(placeholders)) {
+					html = html.replace(`<p>${id}</p>`, originalHtml).replace(id, originalHtml);
+				}
+
+				slidesHtml.push(html);
 			}
 		}
 	}

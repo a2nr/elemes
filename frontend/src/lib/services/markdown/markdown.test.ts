@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { extractSection } from './extractSections';
 import { detectActiveTabs } from './detectActiveTabs';
-import { processCircuitEmbeds, processFlowchartEmbeds } from './processEmbeds';
+import { processCircuitEmbeds, processFlowchartEmbeds, processEmbedEmbeds } from './processEmbeds';
 import { parseSlides } from './parseSlides';
 import { parseFlashcards } from './parseFlashcards';
 import { renderMarkdownPreview } from './index';
@@ -66,6 +66,33 @@ describe('Markdown Renderer & Extractor Tests', () => {
 			const output = processCircuitEmbeds(input);
 			expect(output).toContain('data-width="80%"');
 			expect(output).toContain('data-height="600px"');
+		});
+	});
+
+	describe('processFlowchartEmbeds', () => {
+		it('should replace flowchart fences with div placeholders', () => {
+			const input = '```flowchart\nflowchart_data_here\n```';
+			const output = processFlowchartEmbeds(input);
+			expect(output).toContain('class="flowchart-embed"');
+			expect(output).toContain('data-width="100%"');
+			expect(output).toContain('data-height="400px"');
+			expect(output).toContain('flowchart_data_here');
+		});
+	});
+
+	describe('processEmbedEmbeds', () => {
+		it('should return error div for empty embed', () => {
+			const input = '```embed\n\n```';
+			const output = processEmbedEmbeds(input);
+			expect(output).toContain('embed-error');
+			expect(output).toContain('Konten embed kosong');
+		});
+
+		it('should sanitize and allow valid https iframe embed', () => {
+			const input = '```embed\n<iframe src="https://example.com"></iframe>\n```';
+			const output = processEmbedEmbeds(input);
+			expect(output).toContain('<iframe');
+			expect(output).toContain('https://example.com');
 		});
 	});
 

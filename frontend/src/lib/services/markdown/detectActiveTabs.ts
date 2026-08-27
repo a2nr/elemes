@@ -23,6 +23,7 @@ export function detectActiveTabs(content: string): string[] {
 		activeTabs.push('flowchart');
 	}
 
+	// Intentional deduplication: only push 'quiz' once even if both INITIAL_QUIZ and QUIZ_FLASHCARD markers exist
 	if (content.includes('---INITIAL_QUIZ---') || content.includes('---QUIZ_FLASHCARD---')) {
 		activeTabs.push('quiz');
 	}
