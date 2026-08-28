@@ -1,13 +1,5 @@
-// Polyfill markAsUncloneable on node:worker_threads for Node 20 runtime compatibility (undici/jsdom)
-try {
-	// eslint-disable-next-line @typescript-eslint/no-require-imports
-	const wt = require('node:worker_threads');
-	if (wt && typeof wt.markAsUncloneable === 'undefined') {
-		wt.markAsUncloneable = () => {};
-	}
-} catch {
-	// ignore
-}
+import { patchWorkerThreadsCompat } from './nodeCompat';
+patchWorkerThreadsCompat();
 
 import DOMPurify from 'isomorphic-dompurify';
 
