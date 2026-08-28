@@ -46,6 +46,17 @@ def upgrade() -> None:
         sa.Column("composite_percent", sa.Float(), nullable=True),
     )
 
+    # Perluas constraint state menjadi 5-state SEBELUM backfill update,
+    # agar nilai 'in_progress' diizinkan saat UPDATE di bawah.
+    op.drop_constraint(
+        "ck_student_progress_state", "student_progress", type_="check"
+    )
+    op.create_check_constraint(
+        "ck_student_progress_state",
+        "student_progress",
+        "state IN ('not_started','in_progress','completed','scored','done')",
+    )
+
     # Backfill: completed → exercise lulus; scored → ambil skor kuis lama.
     op.execute(
         "UPDATE student_progress SET exercise_passed = true "
@@ -61,16 +72,6 @@ def upgrade() -> None:
     op.execute(
         "UPDATE student_progress SET state = 'in_progress' "
         "WHERE state IN ('completed', 'scored')"
-    )
-
-    # Perluas constraint state menjadi 5-state.
-    op.drop_constraint(
-        "ck_student_progress_state", "student_progress", type_="check"
-    )
-    op.create_check_constraint(
-        "ck_student_progress_state",
-        "student_progress",
-        "state IN ('not_started','in_progress','completed','scored','done')",
     )
 
 
