@@ -670,3 +670,68 @@ def test_roundtrip_export_restore_delete_recreate():
             repo.run_student_import(db, rows_new)
     finally:
         db.close()
+
+
+# ── composite score: set_exercise_passed / set_quiz_score / recompute_progress ──
+
+
+class TestSetExercisePassed:
+    def test_set_exercise_passed_creates_progress(self):
+        db = SessionLocal()
+        try:
+            student = _seed_student(db, "TOKEN_EX1", name="Ex1")
+            lesson = _seed_lesson(db, "ex_lesson")
+            db.commit()
+            p = repo.set_exercise_passed(db, user_id=student.id, lesson_id=lesson.id)
+            db.commit()
+            assert p is not None
+            assert p.exercise_passed is True
+            assert p.state == "in_progress"
+        finally:
+            db.close()
+
+    def test_exercise_then_quiz_makes_done(self):
+        db = SessionLocal()
+        try:
+            student = _seed_student(db, "TOKEN_EX2", name="Ex2")
+            lesson = _seed_lesson(db, "ex2_lesson")
+            db.commit()
+            repo.set_exercise_passed(db, user_id=student.id, lesson_id=lesson.id)
+            repo.set_quiz_score(db, user_id=student.id, lesson_id=lesson.id, quiz_earned=3, quiz_total=4)
+            repo.recompute_progress(db, user_id=student.id, lesson_id=lesson.id, has_exercise=True, has_quiz=True, exercise_weight=70.0, quiz_weight=30.0, done_min_percent=75.0)
+            db.commit()
+            p = repo.get_progress(db, user_id=student.id, lesson_id=lesson.id)
+            assert p.state == "done"
+            assert p.composite_percent == 92.5
+        finally:
+            db.close()
+
+    def test_exercise_only_recompute_done(self):
+        db = SessionLocal()
+        try:
+            student = _seed_student(db, "TOKEN_EX3", name="Ex3")
+            lesson = _seed_lesson(db, "ex3_lesson")
+            db.commit()
+            repo.set_exercise_passed(db, user_id=student.id, lesson_id=lesson.id)
+            repo.recompute_progress(db, user_id=student.id, lesson_id=lesson.id, has_exercise=True, has_quiz=False, exercise_weight=70.0, quiz_weight=30.0, done_min_percent=75.0)
+            db.commit()
+            p = repo.get_progress(db, user_id=student.id, lesson_id=lesson.id)
+            assert p.state == "done"
+            assert p.composite_percent == 100.0
+        finally:
+            db.close()
+
+    def test_quiz_only_below_threshold_not_done(self):
+        db = SessionLocal()
+        try:
+            student = _seed_student(db, "TOKEN_EX4", name="Ex4")
+            lesson = _seed_lesson(db, "ex4_lesson")
+            db.commit()
+            repo.set_quiz_score(db, user_id=student.id, lesson_id=lesson.id, quiz_earned=1, quiz_total=4)
+            repo.recompute_progress(db, user_id=student.id, lesson_id=lesson.id, has_exercise=False, has_quiz=True, exercise_weight=70.0, quiz_weight=30.0, done_min_percent=75.0)
+            db.commit()
+            p = repo.get_progress(db, user_id=student.id, lesson_id=lesson.id)
+            assert p.state == "in_progress"
+            assert p.composite_percent == 25.0
+        finally:
+            db.close()

@@ -27,6 +27,8 @@ def parse_progress_status(value: str) -> tuple[str, int | None, int | None]:
 
     - "" / "not_started"      → ("not_started", None, None)
     - "completed"             → ("completed", None, None)
+    - "done"                  → ("done", None, None)
+    - "in_progress"           → ("in_progress", None, None)
     - "<earned>/<total>"      → ("scored", earned, total) bila total > 0 dan
                                 0 <= earned <= total
     - selain itu              → raise ValueError (status tidak dikenal)
@@ -36,6 +38,10 @@ def parse_progress_status(value: str) -> tuple[str, int | None, int | None]:
         return ("not_started", None, None)
     if v == "completed":
         return ("completed", None, None)
+    if v == "done":
+        return ("done", None, None)
+    if v == "in_progress":
+        return ("in_progress", None, None)
     if "/" in v:
         parts = v.split("/")
         if len(parts) == 2:
@@ -60,9 +66,12 @@ def format_progress_status(progress) -> str:
     dengan atribut state/score_earned/score_total (mis. model StudentProgress).
 
     - None            → ""
+    - done            → persen komposit dibulatkan bila ada, else "done"
+    - in_progress     → "" (harus kosong: tidak dihitung prasyarat lengkap)
     - scored          → "<earned>/<total>"
     - completed       → "completed"
     - not_started     → "not_started"
+    - lainnya         → state itu sendiri
     """
     if progress is None:
         return ""
@@ -72,6 +81,13 @@ def format_progress_status(progress) -> str:
         state = progress.state
         earned = getattr(progress, "score_earned", None)
         total = getattr(progress, "score_total", None)
+    if state == "in_progress":
+        return ""
+    if state == "done":
+        composite = getattr(progress, "composite_percent", None)
+        if composite is not None:
+            return f"{round(composite)}"
+        return "done"
     if state == "scored":
         return f"{earned}/{total}"
     return state

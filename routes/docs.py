@@ -50,17 +50,16 @@ def api_reference():
     auth_map = {
         "/login": False,
         "/validate-token": False,
-        "/track-progress": False,  # token-based, not session auth
         "/progress-report.json": True,
         "/reset-progress": True,
+        "/lesson-progress": False,  # token-based, not session auth
+        "/lesson-progress/<lesson_name>": False,  # token-based, not session auth
         "/compile": False,  # token optional (anon allowed)
         "/compile/sessions": False,
         "/compile/sessions/<session_id>": False,
         "/compile/sessions/<session_id>/input": False,
         "/compile/sessions/<session_id>": False,
         "/velxio-compile": False,
-        "/quiz-attempts/submit": False,
-        "/quiz-attempts/<lesson_name>": False,
         "/students/export-csv": True,
         "/students/import/preview": True,
         "/students/import": True,

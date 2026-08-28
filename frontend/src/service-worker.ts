@@ -41,7 +41,7 @@ self.addEventListener('fetch', (event) => {
 
   // NetworkOnly: API yang tidak boleh di-cache
   if (url.pathname.startsWith('/api/compile') ||
-      url.pathname.startsWith('/api/track-progress') ||
+      url.pathname.startsWith('/api/lesson-progress') ||
       url.pathname.startsWith('/api/login') ||
       url.pathname.startsWith('/api/logout')) {
     return; // biarkan browser handle

@@ -17,7 +17,6 @@ import type {
 	StartSessionRequest
 } from '$types/compiler';
 import type { Lesson, LessonContent } from '$types/lesson';
-import type { QuizTerminationReason } from './quiz-integrity';
 
 const BASE = '/api';
 
@@ -117,19 +116,6 @@ export function getHexContent(req: VelxioCompileRequest, customFetch = fetch) {
 
 // ── Progress ─────────────────────────────────────────────────────────
 
-export function trackProgress(
-	token: string,
-	lessonName: string,
-	status = 'completed',
-	customFetch = fetch
-) {
-	return post<{ success: boolean; message: string }>(
-		'/track-progress',
-		{ token, lesson_name: lessonName, status },
-		customFetch
-	);
-}
-
 export function resetProgress(
 	teacherToken: string,
 	studentId: string,
@@ -143,88 +129,93 @@ export function resetProgress(
 	);
 }
 
-// ── Quiz attempt (anti-cheat / focus-loss) ────────────────────────
+// ── Lesson progress (unified exercise + quiz) ─────────────────────
 
-export interface QuizAttemptSubmission {
-	attempt_id: string;
+export interface ExerciseProgressPayload {
 	token: string;
 	lesson_name: string;
+	type: 'exercise';
+}
+
+export interface QuizProgressPayload {
+	token: string;
+	lesson_name: string;
+	type: 'quiz';
+	attempt_id: string;
 	status: 'submitted' | 'terminated';
-	termination_reason: QuizTerminationReason | null;
+	termination_reason: string | null;
 	score: string;
 	occurred_at: string;
 	started_at: string;
 	visibility_event_count: number;
-	/** Ringkasan per-soal untuk review-after-refresh + breakdown kategori. */
-	answers: QuizAnswerPayload[];
+	answers: Array<{
+		question_id: string;
+		selected_option_id: string | null;
+		is_correct: boolean;
+		category: 'evaluasi' | 'diagnostik';
+		type: 'mcq' | 'flashcard';
+	}>;
 }
 
-export interface QuizAnswerPayload {
+export type LessonProgressPayload = ExerciseProgressPayload | QuizProgressPayload;
+
+/** Answers returned by the backend in GET /api/lesson-progress (attempt audit). */
+export interface LessonProgressAnswer {
 	question_id: string;
 	selected_option_id: string | null;
 	is_correct: boolean;
 	category: 'evaluasi' | 'diagnostik';
-	/** 'mcq' | 'flashcard' — breakdown eval/diag hanya dihitung untuk MCQ. */
 	type: 'mcq' | 'flashcard';
 }
 
-export interface QuizAttemptSubmitResponse {
+export interface LessonProgressResponse {
 	success: boolean;
 	idempotent?: boolean;
 	attempt_id?: string;
-	message: string;
+	message?: string;
 }
 
-/** Attempt yang dikembalikan endpoint GET (untuk review-after-refresh). */
-export interface QuizAttemptFetchResponse {
-	success: boolean;
-	attempt_id: string;
-	status: 'submitted' | 'terminated';
-	termination_reason: QuizTerminationReason | null;
-	score: string;
-	score_earned?: number | null;
-	score_total?: number | null;
-	started_at?: string | null;
-	finished_at?: string | null;
-	answers: QuizAnswerPayload[];
+export async function submitLessonProgress(
+	payload: LessonProgressPayload,
+	customFetch: typeof fetch = fetch
+): Promise<LessonProgressResponse> {
+	const res = await customFetch('/api/lesson-progress', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(payload)
+	});
+	return res.json();
 }
 
-/**
- * Submit finalisasi kuis (satu attempt) — endpoint atomic di backend.
- * Dipakai untuk exit path normal: tombol Keluar, SPA navigation, finish.
- */
-export function submitQuizAttempt(
-	payload: QuizAttemptSubmission,
-	customFetch = fetch
-): Promise<QuizAttemptSubmitResponse> {
-	return post<QuizAttemptSubmitResponse>('/quiz-attempts/submit', payload, customFetch);
-}
-
-/**
- * Fetch attempt kuis siswa untuk sebuah lesson (GET /quiz-attempts/<lesson>).
- * Dipakai saat halaman dibuka kembali supaya review per-soal tetap tampil
- * setelah refresh (one-attempt policy → session hilang, tapi attempt persist).
- */
-export function fetchQuizAttempt(
-	token: string,
-	lessonName: string,
-	customFetch = fetch
-): Promise<QuizAttemptFetchResponse> {
-	const query = `token=${encodeURIComponent(token)}`;
-	return get<QuizAttemptFetchResponse>(`/quiz-attempts/${lessonName}?${query}`, customFetch);
-}
-
-/**
- * Kirim attempt via `navigator.sendBeacon` (synchronous, fire-and-forget).
- * Dipakai untuk event lifecycle yang bisa membuat browser suspend
- * (focus_lost / page_unload) — tidak boleh mengandalkan `await`.
- *
- * Mengembalikan `false` bila beacon tidak tersedia/gagal; TIDAK melempar.
- */
-export function quizAttemptBeacon(payload: QuizAttemptSubmission): boolean {
-	if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') {
-		return false;
-	}
+export function lessonProgressBeacon(payload: LessonProgressPayload): boolean {
+	if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return false;
 	const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-	return navigator.sendBeacon('/api/quiz-attempts/submit', blob);
+	return navigator.sendBeacon('/api/lesson-progress', blob);
+}
+
+export interface LessonProgressFetchResponse {
+	success: boolean;
+	lesson_name?: string;
+	state?: string;
+	exercise_passed?: boolean | null;
+	quiz_score_earned?: number | null;
+	quiz_score_total?: number | null;
+	composite_percent?: number | null;
+	attempt_id?: string | null;
+	attempt_status?: string | null;
+	termination_reason?: string | null;
+	attempt_score?: string | null;
+	attempt_started_at?: string | null;
+	attempt_finished_at?: string | null;
+	answers?: Array<LessonProgressAnswer>;
+}
+
+export async function fetchLessonProgress(
+	lessonName: string,
+	token: string,
+	customFetch: typeof fetch = fetch
+): Promise<LessonProgressFetchResponse> {
+	const url = `/api/lesson-progress/${encodeURIComponent(lessonName)}?token=${encodeURIComponent(token)}`;
+	const res = await customFetch(url);
+	return res.json();
 }

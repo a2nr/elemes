@@ -4,7 +4,7 @@ import { pickDefaultTab } from '$services/lesson-tabs';
 import { tick, untrack } from 'svelte';
 import { auth, authLoggedIn, authToken } from '$stores/auth';
 import { lessonContext } from '$stores/lessonContext';
-import { compileCode, trackProgress, submitQuizAttempt, quizAttemptBeacon, fetchQuizAttempt, type QuizAttemptSubmission, type QuizAttemptFetchResponse } from '$services/api';
+import { compileCode, submitLessonProgress, lessonProgressBeacon, type LessonProgressPayload } from '$services/api';
 import { createAttemptId, type QuizTerminationReason } from '$services/quiz-integrity';
 import { evaluateVelxioSubmission } from '$services/velxio-evaluator';
 import { evaluateFlowchartSubmission } from '$services/flowchart-evaluator';
@@ -239,7 +239,7 @@ export class LessonManager {
 
 		if (get(authLoggedIn)) {
 			const lessonName = this.slug.replace('.md', '');
-			await trackProgress(auth.token, lessonName, status);
+			await submitLessonProgress({ token: auth.token, lesson_name: lessonName, type: 'exercise' });
 			this.lessonCompleted = true;
 			lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
 		}
@@ -366,19 +366,19 @@ export class LessonManager {
 		if (reason === 'focus_lost' || reason === 'page_unload') {
 			// Jangan mengandalkan await dari event lifecycle. Beacon pertama;
 			// retry fetch keepalive hanya bila document masih visible/aktif.
-			const ok = quizAttemptBeacon(payload);
+			const ok = lessonProgressBeacon(payload);
 			if (!ok && typeof document !== 'undefined' && document.visibilityState === 'visible') {
 				try {
-					await submitQuizAttempt(payload);
+					await submitLessonProgress(payload);
 				} catch {
 					/* best-effort saja — jangan memblokir UI */
 				}
 			}
 			return;
-		}
+			}
 
-		try {
-			await submitQuizAttempt(payload);
+			try {
+			await submitLessonProgress(payload);
 		} catch {
 			// Fallback legacy: skor tetap tersimpan walau endpoint attempt
 			// tidak bisa dijangkau. Tidak membuat attempt kedua — endpoint
@@ -389,7 +389,8 @@ export class LessonManager {
 
 	/**
 	 * Tandai lesson selesai di UI lokal setelah kuis difinalisasi. Tidak
-	 * memanggil track-progress — endpoint attempt atomic yang menulis progress.
+	 * memanggil endpoint terpisah — attempt atomic /api/lesson-progress
+	 * yang menulis progress.
 	 */
 	private markQuizCompletedLocally(celebrate: boolean) {
 		this.lessonCompleted = true;
@@ -406,20 +407,21 @@ export class LessonManager {
 		if (!this.quizSession || this.quizFinalized) return false;
 		const payload = this.buildQuizAttemptPayload(reason);
 		if (!payload) return false;
-		return quizAttemptBeacon(payload);
+		return lessonProgressBeacon(payload);
 	}
 
 	/**
 	 * Bangun payload attempt secara synchronous dari session & attempt state.
 	 * Returns null bila belum ada attempt/session atau token tidak tersedia.
 	 */
-	buildQuizAttemptPayload(reason: QuizTerminationReason): QuizAttemptSubmission | null {
+	buildQuizAttemptPayload(reason: QuizTerminationReason): LessonProgressPayload | null {
 		if (!this.quizSession || !this.quizAttemptId) return null;
 		const token = get(authToken) || localStorage.getItem('student_token') || '';
 		if (!token) return null;
 		const result = calculateQuizResult(this.quizSession);
 		const now = new Date().toISOString();
 		return {
+			type: 'quiz',
 			attempt_id: this.quizAttemptId,
 			token,
 			lesson_name: this.slug.replace('.md', ''),

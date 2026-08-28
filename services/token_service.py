@@ -27,10 +27,6 @@ def get_student_progress(token):
     return _backend().get_student_progress(token)
 
 
-def update_student_progress(token, lesson_name, status="completed"):
-    return _backend().update_student_progress(token, lesson_name, status)
-
-
 def reset_student_progress(student_id, lesson_name):
     """Reset progress siswa by student_id (id anonim dari report — bukan token)."""
     return _backend().reset_progress(student_id, lesson_name)

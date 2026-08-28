@@ -99,39 +99,6 @@ def get_student_progress(token):
         db.close()
 
 
-def update_student_progress(token, lesson_name, status="completed"):
-    if SessionLocal is None:
-        return False
-    parsed = _parse_status(status)
-    if parsed is None:
-        logging.warning("Status tidak dikenal untuk lesson %s: %r", lesson_name, status)
-        return False
-    state, earned, total = parsed
-    db = SessionLocal()
-    try:
-        user = find_user_by_raw_token(db, token)
-        if user is None:
-            return False
-        lesson = get_lesson_by_slug(db, lesson_name)
-        if lesson is None:
-            return False
-        set_progress(
-            db,
-            user_id=user.id,
-            lesson_id=lesson.id,
-            state=state,
-            score_earned=earned,
-            score_total=total,
-        )
-        db.commit()
-        return True
-    except Exception:
-        db.rollback()
-        return False
-    finally:
-        db.close()
-
-
 def reset_progress(student_id, lesson_name):
     """Reset via student_id = user.id (PG) — teacher tidak perlu token siswa.
 
@@ -261,6 +228,24 @@ def get_all_students_progress(all_lessons_func):
                     student[f"{lesson.slug}_eval"] = ""
                     student[f"{lesson.slug}_diag"] = ""
                     student[f"{lesson.slug}_diag_unmastered"] = "[]"
+                # Field komposit (skor gabungan) untuk report guru — emit TERPISAH,
+                # tidak mengubah kontrak status lama di student[lesson.slug].
+                progress_row = rows.get(lesson.id)
+                student[f"{lesson.slug}_composite"] = (
+                    round(progress_row.composite_percent)
+                    if progress_row and progress_row.composite_percent is not None
+                    else None
+                )
+                student[f"{lesson.slug}_exercise_passed"] = (
+                    progress_row.exercise_passed if progress_row else None
+                )
+                student[f"{lesson.slug}_quiz_score"] = (
+                    f"{progress_row.quiz_score_earned}/{progress_row.quiz_score_total}"
+                    if progress_row
+                    and progress_row.quiz_score_earned is not None
+                    and progress_row.quiz_score_total is not None
+                    else ""
+                )
             student['completed_count'] = count_completed_lessons(db, user_id=user.id)
             students.append(student)
         return students, ordered_lessons

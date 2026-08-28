@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-	quizAttemptBeacon,
 	resetProgress,
-	submitQuizAttempt,
-	trackProgress,
-	type QuizAttemptSubmission
+	submitLessonProgress,
+	lessonProgressBeacon,
+	fetchLessonProgress,
+	type ExerciseProgressPayload,
+	type QuizProgressPayload
 } from './api';
 
 function captureFetch() {
@@ -31,34 +32,53 @@ describe('resetProgress', () => {
 	});
 });
 
-describe('trackProgress', () => {
-	it('tetap mengirim token siswa + status', async () => {
+describe('submitLessonProgress (exercise)', () => {
+	it('mengirim POST ke /api/lesson-progress dengan type exercise', async () => {
 		const { calls, customFetch } = captureFetch();
-		await trackProgress('student-token', 'hello_world', 'completed', customFetch);
+		const payload: ExerciseProgressPayload = {
+			token: 'student-token',
+			lesson_name: 'hello_world',
+			type: 'exercise'
+		};
+		await submitLessonProgress(payload, customFetch);
 
-		expect(calls[0].url).toBe('/api/track-progress');
+		expect(calls).toHaveLength(1);
+		expect(calls[0].url).toBe('/api/lesson-progress');
+		expect(calls[0].init.method).toBe('POST');
+		expect((calls[0].init.headers as Record<string, string>)['Content-Type']).toBe(
+			'application/json'
+		);
 		const body = JSON.parse(String(calls[0].init.body));
 		expect(body).toEqual({
 			token: 'student-token',
 			lesson_name: 'hello_world',
-			status: 'completed'
+			type: 'exercise'
 		});
 	});
 });
 
-describe('submitQuizAttempt', () => {
-	function payload(overrides: Partial<QuizAttemptSubmission> = {}): QuizAttemptSubmission {
+describe('submitLessonProgress (quiz)', () => {
+	function payload(overrides: Partial<QuizProgressPayload> = {}): QuizProgressPayload {
 		return {
-			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
 			token: 'student-token',
 			lesson_name: 'quiz_test',
+			type: 'quiz',
+			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
 			status: 'terminated',
 			termination_reason: 'focus_lost',
 			score: '2/4',
 			occurred_at: '2026-08-09T14:04:44.000Z',
 			started_at: '2026-08-09T14:03:00.000Z',
 			visibility_event_count: 1,
-			answers: [],
+			answers: [
+				{
+					question_id: 'q1',
+					selected_option_id: 'o2',
+					is_correct: false,
+					category: 'evaluasi',
+					type: 'mcq'
+				}
+			],
 			...overrides
 		};
 	}
@@ -67,91 +87,61 @@ describe('submitQuizAttempt', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('mengirim POST ke /quiz-attempts/submit dengan JSON fields lengkap', async () => {
+	it('mengirim POST ke /api/lesson-progress dengan JSON fields kuis lengkap', async () => {
 		const { calls, customFetch } = captureFetch();
 		const p = payload();
-		await submitQuizAttempt(p, customFetch);
+		await submitLessonProgress(p, customFetch);
 
 		expect(calls).toHaveLength(1);
-		expect(calls[0].url).toBe('/api/quiz-attempts/submit');
+		expect(calls[0].url).toBe('/api/lesson-progress');
 		expect(calls[0].init.method).toBe('POST');
-		expect((calls[0].init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+		expect((calls[0].init.headers as Record<string, string>)['Content-Type']).toBe(
+			'application/json'
+		);
 		const body = JSON.parse(String(calls[0].init.body));
 		expect(body).toEqual({
-			attempt_id: p.attempt_id,
 			token: p.token,
 			lesson_name: 'quiz_test',
+			type: 'quiz',
+			attempt_id: p.attempt_id,
 			status: 'terminated',
 			termination_reason: 'focus_lost',
 			score: '2/4',
 			occurred_at: p.occurred_at,
 			started_at: p.started_at,
 			visibility_event_count: 1,
-			answers: []
+			answers: p.answers
 		});
 	});
 
 	it('submit completed memakai status submitted + termination_reason null', async () => {
 		const { calls, customFetch } = captureFetch();
-		await submitQuizAttempt(payload({ status: 'submitted', termination_reason: null }), customFetch);
+		await submitLessonProgress(
+			payload({ status: 'submitted', termination_reason: null }),
+			customFetch
+		);
 		const body = JSON.parse(String(calls[0].init.body));
 		expect(body.status).toBe('submitted');
 		expect(body.termination_reason).toBeNull();
 	});
 });
 
-describe('quizAttemptBeacon', () => {
+describe('lessonProgressBeacon', () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
 
-	it('memakai sendBeacon dengan Blob application/json di endpoint yang sama', async () => {
+	it('memakai sendBeacon dengan Blob application/json di /api/lesson-progress', async () => {
 		const sendBeacon = vi
 			.fn<(url: string, blob: Blob) => boolean>()
 			.mockReturnValue(true);
 		vi.stubGlobal('navigator', { sendBeacon });
 
-		const p: QuizAttemptSubmission = {
-				attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
-				token: 'student-token',
-				lesson_name: 'quiz_test',
-				status: 'terminated',
-				termination_reason: 'focus_lost',
-				score: '2/4',
-				occurred_at: '2026-08-09T14:04:44.000Z',
-				started_at: '2026-08-09T14:03:00.000Z',
-				visibility_event_count: 1,
-				answers: [],
-			};
-
-			const ok = quizAttemptBeacon(p);
-			expect(ok).toBe(true);
-			expect(sendBeacon).toHaveBeenCalledTimes(1);
-			expect(sendBeacon.mock.calls[0][0]).toBe('/api/quiz-attempts/submit');
-			const blob = sendBeacon.mock.calls[0][1];
-			expect(blob.type).toBe('application/json');
-			const text = await blob.text();
-			const body = JSON.parse(text);
-			expect(body).toEqual({
-				attempt_id: p.attempt_id,
-				token: p.token,
-				lesson_name: 'quiz_test',
-				status: 'terminated',
-				termination_reason: 'focus_lost',
-				score: '2/4',
-				occurred_at: p.occurred_at,
-				started_at: p.started_at,
-				visibility_event_count: 1,
-				answers: p.answers
-			});
-		});
-
-	it('tidak melempar dan mengembalikan false saat sendBeacon tidak tersedia', () => {
-		vi.stubGlobal('navigator', {});
-		const p: QuizAttemptSubmission = {
-			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
+		const p: QuizProgressPayload = {
 			token: 'student-token',
 			lesson_name: 'quiz_test',
+			type: 'quiz',
+			attempt_id: '3f2f8c24-8c1a-4b2a-9e5a-1a2b3c4d5e6f',
 			status: 'terminated',
 			termination_reason: 'focus_lost',
 			score: '2/4',
@@ -160,6 +150,59 @@ describe('quizAttemptBeacon', () => {
 			visibility_event_count: 1,
 			answers: []
 		};
-		expect(quizAttemptBeacon(p)).toBe(false);
+
+		const ok = lessonProgressBeacon(p);
+		expect(ok).toBe(true);
+		expect(sendBeacon).toHaveBeenCalledTimes(1);
+		expect(sendBeacon.mock.calls[0][0]).toBe('/api/lesson-progress');
+		const blob = sendBeacon.mock.calls[0][1];
+		expect(blob.type).toBe('application/json');
+		const text = await blob.text();
+		const body = JSON.parse(text);
+		expect(body).toEqual({
+			token: p.token,
+			lesson_name: 'quiz_test',
+			type: 'quiz',
+			attempt_id: p.attempt_id,
+			status: 'terminated',
+			termination_reason: 'focus_lost',
+			score: '2/4',
+			occurred_at: p.occurred_at,
+			started_at: p.started_at,
+			visibility_event_count: 1,
+			answers: p.answers
+		});
+	});
+
+	it('tidak melempar dan mengembalikan false saat sendBeacon tidak tersedia', () => {
+		vi.stubGlobal('navigator', {});
+		const p: ExerciseProgressPayload = {
+			token: 'student-token',
+			lesson_name: 'quiz_test',
+			type: 'exercise'
+		};
+		expect(lessonProgressBeacon(p)).toBe(false);
+	});
+});
+
+describe('fetchLessonProgress', () => {
+	it('mengirim GET ke /api/lesson-progress/<lesson>?token=...', async () => {
+		const { calls, customFetch } = captureFetch();
+		await fetchLessonProgress('quiz_test', 'student-token', customFetch);
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0].url).toBe(
+			'/api/lesson-progress/quiz_test?token=student-token'
+		);
+		expect(calls[0].init.method).toBeUndefined();
+	});
+
+	it('meng-encodeURIComponent lesson_name dan token', async () => {
+		const { calls, customFetch } = captureFetch();
+		await fetchLessonProgress('lesson with space', 'tok/with+slash', customFetch);
+
+		expect(calls[0].url).toBe(
+			'/api/lesson-progress/lesson%20with%20space?token=tok%2Fwith%2Bslash'
+		);
 	});
 });

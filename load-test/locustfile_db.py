@@ -3,7 +3,7 @@ Locust scenario khusus migrasi database (CSV → PostgreSQL).
 
 Menargetkan endpoint yang persistence-nya berubah:
   - /api/login + /api/validate-token   (identitas: CSV → PG users/access_tokens)
-  - /api/track-progress                (write progress: CSV → PG student_progress)
+  - /api/lesson-progress              (write progress: CSV → PG student_progress, type:"exercise")
   - /api/progress-report.json          (report guru — baca semua siswa)
 
 Data token diambil dari test_data.json (hasilkan dulu:
@@ -77,10 +77,9 @@ class StudentUser(HttpUser):
         if not LESSON_SLUGS:
             return
         slug = random.choice(LESSON_SLUGS)
-        status = random.choice(['completed', 'not_started', '3/4', '2/5'])
         self.client.post(
-            f'{API}/track-progress',
-            json={'token': self.token, 'lesson_name': slug, 'status': status},
+            f'{API}/lesson-progress',
+            json={'token': self.token, 'lesson_name': slug, 'type': 'exercise'},
         )
 
 

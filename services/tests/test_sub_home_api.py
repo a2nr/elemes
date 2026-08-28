@@ -232,23 +232,26 @@ def test_bab_lesson_unlocked_by_scored_prerequisite(client, tmp_path, monkeypatc
     assert by_name["lanjutan.md"]["locked"] is True
 
 
-def test_bab_lesson_min_percent_threshold(client, tmp_path, monkeypatch):
+def test_bab_lesson_global_threshold_unlock(client, tmp_path, monkeypatch):
+    # Suffix `min: 75%` sekarang DEPRECATED — tidak lagi jadi ambang per-lesson.
+    # Prasyarat terpenuhi asal status progress pendahulu non-kosong & bukan
+    # 'not_started' (threshold global LESSON_DONE_MIN_PERCENT di backend).
     _make_bab_with_prereq(tmp_path, monkeypatch, "- [Dasar](lesson/dasar.md) min: 75%")
     from routes import lessons as lessons_routes
 
-    # Skor di bawah ambang → tetap terkunci
+    # Skor apa pun (termasuk di bawah 75%) → tidak terkunci (ambang diabaikan)
     monkeypatch.setattr(lessons_routes, "get_student_progress", lambda token: {"dasar": "2/4"})
     resp = client.get("/bab/bab1?token=siswa1")
     by_name = {l["filename"]: l for l in resp.get_json()["lessons"]}
-    assert by_name["lanjutan.md"]["locked"] is True
+    assert by_name["lanjutan.md"]["locked"] is False
 
-    # Skor mencapai ambang → tidak terkunci
+    # Skor mencapai ambang juga tidak terkunci
     monkeypatch.setattr(lessons_routes, "get_student_progress", lambda token: {"dasar": "3/4"})
     resp = client.get("/bab/bab1?token=siswa1")
     by_name = {l["filename"]: l for l in resp.get_json()["lessons"]}
     assert by_name["lanjutan.md"]["locked"] is False
 
-    # completed tetap memenuhi walau ada ambang
+    # completed memenuhi
     monkeypatch.setattr(
         lessons_routes,
         "get_student_progress",
@@ -258,18 +261,34 @@ def test_bab_lesson_min_percent_threshold(client, tmp_path, monkeypatch):
     by_name = {l["filename"]: l for l in resp.get_json()["lessons"]}
     assert by_name["lanjutan.md"]["locked"] is False
 
+    # Status kosong / not_started → tetap terkunci
+    monkeypatch.setattr(lessons_routes, "get_student_progress", lambda token: {"dasar": ""})
+    resp = client.get("/bab/bab1?token=siswa1")
+    by_name = {l["filename"]: l for l in resp.get_json()["lessons"]}
+    assert by_name["lanjutan.md"]["locked"] is True
+
+    monkeypatch.setattr(
+        lessons_routes,
+        "get_student_progress",
+        lambda token: {"dasar": "not_started"},
+    )
+    resp = client.get("/bab/bab1?token=siswa1")
+    by_name = {l["filename"]: l for l in resp.get_json()["lessons"]}
+    assert by_name["lanjutan.md"]["locked"] is True
+
 
 def test_lesson_detail_missing_prerequisites_with_score(client, tmp_path, monkeypatch):
     _make_bab_with_prereq(tmp_path, monkeypatch, "- [Dasar](lesson/dasar.md) min: 75%")
     from routes import lessons as lessons_routes
 
-    # Skor di bawah ambang → terkunci + missing_prerequisites berisi slug
+    # Ambang per-lesson diabaikan: skor apa pun (termasuk di bawah 75%) tetap
+    # memenuhi prasyarat → tidak terkunci & missing_prerequisites kosong.
     monkeypatch.setattr(lessons_routes, "get_student_progress", lambda token: {"dasar": "1/4"})
     resp = client.get("/lesson/lanjutan.json?token=siswa1")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["locked"] is True
-    assert data["missing_prerequisites"] == ["dasar"]
+    assert data["locked"] is False
+    assert data["missing_prerequisites"] == []
 
     # Skor di atas ambang → tidak terkunci
     monkeypatch.setattr(lessons_routes, "get_student_progress", lambda token: {"dasar": "4/4"})
@@ -277,3 +296,10 @@ def test_lesson_detail_missing_prerequisites_with_score(client, tmp_path, monkey
     data = resp.get_json()
     assert data["locked"] is False
     assert data["missing_prerequisites"] == []
+
+    # Status kosong → terkunci + missing_prerequisites berisi slug
+    monkeypatch.setattr(lessons_routes, "get_student_progress", lambda token: {"dasar": ""})
+    resp = client.get("/lesson/lanjutan.json?token=siswa1")
+    data = resp.get_json()
+    assert data["locked"] is True
+    assert data["missing_prerequisites"] == ["dasar"]

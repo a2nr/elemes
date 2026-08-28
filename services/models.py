@@ -159,7 +159,8 @@ class StudentProgress(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "lesson_id", name="uq_student_progress_user_lesson"),
         CheckConstraint(
-            "state IN ('not_started','completed','scored')", name="ck_student_progress_state"
+            "state IN ('not_started','in_progress','completed','scored','done')",
+            name="ck_student_progress_state",
         ),
     )
 
@@ -175,6 +176,14 @@ class StudentProgress(Base):
     )
     score_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ── Composite score columns (backward-compatible) ──────────────
+    # exercise_passed: lulus/tidak latihan (C/Python/Circuit/Flowchart/Velxio).
+    exercise_passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # quiz_score_earned / quiz_score_total: ringkasan kuis untuk composite.
+    quiz_score_earned: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    quiz_score_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # composite_percent: hasil akhir evaluasi (0-100); null = belum dihitung.
+    composite_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

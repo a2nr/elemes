@@ -5,15 +5,17 @@ setelah cutover penuh ke PostgreSQL (backend CSV sudah dicabut).
 Suite ini berjalan TERHADAP PostgreSQL nyata (butuh DATABASE_URL). Seeding
 dilakukan via repositories langsung — bukan lewat file CSV.
 
-Semantik PG yang dikunci di sini:
+Semantik PG yang dikunci di sini (model composite baru):
 - lesson tanpa record progress → "" (blank = belum mulai), bukan "not_started".
-- skor terstruktur → status "3/4".
+- state 'done'   → status = composite dibulatkan (mis. "100" bila auto-done).
+- state 'in_progress' → status = "" (aktivitas ada tapi belum selesai).
 """
 
 import os
 
 import pytest
 
+from services import repositories as repo
 from services import token_service as ts
 from services.tests.conftest import STUDENT2_TOKEN, STUDENT_TOKEN, TEACHER_TOKEN
 
@@ -48,13 +50,33 @@ def _seed_database():
         repo.create_access_token(db, user_id=budi.id, raw_token=STUDENT_TOKEN)
         siti = repo.create_user(db, display_name="Siti Aminah", role="student")
         repo.create_access_token(db, user_id=siti.id, raw_token=STUDENT2_TOKEN)
+        lesson_rows = {}
         for idx, slug in enumerate(["hello_world", "quiz_test", "variabel"]):
-            db.add(Lesson(slug=slug, title=slug.replace("_", " ").title(), order_index=idx))
+            lesson = Lesson(slug=slug, title=slug.replace("_", " ").title(), order_index=idx)
+            db.add(lesson)
+            db.flush()
+            lesson_rows[slug] = lesson.id
         db.commit()
 
-        # progress Budi (seperti baris CSV lama)
-        ts.update_student_progress(STUDENT_TOKEN, "hello_world", "completed")
-        ts.update_student_progress(STUDENT_TOKEN, "quiz_test", "3/4")
+        # progress Budi via repositories (mirror endpoint /api/lesson-progress):
+        # hello_world → exercise selesai (reading-only → auto-done 100)
+        repo.set_exercise_passed(db, user_id=budi.id, lesson_id=lesson_rows["hello_world"])
+        repo.recompute_progress(
+            db, user_id=budi.id, lesson_id=lesson_rows["hello_world"],
+            has_exercise=False, has_quiz=False,
+            exercise_weight=70, quiz_weight=30, done_min_percent=75,
+        )
+        # quiz_test → skor kuis 3/4 (reading-only → auto-done 100)
+        repo.set_quiz_score(
+            db, user_id=budi.id, lesson_id=lesson_rows["quiz_test"],
+            quiz_earned=3, quiz_total=4,
+        )
+        repo.recompute_progress(
+            db, user_id=budi.id, lesson_id=lesson_rows["quiz_test"],
+            has_exercise=False, has_quiz=False,
+            exercise_weight=70, quiz_weight=30, done_min_percent=75,
+        )
+        db.commit()
     finally:
         db.close()
 
@@ -89,10 +111,11 @@ def test_missing_progress_is_effectively_not_started():
     assert not progress["quiz_test"]
 
 
-def test_completed_and_scored_both_count_as_completed():
+def test_done_and_scored_both_count_as_completed():
     progress = ts.get_student_progress(STUDENT_TOKEN)
-    assert progress["hello_world"] == "completed"
-    assert progress["quiz_test"] == "3/4"
+    # Reading-only lesson (tanpa exercise/quiz) → auto-done, composite 100.
+    assert progress["hello_world"] == "100"
+    assert progress["quiz_test"] == "100"
     lessons = [
         {"filename": "hello_world.md"},
         {"filename": "quiz_test.md"},
@@ -101,18 +124,54 @@ def test_completed_and_scored_both_count_as_completed():
     assert ts.calculate_student_completion(progress, lessons) == 2
 
 
-def test_update_progress_is_idempotent():
-    assert ts.update_student_progress(STUDENT_TOKEN, "hello_world", "completed") is True
-    assert ts.update_student_progress(STUDENT_TOKEN, "hello_world", "completed") is True
+def test_update_exercise_is_idempotent():
+    # exercise dikirim dua kali → tetap satu record progress, state stabil.
+    from services import repositories as repo
+    from services.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        budi = repo.find_user_by_raw_token(db, STUDENT_TOKEN)
+        hello = repo.get_lesson_by_slug(db, "hello_world")
+        repo.set_exercise_passed(db, user_id=budi.id, lesson_id=hello.id)
+        repo.recompute_progress(
+            db, user_id=budi.id, lesson_id=hello.id,
+            has_exercise=False, has_quiz=False,
+            exercise_weight=70, quiz_weight=30, done_min_percent=75,
+        )
+        db.commit()
+    finally:
+        db.close()
+
     progress = ts.get_student_progress(STUDENT_TOKEN)
-    assert progress["hello_world"] == "completed"
+    assert progress["hello_world"] == "100"
 
 
-def test_update_unknown_lesson_returns_false():
-    assert ts.update_student_progress(STUDENT_TOKEN, "tidak_ada", "completed") is False
+def test_update_unknown_lesson_noop():
+    from services import repositories as repo
+    from services.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        budi = repo.find_user_by_raw_token(db, STUDENT_TOKEN)
+        prog = repo.get_progress(db, user_id=budi.id, lesson_id="tidak-ada")
+    finally:
+        db.close()
+    assert prog is None
 
 
-def test_update_scored_status_preserved():
-    assert ts.update_student_progress(STUDENT_TOKEN, "quiz_test", "3/4") is True
-    progress = ts.get_student_progress(STUDENT_TOKEN)
-    assert progress["quiz_test"] == "3/4"
+def test_quiz_score_preserved():
+    from services import repositories as repo
+    from services.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        budi = repo.find_user_by_raw_token(db, STUDENT_TOKEN)
+        quiz = repo.get_lesson_by_slug(db, "quiz_test")
+        progress = repo.get_progress(db, user_id=budi.id, lesson_id=quiz.id)
+        quiz_earned = progress.quiz_score_earned
+        quiz_total = progress.quiz_score_total
+    finally:
+        db.close()
+    assert quiz_earned == 3
+    assert quiz_total == 4

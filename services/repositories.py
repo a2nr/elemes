@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from services.models import AccessToken, ContentDraft, Lesson, QuizAttempt, StudentProgress, User
+from services.evaluation import compute_composite
 from services.progress_status import ParsedProgress
 from services.student_roundtrip import (
     RoundTripImportError,
@@ -222,6 +223,87 @@ def set_progress(
         progress.state = state
         progress.score_earned = score_earned
         progress.score_total = score_total
+    db.flush()
+    return progress
+
+
+def set_exercise_passed(
+    db: Session, *, user_id: str, lesson_id: str, passed: bool = True
+) -> StudentProgress | None:
+    """Tandai lulus/tidak latihan untuk (user, lesson).
+
+    Buat row progress bila belum ada (state='in_progress'). Tidak commit —
+    pemanggil mengelola transaksi. Tidak menghitung composite (panggil
+    `recompute_progress` terpisah).
+    """
+    progress = get_progress(db, user_id=user_id, lesson_id=lesson_id)
+    if progress is None:
+        progress = StudentProgress(
+            id=_uuid(),
+            user_id=user_id,
+            lesson_id=lesson_id,
+            state="in_progress",
+        )
+        db.add(progress)
+    progress.exercise_passed = passed
+    db.flush()
+    return progress
+
+
+def set_quiz_score(
+    db: Session, *, user_id: str, lesson_id: str, quiz_earned: int, quiz_total: int
+) -> StudentProgress | None:
+    """Simpan ringkasan skor kuis untuk (user, lesson).
+
+    Buat row progress bila belum ada (state='in_progress'). Tidak commit —
+    pemanggil mengelola transaksi. Tidak menghitung composite (panggil
+    `recompute_progress` terpisah).
+    """
+    progress = get_progress(db, user_id=user_id, lesson_id=lesson_id)
+    if progress is None:
+        progress = StudentProgress(
+            id=_uuid(),
+            user_id=user_id,
+            lesson_id=lesson_id,
+            state="in_progress",
+        )
+        db.add(progress)
+    progress.quiz_score_earned = quiz_earned
+    progress.quiz_score_total = quiz_total
+    db.flush()
+    return progress
+
+
+def recompute_progress(
+    db: Session,
+    *,
+    user_id: str,
+    lesson_id: str,
+    has_exercise: bool,
+    has_quiz: bool,
+    exercise_weight: float,
+    quiz_weight: float,
+    done_min_percent: float,
+) -> StudentProgress | None:
+    """Hitung ulang composite_percent & state via compute_composite.
+
+    Tidak commit — pemanggil mengelola transaksi.
+    """
+    progress = get_progress(db, user_id=user_id, lesson_id=lesson_id)
+    if progress is None:
+        return None
+    result = compute_composite(
+        exercise_passed=progress.exercise_passed,
+        quiz_earned=progress.quiz_score_earned,
+        quiz_total=progress.quiz_score_total,
+        has_exercise=has_exercise,
+        has_quiz=has_quiz,
+        exercise_weight=exercise_weight,
+        quiz_weight=quiz_weight,
+        done_min_percent=done_min_percent,
+    )
+    progress.composite_percent = result.composite_percent
+    progress.state = "done" if result.is_done else "in_progress"
     db.flush()
     return progress
 

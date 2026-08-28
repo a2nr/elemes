@@ -27,7 +27,7 @@ def post(path: str, payload: dict):
 status, body = post("/login", {"token": "TOKEN_BOGUS_SMOKE"})
 print("login-bogus:", status, body.get("success"))
 
-status2, body2 = post("/track-progress", {"token": "TOKEN_BOGUS_SMOKE", "lesson_name": "hello_world", "status": "completed"})
+status2, body2 = post("/lesson-progress", {"token": "TOKEN_BOGUS_SMOKE", "lesson_name": "hello_world", "type": "exercise"})
 print("track-bogus:", status2, body2.get("success"))
 
 try:

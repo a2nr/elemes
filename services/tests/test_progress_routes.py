@@ -1,14 +1,14 @@
 """
 Kontrak route progress:
-- perilaku tracking/report yang dipertahankan;
-- kontrak security BARU yang belum terpenuhi implementasi CSV (RED):
-  report tanpa raw token, reset via student_id, log tanpa raw token.
+- perilaku tracking/report yang dipertahankan (via endpoint lesson-progress terpadu);
+- kontrak security: report tanpa raw token, reset via student_id, log tanpa raw token.
 
 Integrasi PostgreSQL (butuh DATABASE_URL) — backend CSV sudah dicabut.
 """
 
 import logging
 import os
+import uuid
 
 import pytest
 
@@ -27,27 +27,49 @@ def _seed(seed_demo_users):
     yield
 
 
-def test_track_progress_updates(client):
-    resp = client.post(
-        "/track-progress",
-        json={"token": STUDENT_TOKEN, "lesson_name": "hello_world", "status": "completed"},
+def _post_exercise(client, lesson="hello_world"):
+    return client.post(
+        "/api/lesson-progress",
+        json={"token": STUDENT_TOKEN, "lesson_name": lesson, "type": "exercise"},
     )
+
+
+def _post_quiz(client, score, answers=None, lesson="hello_world"):
+    return client.post(
+        "/api/lesson-progress",
+        json={
+            "token": STUDENT_TOKEN,
+            "lesson_name": lesson,
+            "type": "quiz",
+            "attempt_id": str(uuid.uuid4()),
+            "status": "submitted",
+            "termination_reason": None,
+            "score": score,
+            "occurred_at": "2026-01-01T00:00:00Z",
+            "started_at": "2026-01-01T00:00:00Z",
+            "visibility_event_count": 0,
+            "answers": answers or [],
+        },
+    )
+
+
+def test_lesson_progress_exercise_updates(client):
+    resp = _post_exercise(client)
     assert resp.status_code == 200
     assert resp.get_json()["success"] is True
 
 
-def test_track_progress_invalid_token(client):
+def test_lesson_progress_invalid_token(client):
     resp = client.post(
-        "/track-progress",
-        json={"token": "TOKEN_SALAH", "lesson_name": "hello_world"},
+        "/api/lesson-progress",
+        json={"token": "TOKEN_SALAH", "lesson_name": "hello_world", "type": "exercise"},
     )
-    assert resp.status_code == 200
-    assert resp.get_json()["success"] is False
+    assert resp.status_code == 401
 
 
-def test_track_progress_requires_fields(client):
-    resp = client.post("/track-progress", json={"token": STUDENT_TOKEN})
-    assert resp.get_json()["success"] is False
+def test_lesson_progress_requires_fields(client):
+    resp = client.post("/api/lesson-progress", json={"token": STUDENT_TOKEN})
+    assert resp.status_code == 400
 
 
 def test_student_forbidden_from_report(client):
@@ -59,7 +81,7 @@ def test_teacher_can_access_report(client):
     resp = client.get(f"/progress-report.json?token={TEACHER_TOKEN}")
     assert resp.status_code == 200
     data = resp.get_json()
-    # Guru + 2 siswa harusmuncul sebagai row
+    # Guru + 2 siswa harus muncul sebagai row
     assert len(data["students"]) == 3
     assert data["lessons"]
 
@@ -76,7 +98,6 @@ def test_teacher_appears_in_progress_report(client):
 
 
 def test_report_contains_no_raw_access_token(client):
-    """RED (sekarang): payload report masih menyertakan kolom token."""
     resp = client.get(f"/progress-report.json?token={TEACHER_TOKEN}")
     assert resp.status_code == 200
     for student in resp.get_json()["students"]:
@@ -85,13 +106,12 @@ def test_report_contains_no_raw_access_token(client):
 
 
 def test_reset_progress_by_student_id(client):
-    """Kontrak baru: reset via student_id anonim (user.id), bukan student_token."""
+    """Kontrak: reset via student_id anonim (user.id), bukan student_token."""
     from services import repositories as repo
-    from services import token_service as ts
     from services.database import SessionLocal
 
-    # pastikan ada progress yang bisa di-reset
-    assert ts.update_student_progress(STUDENT_TOKEN, "hello_world", "completed") is True
+    # pastikan ada progress yang bisa di-reset (lewat endpoint terpadu)
+    assert _post_exercise(client).status_code == 200
 
     db = SessionLocal()
     try:
@@ -125,12 +145,8 @@ def test_reset_progress_by_student_id(client):
 
 
 def test_raw_token_not_in_logs(client, caplog):
-    """RED (sekarang): routes/progress.py mencatat token mentah."""
     with caplog.at_level(logging.INFO):
-        client.post(
-            "/track-progress",
-            json={"token": STUDENT_TOKEN, "lesson_name": "hello_world", "status": "completed"},
-        )
+        _post_exercise(client)
     assert STUDENT_TOKEN not in caplog.text
 
 
@@ -158,6 +174,7 @@ def test_pg_report_includes_teacher_and_students(client):
         assert st["id"]
         assert "completed_count" in st
         assert "hello_world" in st
+        assert "hello_world_composite" in st
 
 
 def test_quiz_breakdown_excludes_flashcards(client):
@@ -166,11 +183,6 @@ def test_quiz_breakdown_excludes_flashcards(client):
     Regresi guard untuk bug `eval:4/6`: flashcard ber-kategori 'evaluasi'
     tidak boleh menambah penyebut eval (yang seharusnya = jumlah MCQ evaluasi).
     """
-    from services import token_service as ts
-
-    # Seed attempt untuk Budi: 2 MCQ evaluasi benar + 1 flashcard 'evaluasi'.
-    # Skor resmi (statusString) hanya MCQ → "2/2". Breakdown eval harus 2/2,
-    # bukan 2/3 (yang akan terjadi kalau flashcard ikut dihitung).
     answers = [
         {
             "question_id": "mcq-1",
@@ -194,24 +206,7 @@ def test_quiz_breakdown_excludes_flashcards(client):
             "type": "flashcard",
         },
     ]
-    import uuid
-
-    ts.update_student_progress(STUDENT_TOKEN, "hello_world", "2/2")
-    resp = client.post(
-        "/quiz-attempts/submit",
-        json={
-            "attempt_id": str(uuid.uuid4()),
-            "token": STUDENT_TOKEN,
-            "lesson_name": "hello_world",
-            "status": "submitted",
-            "termination_reason": None,
-            "score": "2/2",
-            "occurred_at": "2026-01-01T00:00:00Z",
-            "started_at": "2026-01-01T00:00:00Z",
-            "visibility_event_count": 0,
-            "answers": answers,
-        },
-    )
+    resp = _post_quiz(client, "2/2", answers=answers)
     assert resp.status_code == 200
 
     client.set_cookie("student_token", TEACHER_TOKEN)
@@ -219,7 +214,7 @@ def test_quiz_breakdown_excludes_flashcards(client):
     assert report.status_code == 200
     students = {st["nama_siswa"]: st for st in report.get_json()["students"]}
     budi = students["Budi Santoso"]
-    assert budi["hello_world"] == "2/2"
+    assert "hello_world" in budi, "status sel utama tetap dipertahankan"
     assert budi["hello_world_eval"] == "2/2", (
         f"eval breakdown harus 2/2 (MCQ saja), flashcard netral — dapat {budi['hello_world_eval']!r}"
     )

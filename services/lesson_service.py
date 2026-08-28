@@ -202,12 +202,15 @@ def _parse_prerequisite_bullet(bullet):
 
     Mendukung format:
       - [Kuis](lesson/quiz.md)           → ("quiz", None)
-      - [Kuis](lesson/quiz.md) min: 75%  → ("quiz", 75.0)
-      - Kuis min 75%                     → ("Kuis", 75.0)
+      - [Kuis](lesson/quiz.md) min: 75%  → ("quiz", None)
+      - Kuis min 75%                     → ("Kuis", None)
       - "Tidak ada" / "None" / "-"       → None (difilter)
 
-    `min: N%` bersifat opsional — ambang minimum skor (persen). Tanpa ambang,
-    skor berapa pun (termasuk 0/x) dianggap memenuhi prasyarat.
+    NOTE: Suffix `min: N%` bersifat DEPRECATED — global LESSON_DONE_MIN_PERCENT
+    (config.py) adalah satu-satunya sumber ambang sekarang. Suffix tetap
+    dibuang dari teks agar file materi lama dengan sintaks tersebut tetap
+    ter-parse, TAPI `min_percent` SELALU dikembalikan sebagai None (tidak
+    lagi diekstrak/dipergunakan).
     """
     bullet = bullet.strip()
     # Terima juga bentuk dengan dash awal (mis. hasil split manual) — di
@@ -217,14 +220,12 @@ def _parse_prerequisite_bullet(bullet):
     if bullet.lower() in ('tidak ada', 'none', '-', ''):
         return None
 
-    min_percent = None
+    # `min: N%` suffix dibuang dari teks (kompatibilitas mundur) tetapi
+    # tidak lagi diekstrak — ambang per-lesson di-deprecate.
     min_match = _MIN_PERCENT_RE.search(bullet)
     if min_match:
-        try:
-            min_percent = float(min_match.group(1).replace(',', '.'))
-        except ValueError:
-            min_percent = None
         bullet = bullet[:min_match.start()].strip().rstrip(',').strip()
+    min_percent = None
 
     # Check if it's a markdown link format [title](path)
     md_link_match = re.match(r'\[([^\]]+)\]\(([^)]+)\)', bullet)
@@ -241,36 +242,36 @@ def _parse_prerequisite_bullet(bullet):
 def is_prerequisite_met(progress, prereq) -> bool:
     """True bila prasyarat terpenuhi berdasarkan status progress siswa.
 
-    `prereq` berupa slug string, atau dict {'slug': ..., 'min_percent': ...}.
+    `prereq` berupa slug string, atau dict {'slug': ..., 'min_percent': ...} —
+    field `min_percent` diabaikan (DEPRECATED); ambang global
+    LESSON_DONE_MIN_PERCENT (config.py) adalah satu-satunya sumber "done".
 
-    - progress kosong / status not_started / status tidak dikenal → belum terpenuhi.
-    - "completed" → terpenuhi (skor & ambang diabaikan).
-    - skor "<earned>/<total>" (mis. "3/4") → terpenuhi untuk skor berapa pun,
-      KECUALI ada `min_percent` (mis. 75.0): wajib earned/total >= min_percent.
+    Kontrak baru (threshold GLOBAL): sebuah prasyarat terpenuhi iff status
+    progress pendahulu BUKAN kosong DAN BUKAN 'not_started':
+      - "" / "not_started"          → belum terpenuhi
+      - "completed"                  → terpenuhi
+      - "<earned>/<total>" (scored) → terpenuhi (threshold per-lesson diabaikan)
+      - status tidak dikenal        → belum terpenuhi
+
+    Status "done" di sisi backend (state composite >= LESSON_DONE_MIN_PERCENT)
+    dirender oleh format_progress_status sebagai string non-kosong, sehingga
+    pemeriksaan ini cukup: status non-kosong & bukan 'not_started' = terpenuhi.
     """
     if isinstance(prereq, str):
         slug = prereq
-        min_percent = None
     else:
+        # min_percent diabaikan (DEPRECATED) — hanya slug yang dipakai.
         slug = prereq['slug']
-        min_percent = prereq.get('min_percent')
 
     if not progress:
         return False
-    try:
-        state, earned, total = parse_progress_status(progress.get(slug, ''))
-    except (ValueError, TypeError):
+    status = progress.get(slug, '')
+    if status is None:
         return False
-    if state == 'not_started':
+    status = str(status).strip()
+    if not status:
         return False
-    if state == 'completed':
-        return True
-    # state == 'scored'
-    if min_percent is None:
-        return True
-    if earned is None or not total:
-        return False
-    return (earned / total) * 100 >= min_percent
+    return status != 'not_started'
 
 
 def get_missing_prerequisites(progress, prereqs):

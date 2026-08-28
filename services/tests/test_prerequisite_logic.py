@@ -1,10 +1,15 @@
-"""Unit test logika prasyarat: status skor & ambang minimum (`min: N%`).
+"""Unit test logika prasyarat: status skor & ambang minimum global.
 
-Kontrak yang diuji:
+Kontrak yang diuji (perilaku BARU setelah deprecasi `min: N%` per-lesson):
 - Status `scored` (mis. "3/4") memenuhi prasyarat untuk skor berapa pun.
 - `completed` selalu memenuhi.
-- `not_started` / progress kosong / status tidak dikenal → belum terpenuhi.
-- Bila ada ambang `min_percent`, skor wajib earned/total >= ambang.
+- Status tidak dikenal (non-empty, bukan "not_started") juga memenuhi — ambang
+  per-lesson diabaikan; satu-satunya ambang adalah LESSON_DONE_MIN_PERCENT
+  (global, di config.py).
+- `not_started` / progress kosong / status kosong → belum terpenuhi.
+- `_parse_prerequisite_bullet` SELALU mengembalikan min_percent=None (suffix
+  `min: N%` tetap dibuang dari teks demi kompatibilitas mundur, tapi tidak
+  lagi diekstrak).
 """
 
 import pytest
@@ -27,23 +32,24 @@ def test_parse_bullet_link_without_threshold():
 
 
 def test_parse_bullet_link_with_percent_threshold():
-    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) min: 75%") == ("quiz", 75.0)
+    # min_percent SELALU None sekarang (diabaikan).
+    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) min: 75%") == ("quiz", None)
 
 
 def test_parse_bullet_link_without_colon():
-    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) min 50%") == ("quiz", 50.0)
+    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) min 50%") == ("quiz", None)
 
 
 def test_parse_bullet_link_with_minimum_word():
-    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) minimum: 80%") == ("quiz", 80.0)
+    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) minimum: 80%") == ("quiz", None)
 
 
 def test_parse_bullet_link_with_comma_decimal():
-    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) min: 62,5%") == ("quiz", 62.5)
+    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md) min: 62,5%") == ("quiz", None)
 
 
 def test_parse_bullet_plain_text_with_threshold():
-    assert _parse_prerequisite_bullet("- Kuis min 75%") == ("Kuis", 75.0)
+    assert _parse_prerequisite_bullet("- Kuis min 75%") == ("Kuis", None)
 
 
 def test_parse_bullet_plain_text_without_threshold():
@@ -51,7 +57,7 @@ def test_parse_bullet_plain_text_without_threshold():
 
 
 def test_parse_bullet_trailing_comma_before_threshold():
-    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md), min: 75%") == ("quiz", 75.0)
+    assert _parse_prerequisite_bullet("- [Kuis](lesson/quiz.md), min: 75%") == ("quiz", None)
 
 
 @pytest.mark.parametrize("bullet", ["- Tidak ada", "- None", "-", ""])
@@ -88,7 +94,8 @@ def test_met_any_score_satisfies():
 
 
 def test_met_unknown_status():
-    assert is_prerequisite_met({"dasar": "xyz"}, "dasar") is False
+    # Status tidak dikenal, asal non-empty & bukan "not_started", dianggap done.
+    assert is_prerequisite_met({"dasar": "xyz"}, "dasar") is True
 
 
 def test_met_missing_slug():
@@ -99,27 +106,15 @@ def test_met_spec_dict_without_threshold():
     assert is_prerequisite_met({"quiz": "2/4"}, {"slug": "quiz", "min_percent": None}) is True
 
 
-def test_met_threshold_below():
-    spec = {"slug": "quiz", "min_percent": 75.0}
-    assert is_prerequisite_met({"quiz": "2/4"}, spec) is False
-    assert is_prerequisite_met({"quiz": "3/4"}, spec) is True
-
-
-def test_met_threshold_exact_boundary():
-    spec = {"slug": "quiz", "min_percent": 62.5}
-    assert is_prerequisite_met({"quiz": "4/8"}, spec) is False
-    assert is_prerequisite_met({"quiz": "5/8"}, spec) is True
-
-
-def test_met_completed_ignores_threshold():
-    spec = {"slug": "quiz", "min_percent": 90.0}
-    assert is_prerequisite_met({"quiz": "completed"}, spec) is True
-
-
-def test_met_threshold_with_zero_total():
-    spec = {"slug": "quiz", "min_percent": 75.0}
-    # total 0 tidak valid → tidak terpenuhi
-    assert is_prerequisite_met({"quiz": "0/0"}, spec) is False
+def test_met_threshold_ignored():
+    # Ambang per-lesson (min_percent) diabaikan: status non-empty
+    # non-not_started memenuhi meski skor di bawah ambang.
+    spec_low = {"slug": "quiz", "min_percent": 75.0}
+    assert is_prerequisite_met({"quiz": "2/4"}, spec_low) is True
+    spec_high = {"slug": "quiz", "min_percent": 90.0}
+    assert is_prerequisite_met({"quiz": "completed"}, spec_high) is True
+    spec_zero = {"slug": "quiz", "min_percent": 75.0}
+    assert is_prerequisite_met({"quiz": "0/0"}, spec_zero) is True
 
 
 # ---------------------------------------------------------------------------
@@ -138,8 +133,9 @@ def test_missing_accepts_plain_slugs():
 
 
 def test_missing_threshold():
+    # Ambang diabaikan: "2/4" non-empty non-not_started => terpenuhi => [].
     progress = {"q": "2/4"}
-    assert get_missing_prerequisites(progress, [{"slug": "q", "min_percent": 75.0}]) == ["q"]
+    assert get_missing_prerequisites(progress, [{"slug": "q", "min_percent": 75.0}]) == []
     progress2 = {"q": "3/4"}
     assert get_missing_prerequisites(progress2, [{"slug": "q", "min_percent": 75.0}]) == []
 

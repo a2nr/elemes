@@ -38,7 +38,7 @@ def create_app():
     from routes.progress import progress_bp
     from routes.help import help_bp
     from routes.student_management import student_management_bp
-    from routes.quiz_attempts import quiz_attempts_bp
+    from routes.lesson_progress import lesson_progress_bp
     from routes.docs import docs_bp
     from routes.content_editor import content_editor_bp
 
@@ -48,7 +48,7 @@ def create_app():
     app.register_blueprint(progress_bp)
     app.register_blueprint(help_bp)
     app.register_blueprint(student_management_bp)
-    app.register_blueprint(quiz_attempts_bp)
+    app.register_blueprint(lesson_progress_bp)
     app.register_blueprint(docs_bp)
     app.register_blueprint(content_editor_bp)
 

@@ -3,11 +3,11 @@
 	import { get } from 'svelte/store';
 	import { onMount, tick } from 'svelte';
 	import { autoRenderMath } from '$lib/actions/renderMath';
-	import { shouldShowQuizReview } from '$services/quiz-integrity';
+	import { shouldShowQuizReview, type QuizTerminationReason } from '$services/quiz-integrity';
 	import type { LessonManager } from './lesson.svelte';
 	import type { QuizQuestion, QuizAnswer } from '$types/quiz';
-	import { fetchQuizAttempt } from '$services/api';
-	import type { QuizAttemptFetchResponse } from '$services/api';
+	import { fetchLessonProgress } from '$services/api';
+	import type { LessonProgressFetchResponse } from '$services/api';
 
 	interface Props {
 		mgr: LessonManager;
@@ -32,7 +32,7 @@
 	const showReview = $derived(shouldShowQuizReview(mgr.quizTerminationReason));
 
 	// --- Review-after-refresh: fetch stored attempt (one-attempt → session lost) ---
-	let storedAttempt: QuizAttemptFetchResponse | null = $state(null);
+	let storedAttempt: LessonProgressFetchResponse | null = $state(null);
 	let reviewQuestions: QuizQuestion[] = $state([]);
 	let reviewAnswers: Record<string, QuizAnswer> = $state({});
 
@@ -41,16 +41,17 @@
 		if (!token || !mgr.data) return;
 		const lessonName = mgr.slug.replace('.md', '');
 		try {
-			const resp = await fetchQuizAttempt(token, lessonName);
-			if (resp.success && resp.answers?.length) {
+			const resp = await fetchLessonProgress(lessonName, token);
+			const storedAnswers = resp.answers ?? [];
+			if (resp.success && storedAnswers.length) {
 				storedAttempt = resp;
 				// Rekonstruksi question+answer maps dari stored attempt agar
 				// summary review per-soal bisa dirender setelah refresh.
 				const src = mgr.data?.quiz_data ?? [];
 				// Cocokkan by question_id; gunakan urutan asli (parser order).
-				reviewQuestions = src.filter((q) => resp.answers.some((a) => a.question_id === q.id));
+				reviewQuestions = src.filter((q) => storedAnswers.some((a) => a.question_id === q.id));
 				reviewAnswers = {};
-				for (const ans of resp.answers) {
+				for (const ans of storedAnswers) {
 					const q = src.find((qq) => qq.id === ans.question_id);
 					if (q) {
 						reviewAnswers[q.id] = {
@@ -112,10 +113,13 @@
 				{#if quizAlreadyCompleted && !result}
 					{#if storedAttempt}
 						{@const s = storedAttempt}
-						<p class="score-display">Nilai Anda: <strong>{s.score}</strong></p>
-						<div class="score-breakdown">
-							<span class="breakdown-item">Evaluasi: <strong>{s.score_earned ?? '-'}/{s.score_total ?? '-'}</strong></span>
-						</div>
+						<p class="score-display">Nilai Anda: <strong>{s.attempt_score ?? s.quiz_score_total != null ? `${s.quiz_score_earned ?? '-'}/${s.quiz_score_total}` : mgr.data?.lesson_progress_status}</strong></p>
+						{#if s.attempt_started_at || s.attempt_status}
+							<div class="score-breakdown">
+								{#if s.attempt_status}<span class="breakdown-item">Status: <strong>{s.attempt_status}</strong></span>{/if}
+								{#if s.attempt_score}<span class="breakdown-item">Skor: <strong>{s.attempt_score}</strong></span>{/if}
+							</div>
+						{/if}
 					{:else}
 						<p class="score-display">Nilai Anda: <strong>{mgr.data?.lesson_progress_status}</strong></p>
 					{/if}
@@ -221,7 +225,7 @@
 					{/if}
 				{/if}
 
-				{#if storedAttempt && !result && shouldShowQuizReview(storedAttempt.termination_reason) && reviewQuestions.length > 0}
+				{#if storedAttempt && !result && shouldShowQuizReview((storedAttempt.termination_reason ?? null) as QuizTerminationReason | null) && reviewQuestions.length > 0}
 					<div class="summary-review">
 						<h3 class="review-title">Pembahasan (tersimpan)</h3>
 						{#each reviewQuestions as q, i}

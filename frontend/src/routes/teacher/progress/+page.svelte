@@ -286,7 +286,9 @@
 							</td>
 							{#each lessons as lesson}
 								{@const key = lesson.filename.replace('.md', '')}
-								{@const status = student[key]}
+								{@const composite = student[key + '_composite']}
+								{@const exercisePassed = student[key + '_exercise_passed']}
+								{@const quizScore = student[key + '_quiz_score']}
 								{@const violation = student[key + '_has_violation']}
 								{@const violationReason = student[key + '_termination_reason']}
 								{@const violationTime = student[key + '_attempt_finished_at']}
@@ -295,10 +297,14 @@
 								{@const diagUnmastered = parseUnmastered(student[key + '_diag_unmastered'])}
 								<td class="status-cell">
 									<div class="cell-content">
-										{#if status === 'completed'}
-											<span class="badge done">&#10003;</span>
-										{:else if status && status !== 'not_started'}
-											<span class="badge score">{status}</span>
+										{#if composite !== null && composite !== undefined}
+											<span class="badge score" title="Composite score (exercise × bobot + quiz × bobot)">{composite}</span>
+											{#if exercisePassed}
+												<span class="badge exercise-done" title="Exercise selesai">&#10003;</span>
+											{/if}
+											{#if quizScore}
+												<span class="badge quiz-score" title="Skor quiz">{quizScore}</span>
+											{/if}
 										{:else}
 											<span class="badge empty">&mdash;</span>
 										{/if}
@@ -313,13 +319,13 @@
 										{/if}
 
 										{#if evalScore}
-											<span class="badge eval" title="Skor evaluasi (skor resmi)">Eval: {evalScore}</span>
+											<span class="badge eval secondary" title="Skor evaluasi (skor resmi)">Eval: {evalScore}</span>
 										{/if}
 										{#if diagScore}
-											<span class="badge diag" title="Skor soal diagnostik">Diag: {diagScore}</span>
+											<span class="badge diag secondary" title="Skor soal diagnostik">Diag: {diagScore}</span>
 											{#if diagUnmastered.length > 0}
 												<span
-													class="badge unmastered"
+													class="badge unmastered secondary"
 													title="Belum dikuasai: {diagUnmastered.join(', ')}"
 												>
 													{diagUnmastered.length} belum dikuasai
@@ -327,7 +333,7 @@
 											{/if}
 										{/if}
 
-										{#if status && status !== 'not_started'}
+										{#if composite !== null && composite !== undefined}
 											<button
 												class="btn-reset-mini"
 												onclick={() => handleReset(student.id as string, key, student.nama_siswa)}
@@ -502,14 +508,31 @@
 	.status-cell {
 		min-width: 40px;
 	}
-	.badge.done {
-		color: var(--color-success);
-		font-weight: bold;
-	}
 	.badge.score {
 		color: var(--color-primary);
 		font-weight: 600;
 		font-size: 0.75rem;
+	}
+	.badge.exercise-done {
+		background: #e8f5e9;
+		color: #2e7d32;
+		border-radius: 999px;
+		padding: 0.1rem 0.45rem;
+		font-size: 0.65rem;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	.badge.quiz-score {
+		background: #e3f2fd;
+		color: #1565c0;
+		border-radius: 999px;
+		padding: 0.1rem 0.45rem;
+		font-size: 0.65rem;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	.badge.secondary {
+		opacity: 0.6;
 	}
 	.badge.empty {
 		color: var(--color-text-muted);

@@ -10,12 +10,10 @@ from flask import Blueprint, request, jsonify, Response
 
 from services.token_service import (
     validate_token,
-    update_student_progress,
     reset_student_progress,
     get_all_students_progress,
 )
 from services.lesson_service import get_lessons_with_learning_objectives
-from services.token_hashing import hash_token
 
 progress_bp = Blueprint('progress', __name__)
 
@@ -23,46 +21,6 @@ progress_bp = Blueprint('progress', __name__)
 def _masked(token: str) -> str:
     """Awalan token untuk log — jangan pernah log token mentah."""
     return f"{token[:6]}..." if token else "(kosong)"
-
-
-@progress_bp.route('/track-progress', methods=['POST'])
-def track_progress():
-    """Track student progress for a lesson."""
-    try:
-        data = request.get_json()
-        token = data.get('token', '').strip()
-        lesson_name = data.get('lesson_name', '').strip()
-        status = data.get('status', 'completed').strip()
-
-        logging.info(
-            "Received track-progress request: token_digest=%s, lesson_name=%s, status=%s",
-            hash_token(token)[:16], lesson_name, status,
-        )
-
-        if not token or not lesson_name:
-            return jsonify({'success': False, 'message': 'Token and lesson name are required'})
-
-        student_info = validate_token(token)
-        if not student_info:
-            return jsonify({'success': False, 'message': 'Invalid token'})
-
-        updated = update_student_progress(token, lesson_name, status)
-        if updated:
-            logging.info(
-                "Progress updated successfully for student=%s, lesson=%s",
-                student_info.get('student_name'), lesson_name,
-            )
-            return jsonify({'success': True, 'message': 'Progress updated successfully'})
-        else:
-            logging.warning(
-                "Failed to update progress for student=%s, lesson=%s",
-                student_info.get('student_name'), lesson_name,
-            )
-            return jsonify({'success': False, 'message': 'Failed to update progress'})
-
-    except Exception as e:
-        logging.error(f"Error in track-progress: {e}")
-        return jsonify({'success': False, 'message': f'Error tracking progress: {e}'})
 
 
 @progress_bp.route('/reset-progress', methods=['POST'])
