@@ -51,7 +51,7 @@ services:
     environment:
       - COMPILER_WORKER_URL=http://127.0.0.1:8080/execute
       - COMPILER_WORKER_BASE_URL=http://127.0.0.1:8080
-      - VELXIO_COMPILER_URL=http://127.0.0.1:80/api/compile/
+      - VELXIO_COMPILER_URL=${VELXIO_COMPILER_URL:-http://127.0.0.1:80/api/compile/}
       - DATABASE_URL=${DATABASE_URL}
       - TOKEN_PEPPER=${TOKEN_PEPPER}
       - STORAGE_BACKEND=${STORAGE_BACKEND:-postgresql}

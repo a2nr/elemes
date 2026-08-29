@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  velxio-ts:
+    image: docker.io/tailscale/tailscale:latest
+    hostname: ${VELXIO_HOST:-velxio-dev}
+    environment:
+      - TS_AUTHKEY=${VELXIO_TS_AUTHKEY}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=true
+    volumes:
+      - ../state/velxio:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - sys_module
+    restart: unless-stopped
+
+  velxio:
+    image: lms-velxio-standalone:latest
+    build:
+      context: ./velxio
+      dockerfile: Dockerfile.standalone
+    network_mode: service:velxio-ts
+    environment:
+      - SECRET_KEY=${VELXIO_SECRET_KEY:-embed-only-no-auth-needed}
+      - DATABASE_URL=sqlite+aiosqlite:////app/data/velxio.db
+      - DATA_DIR=/app/data
+    restart: unless-stopped
+    depends_on:
+      - velxio-ts
+    volumes:
+      - velxio-standalone-data:/app/data
+      - velxio-standalone-arduino-libs:/root/.arduino15
+      - velxio-standalone-ccache:/var/cache/ccache
+      - velxio-standalone-build:/var/lib/velxio-build
+
+volumes:
+  velxio-standalone-data:
+  velxio-standalone-arduino-libs:
+  velxio-standalone-ccache:
+  velxio-standalone-build:

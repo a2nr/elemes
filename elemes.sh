@@ -62,6 +62,70 @@ compose_restart() {
   run_compose_out restart "$@"
 }
 
+# Helper untuk membaca nilai konfigurasi dari .env tanpa source
+env_val() {
+  grep -m1 "^${1}=" "$PARENT_DIR/.env" 2>/dev/null | cut -d= -f2-
+}
+
+# ── Velxio standalone compose helpers ────────────────────────
+VELXIO_PROJECT="${PROJECT_NAME}-velxio"
+
+run_velxio_compose() {
+  cd "$SCRIPT_DIR" || exit
+  if [ "$VERBOSE" -eq 1 ]; then
+    podman-compose -p "$VELXIO_PROJECT" -f podman-compose.velxio.yml \
+      --env-file "$PARENT_DIR/.env" "$@"
+  else
+    podman-compose -p "$VELXIO_PROJECT" -f podman-compose.velxio.yml \
+      --env-file "$PARENT_DIR/.env" "$@" \
+      2> >(grep -v -E "$NOISE_RE" >&2)
+  fi
+}
+
+run_velxio_compose_quiet() {
+  if [ "$VERBOSE" -eq 1 ]; then
+    run_velxio_compose "$@"
+  else
+    run_velxio_compose "$@" >/dev/null 2>&1
+  fi
+}
+
+# Daftar services elemes berdasarkan VELXIO_MODE.
+# Return kosong = start all (local mode).
+# Return daftar service = start hanya yang terdaftar (remote mode).
+elemes_services() {
+  local mode
+  mode="$(env_val VELXIO_MODE)"
+  mode="${mode:-local}"
+  if [ "$mode" = "remote" ]; then
+    echo "elemes-ts postgres elemes compiler-worker elemes-frontend flowchart"
+  fi
+}
+
+# Generate lms-tail.json dari template berdasarkan VELXIO_MODE.
+# Dipanggil sebelum container start agar Tailscale Serve config up-to-date.
+generate_ts_config() {
+  local template="$SCRIPT_DIR/config/lms-tail.json.template"
+  local output="$SCRIPT_DIR/config/lms-tail.json"
+
+  if [ ! -f "$template" ]; then
+    return
+  fi
+
+  local mode
+  mode="$(env_val VELXIO_MODE)"
+  mode="${mode:-local}"
+
+  if [ "$mode" = "remote" ]; then
+    local velxio_host
+    velxio_host="$(env_val VELXIO_HOST)"
+    velxio_host="${velxio_host:-velxio-dev}"
+    sed "s|__VELXIO_PROXY_TARGET__|http://${velxio_host}:80/|g" "$template" > "$output"
+  else
+    sed 's|__VELXIO_PROXY_TARGET__|http://127.0.0.1:80/|g' "$template" > "$output"
+  fi
+}
+
 # First-run/health DB: tunggu PostgreSQL, migrasi schema (idempotent), lalu
 # bootstrap akun guru otomatis bila TEACHER_TOKEN di .env tidak kosong.
 db_init() {
@@ -153,6 +217,16 @@ init)
     echo "🔐 [Buat] Folder state/  (untuk Tailscale credentials & state)"
   fi
 
+  # state/velxio/ (untuk Tailscale credentials & state Velxio standalone)
+  if [ -d "$PARENT_DIR/state/velxio" ]; then
+    echo "✅ [Skip] Folder state/velxio/ sudah ada"
+  else
+    mkdir -p "$PARENT_DIR/state/velxio"
+    echo "🔐 [Buat] Folder state/velxio/  (untuk Tailscale Velxio standalone)"
+  fi
+
+  generate_ts_config
+
   echo ""
   echo "🎯 Selesai! Langkah selanjutnya yang direkomendasikan:"
   echo "  👉 1. Edit file ../.env sesuai dengan kebutuhan environment-mu"
@@ -181,7 +255,14 @@ runbuild)
   ;;&
 runbuild | runclearbuild)
   echo "🚀 Menjalankan container di background..."
-  run_compose up --force-recreate -d
+  generate_ts_config
+  SERVICES=$(elemes_services)
+  if [ -n "$SERVICES" ]; then
+    echo "   ℹ️  VELXIO_MODE=remote → Velxio tidak dijalankan secara lokal"
+    run_compose up --force-recreate -d $SERVICES
+  else
+    run_compose up --force-recreate -d
+  fi
   echo "✅ Elemes berhasil dijalankan!"
   db_init
   ;;&
@@ -206,7 +287,14 @@ runbuild | runclearbuild)
   ;;
 run)
   echo "🚀 Menjalankan container..."
-  run_compose up -d
+  generate_ts_config
+  SERVICES=$(elemes_services)
+  if [ -n "$SERVICES" ]; then
+    echo "   ℹ️  VELXIO_MODE=remote → Velxio tidak dijalankan secara lokal"
+    run_compose up -d $SERVICES
+  else
+    run_compose up -d
+  fi
   echo "✅ Elemes berhasil dijalankan!"
   db_init
   ;;
@@ -470,6 +558,81 @@ docs-validate)
   compose_exec -w /app -e PYTHONPATH=services \
     elemes python scripts/validate_docs.py
   ;;
+velxio-stop | velxio-run | velxio-runbuild)
+  echo "🛑 Menghentikan Velxio standalone..."
+  run_velxio_compose_quiet down
+  ;;&
+velxio-stop)
+  echo "✅ Velxio standalone dihentikan."
+  ;;
+velxio-runbuild)
+  echo "🏗️  Membangun Velxio standalone image..."
+  run_velxio_compose build
+  ;;&
+velxio-run)
+  if ! podman image exists lms-velxio-standalone:latest 2>/dev/null; then
+    echo "⚠️  Image 'lms-velxio-standalone:latest' belum dibangun."
+    echo "   Jalankan: ./elemes.sh velxio-runbuild"
+    exit 1
+  fi
+  ;;&
+velxio-runbuild | velxio-run)
+  echo "🚀 Menjalankan Velxio standalone di background..."
+  run_velxio_compose up -d
+  echo "✅ Velxio standalone berhasil dijalankan!"
+  echo ""
+  VH="$(env_val VELXIO_HOST)"
+  VH="${VH:-velxio-dev}"
+  echo "📡 Velxio standalone info:"
+  echo "   Tailscale hostname : $VH"
+  echo "   Port internal      : 80 (Nginx → FastAPI :8001)"
+  echo ""
+  echo "💡 Untuk menghubungkan Elemes ke Velxio ini, set di .env mesin Elemes:"
+  echo "   VELXIO_MODE=remote"
+  echo "   VELXIO_HOST=$VH"
+  echo "   VELXIO_COMPILER_URL=http://$VH:80/api/compile/"
+  ;;
+velxio-status)
+  echo "📊 === Status Velxio ==="
+  MODE="$(env_val VELXIO_MODE)"
+  MODE="${MODE:-local}"
+  echo "   Mode: $MODE"
+
+  if [ "$MODE" = "local" ]; then
+    echo "   Velxio berjalan dalam compose utama (bundled)"
+    if podman ps --filter "label=io.podman.compose.project=$PROJECT_NAME" \
+       --filter "label=com.docker.compose.service=velxio" \
+       --format '{{.Names}} — {{.Status}}' 2>/dev/null | grep -q .; then
+      echo "   ✅ Container:"
+      podman ps --filter "label=io.podman.compose.project=$PROJECT_NAME" \
+        --filter "label=com.docker.compose.service=velxio" \
+        --format '      {{.Names}} — {{.Status}}'
+    else
+      echo "   ⚠️  Container: not running"
+    fi
+  else
+    echo "   Velxio berjalan terpisah (remote)"
+    VURL="$(env_val VELXIO_COMPILER_URL)"
+    echo "   VELXIO_COMPILER_URL: ${VURL:-<belum diset>}"
+    if podman ps --filter "label=io.podman.compose.project=$VELXIO_PROJECT" \
+       --format '{{.Names}}' 2>/dev/null | grep -q .; then
+      echo "   ✅ Standalone container (lokal):"
+      podman ps --filter "label=io.podman.compose.project=$VELXIO_PROJECT" \
+        --format '      {{.Names}} — {{.Status}}'
+    else
+      echo "   ℹ️  Tidak ada standalone container lokal (Velxio berjalan di mesin remote)"
+    fi
+    if [ -n "$VURL" ]; then
+      HEALTH_URL=$(echo "$VURL" | sed 's|/api/compile.*|/health|')
+      echo -n "   🔍 Health check ($HEALTH_URL)... "
+      if curl -sf --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
+        echo "✅ reachable"
+      else
+        echo "❌ unreachable"
+      fi
+    fi
+  fi
+  ;;
 *)
   echo "💡 Cara Penggunaan elemes.sh:"
   echo "  ./elemes.sh init           # Inisialisasi konfigurasi, folder, & template .env"
@@ -493,6 +656,12 @@ docs-validate)
   echo "  ./elemes.sh test-worker    # Compiler worker test suite"
   echo "  ./elemes.sh docs-validate   # Validasi frontmatter & broken link di docs/*.md"
   echo "  ./elemes.sh loadtest       # Menjalankan utilitas simulasi Load Test (Locust)"
+  echo ""
+  echo "📡 Velxio Modular:"
+  echo "  ./elemes.sh velxio-run      # Jalankan Velxio standalone (reuse image)"
+  echo "  ./elemes.sh velxio-runbuild # Build lalu jalankan Velxio standalone"
+  echo "  ./elemes.sh velxio-stop     # Hentikan Velxio standalone"
+  echo "  ./elemes.sh velxio-status   # Cek status & health Velxio (local/remote)"
   ;;
 esac
 
