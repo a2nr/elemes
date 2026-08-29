@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { tick, mount, unmount } from 'svelte';
+	import SlideCarousel from '$components/SlideCarousel.svelte';
 	import { highlightAllCode } from '$actions/highlightCode';
 	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
 	import { renderFlowchartEmbeds } from '$actions/renderFlowchartEmbeds';
-	import { renderMath, autoRenderMath } from '$lib/actions/renderMath';
+	import { autoRenderMath } from '$lib/actions/renderMath';
 
 	interface Props {
 		lessonHtml: string;
@@ -16,17 +17,58 @@
 	let { lessonHtml, exerciseHtml = '', quizData = [], slides = [], activeTabs = [] }: Props = $props();
 
 	let contentEl = $state<HTMLElement | null>(null);
+	// Plain variable (not $state) to avoid infinite reactivity loops when mounting inside $effect
+	let slideComponent: ReturnType<typeof mount> | null = null;
 
 	$effect(() => {
 		if (contentEl && lessonHtml) {
+			const currentSlides = slides;
+			const currentContentEl = contentEl;
+
 			tick().then(() => {
-				if (!contentEl) return;
-				highlightAllCode(contentEl);
-				renderCircuitEmbeds(contentEl);
-				renderFlowchartEmbeds(contentEl);
-				autoRenderMath(contentEl);
+				if (!currentContentEl) return;
+
+				if (slideComponent) {
+					try {
+						unmount(slideComponent);
+					} catch (e) {
+						// Ignore unmount error if DOM element was already disposed
+					}
+					slideComponent = null;
+				}
+
+				if (currentSlides && currentSlides.length > 0) {
+					const mountPoint = currentContentEl.querySelector('#slide-mount-point');
+					if (mountPoint) {
+						mountPoint.innerHTML = '';
+						try {
+							slideComponent = mount(SlideCarousel, {
+								target: mountPoint,
+								props: { slides: currentSlides }
+							});
+						} catch (e) {
+							console.error('Failed to mount SlideCarousel in LessonContentView:', e);
+						}
+					}
+				}
+
+				highlightAllCode(currentContentEl);
+				renderCircuitEmbeds(currentContentEl);
+				renderFlowchartEmbeds(currentContentEl);
+				autoRenderMath(currentContentEl);
 			});
 		}
+
+		return () => {
+			if (slideComponent) {
+				try {
+					unmount(slideComponent);
+				} catch (e) {
+					// Ignore
+				}
+				slideComponent = null;
+			}
+		};
 	});
 </script>
 

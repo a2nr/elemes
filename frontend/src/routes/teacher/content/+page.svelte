@@ -178,7 +178,7 @@
 	// Insert a feature section template at the editor cursor. Works in all
 	// layout modes (desktop docked, floating, mobile). Shown in a hide-able
 	// right sidebar grouped into "Konten" and "Penilaian".
-	type FeatureTemplate = { id: string; label: string; group: 'konten' | 'penilaian'; snippet: string };
+	type FeatureTemplate = { id: string; label: string; group: 'layout' | 'set_soal' | 'inline'; snippet: string };
 
 	let featureSidebarOpen = $state(true);
 
@@ -188,11 +188,11 @@
 	});
 
 	const FEATURE_TEMPLATES: FeatureTemplate[] = [
-		// ── Konten ──
+		// ── Layout ──
 		{
 			id: 'info',
 			label: 'Info',
-			group: 'konten',
+			group: 'layout',
 			snippet:
 				'---LESSON_INFO---\n' +
 				'**Learning Objectives:**\n- \n\n' +
@@ -200,70 +200,9 @@
 				'---END_LESSON_INFO---\n',
 		},
 		{
-			id: 'c',
-			label: 'C',
-			group: 'konten',
-			snippet:
-				'\n---INITIAL_CODE---\n' +
-				'#include <stdio.h>\n\nint main() {\n    \n    return 0;\n}\n' +
-				'---END_INITIAL_CODE---\n',
-		},
-		{
-			id: 'python',
-			label: 'Python',
-			group: 'konten',
-			snippet:
-				'\n---INITIAL_PYTHON---\n' +
-				'# Tulis kode Python di sini\n' +
-				'---END_INITIAL_PYTHON---\n',
-		},
-		{
-			id: 'circuit',
-			label: 'Circuit Tab',
-			group: 'konten',
-			snippet:
-				'\n---INITIAL_CIRCUIT---\n' +
-				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
-				'  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>\n' +
-				'  <r x="80 112 176 112" f="0" r="1000"/>\n' +
-				'  <w x="176 200 80 200" f="0"/>\n' +
-				'</cir>\n' +
-				'---END_INITIAL_CIRCUIT---\n',
-		},
-		{
-			id: 'arduino',
-			label: 'Arduino',
-			group: 'konten',
-			snippet:
-				'\n---INITIAL_CODE_ARDUINO---\n' +
-				'void setup() {\n  \n}\n\n' +
-				'void loop() {\n  \n}\n' +
-				'---END_INITIAL_CODE_ARDUINO---\n',
-		},
-		{
-			id: 'velxio-circuit',
-			label: 'Velxio',
-			group: 'konten',
-			snippet:
-				'\n---VELXIO_CIRCUIT---\n' +
-				'{\n  "board": "arduino:avr:uno",\n  "components": [],\n  "wires": []\n}\n' +
-				'---END_VELXIO_CIRCUIT---\n',
-		},
-		{
-			id: 'flowchart',
-			label: 'Flowchart Tab',
-			group: 'konten',
-			snippet:
-				'\n---INITIAL_FLOWCHART---\n' +
-				'start[roundrect] "Mulai"\n' +
-				'init[rect] "Inisialisasi"\n' +
-				'start --> init\n' +
-				'---END_INITIAL_FLOWCHART---\n',
-		},
-		{
 			id: 'quiz',
 			label: 'Quiz',
-			group: 'konten',
+			group: 'layout',
 			snippet:
 				'\n---QUIZ_FLASHCARD---\n' +
 				'### Pertanyaan contoh?\n' +
@@ -274,7 +213,7 @@
 		{
 			id: 'exercise',
 			label: 'Exercise',
-			group: 'konten',
+			group: 'layout',
 			snippet:
 				'\n---EXERCISE---\n' +
 				'### Tantangan\n' +
@@ -284,7 +223,7 @@
 		{
 			id: 'slide',
 			label: 'Slide',
-			group: 'konten',
+			group: 'layout',
 			snippet:
 				'\n---slide-start---\n' +
 				'# Judul Slide 1\nTulis konten slide pertama di sini.\n\n' +
@@ -293,10 +232,109 @@
 				'# Judul Slide 2\nTulis konten slide kedua.\n' +
 				'---slide-end---\n',
 		},
+
+		// ── Set Soal ──
+		{
+			id: 'set-c',
+			label: 'Set C',
+			group: 'set_soal',
+			snippet:
+				'\n---INITIAL_CODE---\n' +
+				'#include <stdio.h>\n\nint main() {\n    \n    return 0;\n}\n' +
+				'---END_INITIAL_CODE---\n' +
+				'\n---EXPECTED_OUTPUT---\n' +
+				'Output yang diharapkan\n' +
+				'---END_EXPECTED_OUTPUT---\n' +
+				'\n---SOLUTION_CODE---\n' +
+				'#include <stdio.h>\n\nint main() {\n    \n    return 0;\n}\n' +
+				'---END_SOLUTION_CODE---\n' +
+				'\n---KEY_TEXT---\n' +
+				'kata_kunci1\nkata_kunci2\n' +
+				'---END_KEY_TEXT---\n',
+		},
+		{
+			id: 'set-python',
+			label: 'Set Python',
+			group: 'set_soal',
+			snippet:
+				'\n---INITIAL_PYTHON---\n' +
+				'# Tulis kode Python di sini\n' +
+				'---END_INITIAL_PYTHON---\n' +
+				'\n---EXPECTED_OUTPUT_PYTHON---\n' +
+				'Output yang diharapkan\n' +
+				'---END_EXPECTED_OUTPUT_PYTHON---\n' +
+				'\n---SOLUTION_PYTHON---\n' +
+				'# Solusi Python\n' +
+				'---END_SOLUTION_PYTHON---\n' +
+				'\n---KEY_TEXT---\n' +
+				'kata_kunci1\nkata_kunci2\n' +
+				'---END_KEY_TEXT---\n',
+		},
+		{
+			id: 'set-circuit',
+			label: 'Set Circuit',
+			group: 'set_soal',
+			snippet:
+				'\n---INITIAL_CIRCUIT---\n' +
+				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
+				'  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>\n' +
+				'  <r x="80 112 176 112" f="0" r="1000"/>\n' +
+				'  <w x="176 200 80 200" f="0"/>\n' +
+				'</cir>\n' +
+				'---END_INITIAL_CIRCUIT---\n' +
+				'\n---EXPECTED_CIRCUIT_OUTPUT---\n' +
+				'{\n  "nodes": {\n    "Vout": { "voltage": 2.5, "tolerance": 0.2 }\n  }\n}\n' +
+				'---END_EXPECTED_CIRCUIT_OUTPUT---\n' +
+				'\n---SOLUTION_CIRCUIT---\n' +
+				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
+				'  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>\n' +
+				'  <r x="80 112 176 112" f="0" r="1000"/>\n' +
+				'  <w x="176 200 80 200" f="0"/>\n' +
+				'</cir>\n' +
+				'---END_SOLUTION_CIRCUIT---\n' +
+				'\n---KEY_TEXT_CIRCUIT---\n' +
+				'Vout\n' +
+				'---END_KEY_TEXT_CIRCUIT---\n',
+		},
+		{
+			id: 'set-arduino',
+			label: 'Set Velxio',
+			group: 'set_soal',
+			snippet:
+				'\n---VELXIO_CIRCUIT---\n' +
+				'{\n  "board": "arduino:avr:uno",\n  "components": [],\n  "wires": []\n}\n' +
+				'---END_VELXIO_CIRCUIT---\n' +
+				'\n---INITIAL_CODE_ARDUINO---\n' +
+				'void setup() {\n  \n}\n\n' +
+				'void loop() {\n  \n}\n' +
+				'---END_INITIAL_CODE_ARDUINO---\n' +
+				'\n---EXPECTED_SERIAL_OUTPUT---\n' +
+				'LED ON\nLED OFF\n' +
+				'---END_EXPECTED_SERIAL_OUTPUT---\n' +
+				'\n---KEY_TEXT---\n' +
+				'kata_kunci\n' +
+				'---END_KEY_TEXT---\n',
+		},
+		{
+			id: 'set-flowchart',
+			label: 'Set Flowchart',
+			group: 'set_soal',
+			snippet:
+				'\n---INITIAL_FLOWCHART---\n' +
+				'start[roundrect] "Mulai"\n' +
+				'init[rect] "Inisialisasi"\n' +
+				'start --> init\n' +
+				'---END_INITIAL_FLOWCHART---\n' +
+				'\n---EXPECTED_FLOWCHART---\n' +
+				'start[roundrect] "mulai"\ninit[rect] "inisialisasi"\nstart --> init\n' +
+				'---END_EXPECTED_FLOWCHART---\n',
+		},
+
+		// ── Inline ──
 		{
 			id: 'circuit-inline',
-			label: 'Circuit',
-			group: 'konten',
+			label: 'Circuit Inline',
+			group: 'inline',
 			snippet:
 				'\n```circuit\n' +
 				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
@@ -308,8 +346,8 @@
 		},
 		{
 			id: 'flowchart-inline',
-			label: 'Flowchart',
-			group: 'konten',
+			label: 'Flowchart Inline',
+			group: 'inline',
 			snippet:
 				'\n```flowchart,100%,300px\n' +
 				'start[roundrect] "Mulai"\n' +
@@ -320,124 +358,14 @@
 		{
 			id: 'embed',
 			label: 'Embed',
-			group: 'konten',
+			group: 'inline',
 			snippet:
 				'\n```embed\n' +
 				'<div style="position: relative; width: 100%; height: 0; padding-top: 56.25%; overflow: hidden; border-radius: 8px;">\n' +
 				'  <iframe loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; border: none;" src="https://www.canva.com/design/XXXX/view?embed" allowfullscreen="allowfullscreen" allow="fullscreen"></iframe>\n' +
 				'</div>\n' +
 				'```\n',
-		},
-		// ── Penilaian ──
-		{
-			id: 'expected-c',
-			label: 'Exp C',
-			group: 'penilaian',
-			snippet:
-				'\n---EXPECTED_OUTPUT---\n' +
-				'Output yang diharapkan\n' +
-				'---END_EXPECTED_OUTPUT---\n',
-		},
-		{
-			id: 'expected-py',
-			label: 'Exp Py',
-			group: 'penilaian',
-			snippet:
-				'\n---EXPECTED_OUTPUT_PYTHON---\n' +
-				'Output yang diharapkan\n' +
-				'---END_EXPECTED_OUTPUT_PYTHON---\n',
-		},
-		{
-			id: 'expected-circuit',
-			label: 'Exp Circuit',
-			group: 'penilaian',
-			snippet:
-				'\n---EXPECTED_CIRCUIT_OUTPUT---\n' +
-				'{\n  "nodes": {\n    "Vout": { "voltage": 2.5, "tolerance": 0.2 }\n  }\n}\n' +
-				'---END_EXPECTED_CIRCUIT_OUTPUT---\n',
-		},
-		{
-			id: 'expected-serial',
-			label: 'Exp Serial',
-			group: 'penilaian',
-			snippet:
-				'\n---EXPECTED_SERIAL_OUTPUT---\n' +
-				'LED ON\nLED OFF\n' +
-				'---END_EXPECTED_SERIAL_OUTPUT---\n',
-		},
-		{
-			id: 'expected-wiring',
-			label: 'Exp Wiring',
-			group: 'penilaian',
-			snippet:
-				'\n---EXPECTED_WIRING---\n' +
-				'{\n' +
-				'  "wires": [\n' +
-				'    { "start": { "componentId": "arduino-uno", "pinName": "13" }, "end": { "componentId": "resistor-1", "pinName": "1" } },\n' +
-				'    { "start": { "componentId": "resistor-1", "pinName": "2" }, "end": { "componentId": "led-builtin", "pinName": "A" } },\n' +
-				'    { "start": { "componentId": "arduino-uno", "pinName": "GND" }, "end": { "componentId": "led-builtin", "pinName": "C" } }\n' +
-				'  ]\n' +
-				'}\n' +
-				'---END_EXPECTED_WIRING---\n',
-		},
-		{
-			id: 'expected-flowchart',
-			label: 'Exp Flow',
-			group: 'penilaian',
-			snippet:
-				'\n---EXPECTED_FLOWCHART---\n' +
-				'start[roundrect] "mulai"\ninit[rect] "inisialisasi"\nstart --> init\n' +
-				'---END_EXPECTED_FLOWCHART---\n',
-		},
-		{
-			id: 'solution-c',
-			label: 'Sol C',
-			group: 'penilaian',
-			snippet:
-				'\n---SOLUTION_CODE---\n' +
-				'#include <stdio.h>\n\nint main() {\n    \n    return 0;\n}\n' +
-				'---END_SOLUTION_CODE---\n',
-		},
-		{
-			id: 'solution-py',
-			label: 'Sol Py',
-			group: 'penilaian',
-			snippet:
-				'\n---SOLUTION_PYTHON---\n' +
-				'# Solusi Python\n' +
-				'---END_SOLUTION_PYTHON---\n',
-		},
-		{
-			id: 'solution-circuit',
-			label: 'Sol Circuit',
-			group: 'penilaian',
-			snippet:
-				'\n---SOLUTION_CIRCUIT---\n' +
-				'<cir f="1" ts="0.000005" ic="10.20027730826997" cb="50" pb="50" vr="5" mts="5e-11">\n' +
-				'  <v x="80 200 80 112" f="0" wf="0" maxv="5"/>\n' +
-				'  <r x="80 112 176 112" f="0" r="1000"/>\n' +
-				'  <w x="176 200 80 200" f="0"/>\n' +
-				'</cir>\n' +
-				'---END_SOLUTION_CIRCUIT---\n',
-		},
-		{
-			id: 'key-text',
-			label: 'Key Text',
-			group: 'penilaian',
-			snippet:
-				'\n---KEY_TEXT---\n' +
-				'kata_kunci1\nkata_kunci2\n' +
-				'---END_KEY_TEXT---\n',
-		},
-		{
-			id: 'key-text-circuit',
-			label: 'Key Circuit',
-			group: 'penilaian',
-			snippet:
-				'\n---KEY_TEXT_CIRCUIT---\n' +
-				'Vout\n' +
-				'---END_KEY_TEXT_CIRCUIT---\n',
-		},
+		}
 	];
 
 	function insertTemplate(tpl: FeatureTemplate) {
@@ -912,15 +840,23 @@
 					<div class="feature-sidebar-header">
 						<span>Fitur</span>
 					</div>
-					<div class="feature-sidebar-body">
-						<div class="feature-group-label">Konten</div>
-						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'konten') as tpl}
+										<div class="feature-sidebar-body">
+						<div class="feature-group-label">Layout</div>
+						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'layout') as tpl}
 							<button class="feature-btn" title={"Sisipkan template " + tpl.label} onclick={() => insertTemplate(tpl)}>
 								{tpl.label}
 							</button>
 						{/each}
-						<div class="feature-group-label">Penilaian</div>
-						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'penilaian') as tpl}
+						
+						<div class="feature-group-label">Set Soal</div>
+						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'set_soal') as tpl}
+							<button class="feature-btn" title={"Sisipkan bundle " + tpl.label} onclick={() => insertTemplate(tpl)}>
+								{tpl.label}
+							</button>
+						{/each}
+						
+						<div class="feature-group-label">Inline</div>
+						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'inline') as tpl}
 							<button class="feature-btn" title={"Sisipkan template " + tpl.label} onclick={() => insertTemplate(tpl)}>
 								{tpl.label}
 							</button>

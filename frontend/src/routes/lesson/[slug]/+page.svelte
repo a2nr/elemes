@@ -32,7 +32,8 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 	const mgr = new LessonManager();
 	const float = createFloatingPanel();
 
-	let slideComponent = $state<any>(null);
+	// Plain variable (not $state) to avoid infinite reactivity loops when mounting inside $effect
+	let slideComponent: ReturnType<typeof mount> | null = null;
 
 	// Initialize manager with lesson data whenever it changes.
 		$effect(() => {
@@ -62,20 +63,39 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 				if (mountPoint) {
 					// Clean up previous if exists
 					if (slideComponent) {
-						unmount(slideComponent);
+						try {
+							unmount(slideComponent);
+						} catch (e) {
+							// Ignore unmount error
+						}
 						slideComponent = null;
 					}
 					// Mount new carousel
-					slideComponent = mount(SlideCarousel, {
-						target: mountPoint,
-						props: { slides }
-					});
+					try {
+						slideComponent = mount(SlideCarousel, {
+							target: mountPoint,
+							props: { slides }
+						});
+					} catch (e) {
+						console.error('Failed to mount SlideCarousel in lesson page:', e);
+					}
 				}
 			});
+		} else if (slideComponent) {
+			try {
+				unmount(slideComponent);
+			} catch (e) {
+				// Ignore
+			}
+			slideComponent = null;
 		}
 		return () => {
 			if (slideComponent) {
-				unmount(slideComponent);
+				try {
+					unmount(slideComponent);
+				} catch (e) {
+					// Ignore
+				}
 				slideComponent = null;
 			}
 		};

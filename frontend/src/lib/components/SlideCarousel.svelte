@@ -1,4 +1,10 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+	import { highlightAllCode } from '$actions/highlightCode';
+	import { renderCircuitEmbeds } from '$actions/renderCircuitEmbeds';
+	import { renderFlowchartEmbeds } from '$actions/renderFlowchartEmbeds';
+	import { autoRenderMath } from '$lib/actions/renderMath';
+
 	let { slides = [] } = $props<{ slides: string[] }>();
 
 	let activeIndex = $state(0);
@@ -54,20 +60,46 @@
 			if (isFullscreen) isExpanded = true;
 		});
 	}
+
+	$effect(() => {
+		// Track slide content & visibility changes explicitly
+		const currentSlide = slides[activeIndex];
+		const isVisible = isExpanded || isFullscreen;
+
+		if (carouselEl && isVisible && currentSlide !== undefined) {
+			tick().then(() => {
+				if (!carouselEl) return;
+				highlightAllCode(carouselEl);
+				renderCircuitEmbeds(carouselEl);
+				renderFlowchartEmbeds(carouselEl);
+				autoRenderMath(carouselEl);
+			});
+		}
+	});
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="slide-carousel-wrapper" class:collapsed={!isExpanded && !isFullscreen}>
 	{#if !isExpanded && !isFullscreen}
-		<button class="expand-toggle-btn" onclick={toggleExpand}>
+		<button
+			class="expand-toggle-btn"
+			onclick={toggleExpand}
+			aria-expanded="false"
+			aria-label="Tampilkan Slide Materi"
+		>
 			<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
 			Tampilkan Slide Materi ({slides.length} Slide)
 		</button>
 	{:else}
 		<div class="slide-carousel" class:is-fullscreen={isFullscreen} bind:this={carouselEl}>
 			<div class="carousel-header">
-				<button class="collapse-btn" onclick={toggleExpand} aria-label="Sembunyikan slide">
+				<button
+					class="collapse-btn"
+					onclick={toggleExpand}
+					aria-expanded="true"
+					aria-label="Sembunyikan slide"
+				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
 					Sembunyikan Slide
 				</button>
@@ -392,13 +424,6 @@
 		transform: scale(1.3);
 		width: 24px;
 		border-radius: 5px;
-	}
-
-	/* Desktop Counter moved to controls if not fullscreen */
-	:not(.is-fullscreen) .slide-counter-bottom {
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: #64748b;
 	}
 
 	/* Mobile Optimizations */
