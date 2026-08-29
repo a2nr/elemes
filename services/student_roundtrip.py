@@ -1,16 +1,28 @@
 """
 Round-trip CSV siswa — format tunggal export/import:
 
+    # Format kolom lesson: ...
     student_id;token;nama_siswa;<lesson_slug...>
 
-Prinsip keamanan:
+Prinsip keamanan & struktur:
+- Baris pertama file export memuat baris legend komentar (# Format kolom lesson...).
+- Parser mengabaikan baris komentar di awal file (#) secara backward-compatible.
 - Export SELALU mengosongkan kolom `token` (tidak ada recovery token).
 - Token mentah hanya dibaca saat import; `raw_token` adalah field internal
   dengan repr=False dan tidak pernah muncul di error, preview, response, atau log.
 - Parser murni (tanpa database); validasi DB ada di repositories.
 
-Format status progress mengikuti kontrak legacy (lihat progress_status.py):
-belum mulai = kosong / not_started; selesai = completed; skor = "<earned>/<total>".
+Grammar kolom lesson round-trip:
+- Kosong / not_started : tidak diubah (merge semantics).
+- RESET (case-insensitive) : reset/hapus progress lesson untuk siswa ybs.
+- completed : selesai (reading / single-activity).
+- <earned>/<total> : skor kuis legacy (mis. "3/4").
+- done:<exercise 1/0/kosong>:<earned>/<total> : status composite exercise + quiz.
+
+Catatan pemakaian spreadsheet (Excel / Google Sheets):
+Kolom lesson berisi "<earned>/<total>" atau "done:..." sebaiknya diformat sebagai
+**Text** di aplikasi spreadsheet sebelum diedit manual agar delimiter "/" tidak
+otomatis dikonversi menjadi tanggal.
 """
 
 import csv
@@ -18,7 +30,19 @@ import io
 import uuid
 from dataclasses import dataclass, field
 
-from services.progress_status import ParsedProgress, format_progress_status, parse_progress_status
+from services.progress_status import (
+    ParsedProgress,
+    format_progress_status,
+    format_roundtrip_cell,
+    parse_progress_status,
+    parse_roundtrip_cell,
+)
+
+LEGEND_COMMENT_LINE = (
+    "# Format kolom lesson: (kosong)=tidak diubah | RESET=reset ke belum-mulai | "
+    "completed=selesai | <earned>/<total>=skor kuis | "
+    "done:<exercise 1/0/kosong>:<earned>/<total>=composite exercise+kuis"
+)
 
 DELIMITER = ";"
 
@@ -172,10 +196,19 @@ def parse_roundtrip_csv(
     if len(text.encode("utf-8")) > MAX_FILE_BYTES:
         raise RoundTripImportError([f"File melebihi batas {MAX_FILE_BYTES // (1024 * 1024)} MiB"])
 
+    lines = text.splitlines(keepends=True)
+    comment_count = 0
+    while comment_count < len(lines) and lines[comment_count].lstrip().startswith("#"):
+        comment_count += 1
+    cleaned_text = "".join(lines[comment_count:])
+
+    if not cleaned_text.strip():
+        raise RoundTripImportError(["File kosong atau header tidak ditemukan"])
+
     active = set(active_lesson_slugs)
-    delimiter = _detect_import_delimiter(text)
+    delimiter = _detect_import_delimiter(cleaned_text)
     try:
-        reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+        reader = csv.DictReader(io.StringIO(cleaned_text), delimiter=delimiter)
         fieldnames = reader.fieldnames
         if not fieldnames:
             raise RoundTripImportError(["File kosong atau header tidak ditemukan"])
@@ -228,7 +261,7 @@ def parse_roundtrip_csv(
         if _row_is_empty(record):
             continue
         data_row_count += 1
-        line = reader.line_num  # nomor baris fisik di file (akurat walau ada baris kosong)
+        line = reader.line_num + comment_count  # nomor baris fisik asli di file
 
         if data_row_count > MAX_ROWS:
             errors.append(f"Jumlah baris melebihi batas {MAX_ROWS}")
@@ -291,18 +324,13 @@ def parse_roundtrip_csv(
         progress: dict[str, ParsedProgress] = {}
         for slug in lesson_columns:
             value = record.get(slug) or ""
-            v = value.strip()
-            if v in ("", "not_started"):
-                continue
             try:
-                state, earned, total = parse_progress_status(v)
-            except ValueError:
-                errors.append(f"Baris {line}, kolom {slug}: status tidak dikenal: {v!r}")
+                parsed = parse_roundtrip_cell(value)
+            except ValueError as exc:
+                errors.append(f"Baris {line}, kolom {slug}: {exc}")
                 continue
-            if state == "completed":
-                progress[slug] = ParsedProgress(state="completed")
-            elif state == "scored":
-                progress[slug] = ParsedProgress(state="scored", score_earned=earned, score_total=total)
+            if parsed is not None:
+                progress[slug] = parsed
 
         rows.append(
             StudentRoundTripRow(
@@ -325,12 +353,14 @@ def serialize_export_csv(
 ) -> bytes:
     """Serialize row export → CSV UTF-8 BOM, delimiter ';', token selalu kosong.
 
+    - Baris pertama: legend grammar sel progress (# Format kolom lesson...).
     - Header: student_id;token;nama_siswa;<lesson_slugs...> sesuai urutan.
-    - Status ditulis dengan kontrak legacy (kosong/completed/<earned>/<total>).
+    - Status ditulis dengan grammar roundtrip (kosong/completed/<earned>/<total>/done:...).
     - `completed_count`, role, hash token, dan metadata internal tidak diekspor.
     """
     fieldnames = ["student_id", "token", "nama_siswa", *lesson_slugs]
     out = io.StringIO()
+    out.write(f"{LEGEND_COMMENT_LINE}\n")
     writer = csv.DictWriter(
         out, fieldnames=fieldnames, delimiter=EXPORT_DELIMITER, lineterminator="\n"
     )
@@ -342,6 +372,6 @@ def serialize_export_csv(
             "nama_siswa": row.display_name,
         }
         for slug in lesson_slugs:
-            record[slug] = format_progress_status(row.progress.get(slug))
+            record[slug] = format_roundtrip_cell(row.progress.get(slug))
         writer.writerow(record)
     return out.getvalue().encode("utf-8-sig")

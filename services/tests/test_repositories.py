@@ -149,9 +149,10 @@ def test_export_csv_content_and_no_leak():
         text = csv_bytes.decode("utf-8-sig")
         assert csv_bytes.startswith("\ufeff".encode("utf-8"))
         lines = text.strip().splitlines()
-        assert lines[0] == "student_id;token;nama_siswa;hello_world;variabel"
-        assert len(lines) == 2  # hanya 1 siswa (teacher tidak ikut)
-        cols = lines[1].split(";")
+        assert lines[0].startswith("# Format kolom lesson:")
+        assert lines[1] == "student_id;token;nama_siswa;hello_world;variabel"
+        assert len(lines) == 3  # hanya 1 siswa (teacher tidak ikut)
+        cols = lines[2].split(";")
         assert cols[0] == s1.id
         assert cols[1] == ""  # token selalu kosong
         assert cols[2] == "Budi Santoso"
@@ -170,7 +171,9 @@ def test_export_empty_db_header_only():
     try:
         csv_bytes = repo.export_students_csv(db)
         text = csv_bytes.decode("utf-8-sig")
-        assert text.strip() == "student_id;token;nama_siswa"
+        lines = text.strip().splitlines()
+        assert lines[0].startswith("# Format kolom lesson:")
+        assert lines[1] == "student_id;token;nama_siswa"
     finally:
         db.close()
 
@@ -403,6 +406,7 @@ def test_preview_student_import_summary():
             "students_to_update": 0,
             "progress_to_create": 1,
             "progress_to_restore": 0,
+            "progress_to_reset": 0,
             "conflicts": [],
         }
     finally:
@@ -436,6 +440,7 @@ def test_import_existing_with_empty_token_restores_without_new_token():
             "students_updated": 1,
             "progress_created": 0,
             "progress_restored": 1,
+            "progress_reset": 0,
             "user_ids": [existing.id],
         }
 
@@ -531,6 +536,7 @@ def test_preview_reports_existing_as_update_restore():
             "students_to_update": 1,
             "progress_to_create": 1,
             "progress_to_restore": 1,
+            "progress_to_reset": 0,
             "conflicts": [],
         }
     finally:
@@ -605,8 +611,9 @@ def test_roundtrip_export_restore_delete_recreate():
         active_slugs = ["hello_world", "variabel"]
         text = csv_bytes.decode("utf-8-sig")
         lines = text.strip().splitlines()
-        assert lines[0] == "student_id;token;nama_siswa;hello_world;variabel"
-        cols = lines[1].split(";")
+        assert lines[0].startswith("# Format kolom lesson:")
+        assert lines[1] == "student_id;token;nama_siswa;hello_world;variabel"
+        cols = lines[2].split(";")
         assert cols[0] == s1.id and cols[1] == ""  # token kosong
         assert cols[2] == "Budi Santoso" and cols[3] == "completed" and cols[4] == "3/4"
 
@@ -735,3 +742,228 @@ class TestSetExercisePassed:
             assert p.composite_percent == 25.0
         finally:
             db.close()
+
+
+def test_import_done_composite_recomputes_and_restores(monkeypatch):
+    """IMPORT-02: Import CSV cell done:1:3/6 memicu recompute_progress dan state='done'."""
+    from services import repositories as r
+    monkeypatch.setattr(r, "get_lesson_components", lambda slug: (True, True))
+
+    db = SessionLocal()
+    try:
+        lesson = _seed_lesson(db, "hello_world")
+        db.commit()
+
+        rows = [
+            _make_row(
+                None,
+                "TOKEN_DONE_01",
+                "Siswa Done",
+                progress={
+                    "hello_world": ParsedProgress(
+                        "done", exercise_passed=True, quiz_earned=3, quiz_total=4
+                    )
+                },
+            )
+        ]
+        res = repo.run_student_import(db, rows)
+        assert res["students_created"] == 1
+        assert res["progress_created"] == 1
+
+        user = repo.find_user_by_raw_token(db, "TOKEN_DONE_01")
+        assert user is not None
+        p = repo.get_progress(db, user_id=user.id, lesson_id=lesson.id)
+        assert p is not None
+        assert p.state == "done"
+        assert p.exercise_passed is True
+        assert p.quiz_score_earned == 3
+        assert p.quiz_score_total == 4
+        # 70% exercise + 30% * (3/4=75%) quiz = 70 + 22.5 = 92.5%
+        assert p.composite_percent == 92.5
+    finally:
+        db.close()
+
+
+def test_import_reset_keyword_deletes_progress():
+    """IMPORT-02: Import CSV cell RESET menghapus progress lesson untuk siswa ybs."""
+    db = SessionLocal()
+    try:
+        lesson = _seed_lesson(db, "hello_world")
+        student = _seed_student(db, STUDENT_TOKEN, "Budi")
+        repo.set_progress(db, user_id=student.id, lesson_id=lesson.id, state="completed")
+        db.commit()
+
+        assert repo.get_progress(db, user_id=student.id, lesson_id=lesson.id) is not None
+
+        rows = [
+            _make_row(
+                student.id,
+                "",
+                "Budi",
+                progress={"hello_world": ParsedProgress("reset")},
+            )
+        ]
+        summary = repo.preview_student_import(db, rows)
+        assert summary["progress_to_reset"] == 1
+        assert summary["progress_to_restore"] == 0
+
+        res = repo.run_student_import(db, rows)
+        assert res["progress_reset"] == 1
+        assert res["progress_restored"] == 0
+
+        # Row progress terhapus / None
+        p = repo.get_progress(db, user_id=student.id, lesson_id=lesson.id)
+        assert p is None
+    finally:
+        db.close()
+
+
+def test_roundtrip_export_and_import_preserves_done_composite(monkeypatch):
+    """Full roundtrip: export siswa dengan state 'done' -> import -> composite identik."""
+    from services import repositories as r
+    monkeypatch.setattr(r, "get_lesson_components", lambda slug: (True, True))
+
+    db = SessionLocal()
+    try:
+        lesson = _seed_lesson(db, "hello_world")
+        orig = _seed_student(db, STUDENT_TOKEN, "Budi Asli")
+        repo.set_exercise_passed(db, user_id=orig.id, lesson_id=lesson.id, passed=True)
+        repo.set_quiz_score(db, user_id=orig.id, lesson_id=lesson.id, quiz_earned=3, quiz_total=4)
+        repo.recompute_progress(
+            db, user_id=orig.id, lesson_id=lesson.id,
+            has_exercise=True, has_quiz=True,
+            exercise_weight=70.0, quiz_weight=30.0, done_min_percent=75.0
+        )
+        db.commit()
+
+        # 1. Export
+        csv_bytes = repo.export_students_csv(db, [orig.id])
+
+        # 2. Parse hasil export
+        parsed_rows = parse_roundtrip_csv(csv_bytes, ["hello_world"])
+        assert len(parsed_rows) == 1
+        assert parsed_rows[0].progress["hello_world"].state == "done"
+
+        # 3. Import sebagai siswa baru
+        parsed_rows[0].student_id = None
+        parsed_rows[0].raw_token = "TOKEN_BARU_RESTORE"
+        parsed_rows[0].display_name = "Budi Kloning"
+
+        repo.run_student_import(db, parsed_rows)
+
+        klon = repo.find_user_by_raw_token(db, "TOKEN_BARU_RESTORE")
+        assert klon is not None
+        p = repo.get_progress(db, user_id=klon.id, lesson_id=lesson.id)
+        assert p is not None
+        assert p.state == "done"
+        assert p.composite_percent == 92.5
+    finally:
+        db.close()
+
+
+def test_change_student_token_via_delete_and_reimport(monkeypatch):
+    """IMPORT-03 (Fitur C): Alur ganti token siswa:
+    1. Guru export siswa
+    2. Guru hapus siswa dari sistem (/students/delete)
+    3. Guru edit CSV: kosongkan student_id, isi token baru
+    4. Guru import CSV -> siswa baru terbuat dengan token baru + seluruh progress terpasang
+    """
+    from services import repositories as r
+    monkeypatch.setattr(r, "get_lesson_components", lambda slug: (True, True))
+
+    db = SessionLocal()
+    try:
+        l_done = _seed_lesson(db, "lesson_done", 0)
+        l_scored = _seed_lesson(db, "lesson_scored", 1)
+        l_completed = _seed_lesson(db, "lesson_completed", 2)
+
+        # 1. Siswa dengan berbagai jenis progress
+        orig_student = _seed_student(db, "TOKEN_LAMA_123456", "Budi Santoso")
+        repo.set_exercise_passed(db, user_id=orig_student.id, lesson_id=l_done.id, passed=True)
+        repo.set_quiz_score(db, user_id=orig_student.id, lesson_id=l_done.id, quiz_earned=3, quiz_total=4)
+        repo.recompute_progress(
+            db, user_id=orig_student.id, lesson_id=l_done.id,
+            has_exercise=True, has_quiz=True,
+            exercise_weight=70.0, quiz_weight=30.0, done_min_percent=75.0
+        )
+        repo.set_progress(db, user_id=orig_student.id, lesson_id=l_scored.id, state="scored", score_earned=4, score_total=5)
+        repo.set_progress(db, user_id=orig_student.id, lesson_id=l_completed.id, state="completed")
+        db.commit()
+
+        # Step 1: Export
+        csv_bytes = repo.export_students_csv(db, [orig_student.id])
+
+        # Step 2: Delete siswa lama
+        deleted = repo.delete_students(db, [orig_student.id])
+        assert deleted == [orig_student.id]
+        db.commit()
+        assert repo.find_user_by_raw_token(db, "TOKEN_LAMA_123456") is None
+
+        # Step 3: Parse CSV dan edit (kosongkan student_id, isi token baru)
+        parsed_rows = parse_roundtrip_csv(csv_bytes, ["lesson_done", "lesson_scored", "lesson_completed"])
+        assert len(parsed_rows) == 1
+        assert parsed_rows[0].student_id == orig_student.id
+
+        parsed_rows[0].student_id = None  # dikosongkan agar dianggap siswa baru
+        parsed_rows[0].raw_token = "TOKEN_BARU_999999"  # token baru
+
+        # Step 4: Import CSV yang sudah diedit
+        res = repo.run_student_import(db, parsed_rows)
+        assert res["students_created"] == 1
+        assert res["progress_created"] == 3
+
+        # Verifikasi: user baru terbuat dengan token baru, token lama tidak ada
+        new_user = repo.find_user_by_raw_token(db, "TOKEN_BARU_999999")
+        assert new_user is not None
+        assert new_user.id != orig_student.id
+        assert new_user.display_name == "Budi Santoso"
+
+        # Verifikasi: seluruh progress ter-restore dengan benar
+        p_done = repo.get_progress(db, user_id=new_user.id, lesson_id=l_done.id)
+        assert p_done.state == "done"
+        assert p_done.composite_percent == 92.5
+        assert p_done.exercise_passed is True
+        assert p_done.quiz_score_earned == 3
+        assert p_done.quiz_score_total == 4
+
+        p_scored = repo.get_progress(db, user_id=new_user.id, lesson_id=l_scored.id)
+        assert p_scored.state == "scored"
+        assert p_scored.score_earned == 4
+        assert p_scored.score_total == 5
+
+        p_comp = repo.get_progress(db, user_id=new_user.id, lesson_id=l_completed.id)
+        assert p_comp.state == "completed"
+    finally:
+        db.close()
+
+
+def test_count_completed_lessons_includes_done_completed_scored():
+    db = SessionLocal()
+    try:
+        user = _seed_student(db, STUDENT_TOKEN, "Budi")
+        l1 = _seed_lesson(db, "hello_world", 0)
+        l2 = _seed_lesson(db, "variabel", 1)
+        l3 = _seed_lesson(db, "percabangan", 2)
+        l4 = _seed_lesson(db, "l4_test", 3)
+        l5 = _seed_lesson(db, "l5_test", 4)
+        db.commit()
+
+        # Belum ada progress
+        assert repo.count_completed_lessons(db, user_id=user.id) == 0
+
+        # state="done"
+        repo.set_progress(db, user_id=user.id, lesson_id=l1.id, state="done")
+        # state="completed"
+        repo.set_progress(db, user_id=user.id, lesson_id=l2.id, state="completed")
+        # state="scored"
+        repo.set_progress(db, user_id=user.id, lesson_id=l3.id, state="scored", score_earned=3, score_total=4)
+        # state="in_progress" (tidak dihitung)
+        repo.set_progress(db, user_id=user.id, lesson_id=l4.id, state="in_progress")
+        # state="not_started" (tidak dihitung)
+        repo.set_progress(db, user_id=user.id, lesson_id=l5.id, state="not_started")
+        db.commit()
+
+        assert repo.count_completed_lessons(db, user_id=user.id) == 3
+    finally:
+        db.close()
+

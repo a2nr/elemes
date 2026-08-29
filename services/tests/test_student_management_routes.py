@@ -154,9 +154,10 @@ def test_export_selection(client):
     text = resp.data.decode("utf-8-sig")
     assert text.startswith("\ufeff") or resp.data.startswith(b"\xef\xbb\xbf")
     lines = text.strip().splitlines()
-    assert lines[0].startswith("student_id;token;nama_siswa;")
-    assert len(lines) == 2  # hanya siswa terpilih
-    cols = lines[1].split(";")
+    assert lines[0].startswith("# Format kolom lesson:")
+    assert lines[1].startswith("student_id;token;nama_siswa;")
+    assert len(lines) == 3  # legend + header + 1 siswa terpilih
+    cols = lines[2].split(";")
     assert cols[0] == s1.id
     assert cols[1] == ""  # token selalu kosong
     assert "Pak Guru" not in text  # teacher tidak pernah diekspor
@@ -172,8 +173,10 @@ def test_export_no_selection_exports_all(client):
     resp = client.post("/students/export-csv", json={"student_ids": []})
     assert resp.status_code == 200
     lines = resp.data.decode("utf-8-sig").strip().splitlines()
-    assert len(lines) == 3  # header + 2 siswa
-    exported = {l.split(";")[0] for l in lines[1:]}
+    assert lines[0].startswith("# Format kolom lesson:")
+    assert lines[1].startswith("student_id;token;nama_siswa;")
+    assert len(lines) == 4  # legend + header + 2 siswa
+    exported = {l.split(";")[0] for l in lines[2:]}
     assert exported == ids
 
 
@@ -211,7 +214,9 @@ def test_export_empty_db_header_only(client):
     resp = client.post("/students/export-csv", json={"student_ids": []})
     assert resp.status_code == 200
     text = resp.data.decode("utf-8-sig")
-    assert text.strip().splitlines()[0].startswith("student_id;token;nama_siswa;")
+    lines = text.strip().splitlines()
+    assert lines[0].startswith("# Format kolom lesson:")
+    assert lines[1].startswith("student_id;token;nama_siswa;")
 
 
 # ── import ─────────────────────────────────────────────────────────

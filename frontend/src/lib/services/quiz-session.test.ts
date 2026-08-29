@@ -8,13 +8,19 @@ import {
 	calculateQuizResult
 } from './quiz-session';
 
-function makeQuestion(id: string, type: 'mcq' | 'flashcard' = 'mcq', correctIdx = 0): QuizQuestion {
+function makeQuestion(
+	id: string,
+	type: 'mcq' | 'flashcard' = 'mcq',
+	correctIdx = 0,
+	category?: 'evaluasi' | 'diagnostik'
+): QuizQuestion {
 	if (type === 'flashcard') {
-		return { id, type: 'flashcard', front: `F-${id}`, back: `B-${id}` };
+		return { id, type: 'flashcard', front: `F-${id}`, back: `B-${id}`, category };
 	}
 	return {
 		id,
 		type: 'mcq',
+		category,
 		question: `Q-${id}`,
 		options: [
 			{ id: `${id}-o-0`, text: 'A', is_correct: correctIdx === 0 },
@@ -183,5 +189,34 @@ describe('calculateQuizResult', () => {
 		answerQuestion(session, 'q-1', 'q-1-o-0');
 		const result = calculateQuizResult(session);
 		expect(result.statusString).toBe('2/4');
+	});
+
+	it('combines evaluation and diagnostic MCQ in statusString (e.g. 4 eval with 2 correct + 2 diag with 1 correct -> 3/6)', () => {
+		const source = [
+			makeQuestion('q-eval-0', 'mcq', 0, 'evaluasi'),
+			makeQuestion('q-eval-1', 'mcq', 0, 'evaluasi'),
+			makeQuestion('q-eval-2', 'mcq', 0, 'evaluasi'),
+			makeQuestion('q-eval-3', 'mcq', 0, 'evaluasi'),
+			makeQuestion('q-diag-0', 'mcq', 0, 'diagnostik'),
+			makeQuestion('q-diag-1', 'mcq', 0, 'diagnostik')
+		];
+		const session = createQuizSession(source, () => 0);
+		// 2 eval correct (q-eval-0, q-eval-1), 2 eval incorrect
+		answerQuestion(session, 'q-eval-0', 'q-eval-0-o-0');
+		answerQuestion(session, 'q-eval-1', 'q-eval-1-o-0');
+		answerQuestion(session, 'q-eval-2', 'q-eval-2-o-1');
+		answerQuestion(session, 'q-eval-3', 'q-eval-3-o-1');
+		// 1 diag correct (q-diag-0), 1 diag incorrect
+		answerQuestion(session, 'q-diag-0', 'q-diag-0-o-0');
+		answerQuestion(session, 'q-diag-1', 'q-diag-1-o-1');
+
+		const result = calculateQuizResult(session);
+		expect(result.evalCorrect).toBe(2);
+		expect(result.evalTotal).toBe(4);
+		expect(result.diagCorrect).toBe(1);
+		expect(result.diagTotal).toBe(2);
+		expect(result.totalMcq).toBe(6);
+		expect(result.correctMcq).toBe(3);
+		expect(result.statusString).toBe('3/6');
 	});
 });

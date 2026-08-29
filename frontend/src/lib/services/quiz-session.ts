@@ -13,7 +13,7 @@ export interface QuizResult {
 	unansweredMcq: number;
 	completedFlashcards: number;
 	allHandled: boolean;
-	/** Skor resmi = evaluasi saja. "X/Y" bila ada MCQ evaluasi, "completed" bila tidak ada MCQ evaluasi (hanya diagnostik/flashcard). */
+	/** Skor resmi = seluruh MCQ (evaluasi + diagnostik) tergabung; flashcard tidak dihitung. "X/Y" bila ada MCQ, "completed" bila tidak ada MCQ. */
 	statusString: string;
 	/** MCQ dengan category 'evaluasi' */
 	evalCorrect: number;
@@ -125,8 +125,8 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 			? session.answers[q.id].selectedOptionId !== null
 			: session.answers[q.id].acknowledged
 	);
-	// Skor resmi = evaluasi saja; bila tidak ada MCQ evaluasi → 'completed'.
-	const statusString = evalTotal > 0 ? `${evalCorrect}/${evalTotal}` : 'completed';
+	// Skor resmi = seluruh MCQ (evaluasi + diagnostik) tergabung; bila tidak ada MCQ → 'completed'.
+	const statusString = totalMcq > 0 ? `${correctMcq}/${totalMcq}` : 'completed';
 
 	return {
 		totalMcq,

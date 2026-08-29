@@ -149,6 +149,9 @@
 						<span><strong>{preview.summary.students_to_update}</strong> dipulihkan/di-update</span>
 						<span><strong>{preview.summary.progress_to_create}</strong> progress baru</span>
 						<span><strong>{preview.summary.progress_to_restore}</strong> progress dipulihkan</span>
+						{#if (preview.summary.progress_to_reset ?? 0) > 0}
+							<span><strong>{preview.summary.progress_to_reset}</strong> progress di-reset</span>
+						{/if}
 						<span class={conflictCount > 0 ? 'bad' : ''}>
 							<strong>{conflictCount}</strong> conflict
 						</span>

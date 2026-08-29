@@ -14,8 +14,10 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from config import LESSON_EXERCISE_WEIGHT, LESSON_QUIZ_WEIGHT, LESSON_DONE_MIN_PERCENT
 from services.models import AccessToken, ContentDraft, Lesson, QuizAttempt, StudentProgress, User
 from services.evaluation import compute_composite
+from services.lesson_service import get_lesson_components
 from services.progress_status import ParsedProgress
 from services.student_roundtrip import (
     RoundTripImportError,
@@ -315,7 +317,7 @@ def count_completed_lessons(db: Session, *, user_id: str) -> int:
             .select_from(StudentProgress)
             .where(
                 StudentProgress.user_id == user_id,
-                StudentProgress.state.in_(("completed", "scored")),
+                StudentProgress.state.in_(("completed", "scored", "done")),
             )
         )
         or 0
@@ -509,6 +511,13 @@ def export_students_csv(
                 )
             elif p.state == "completed":
                 progress[lesson.slug] = ParsedProgress("completed")
+            elif p.state == "done":
+                progress[lesson.slug] = ParsedProgress(
+                    "done",
+                    exercise_passed=p.exercise_passed,
+                    quiz_earned=p.quiz_score_earned,
+                    quiz_total=p.quiz_score_total,
+                )
         rows.append(
             StudentRoundTripRow(
                 line=0,
@@ -593,12 +602,22 @@ def preview_student_import(
     conflicts = find_student_import_conflicts(db, rows)
     to_create = [r for r in rows if not r.student_id]
     to_update = [r for r in rows if r.student_id]
+    progress_to_create = sum(
+        1 for r in to_create for parsed in r.progress.values() if parsed.state != "reset"
+    )
+    progress_to_restore = sum(
+        1 for r in to_update for parsed in r.progress.values() if parsed.state != "reset"
+    )
+    progress_to_reset = sum(
+        1 for r in rows for parsed in r.progress.values() if parsed.state == "reset"
+    )
     return {
         "rows": len(rows),
         "students_to_create": len(to_create),
         "students_to_update": len(to_update),
-        "progress_to_create": sum(len(r.progress) for r in to_create),
-        "progress_to_restore": sum(len(r.progress) for r in to_update),
+        "progress_to_create": progress_to_create,
+        "progress_to_restore": progress_to_restore,
+        "progress_to_reset": progress_to_reset,
         "conflicts": conflicts,
     }
 
@@ -618,6 +637,9 @@ def run_student_import(
     - Sparse progress dipertahankan: status kosong/not_started tidak pernah
       menjadi row database, dan progress lama yang tidak ada di CSV TIDAK
       dihapus (merge, bukan snapshot penuh).
+    - Status 'done' di-apply via set_exercise_passed / set_quiz_score lalu
+      recompute_progress.
+    - Status 'reset' menghapus row progress untuk lesson tsb (set ke not_started).
 
     Catatan transaksi: fungsi ini sengaja melakukan COMMIT sekali (kontrak
     all-or-nothing round-trip) — pemanggil (route) TIDAK commit lagi. Ini
@@ -633,6 +655,7 @@ def run_student_import(
     students_updated = 0
     progress_created = 0
     progress_restored = 0
+    progress_reset = 0
     try:
         for row in rows:
             if row.student_id:
@@ -659,14 +682,45 @@ def run_student_import(
                 lesson = get_lesson_by_slug(db, slug)
                 if lesson is None:
                     raise ValueError(f"Baris {row.line}: lesson tidak dikenal: {slug!r}")
-                set_progress(
-                    db,
-                    user_id=user.id,
-                    lesson_id=lesson.id,
-                    state=parsed.state,
-                    score_earned=parsed.score_earned,
-                    score_total=parsed.score_total,
-                )
+
+                if parsed.state == "done":
+                    if parsed.exercise_passed is not None:
+                        set_exercise_passed(
+                            db, user_id=user.id, lesson_id=lesson.id, passed=parsed.exercise_passed
+                        )
+                    if parsed.quiz_earned is not None and parsed.quiz_total is not None:
+                        set_quiz_score(
+                            db,
+                            user_id=user.id,
+                            lesson_id=lesson.id,
+                            quiz_earned=parsed.quiz_earned,
+                            quiz_total=parsed.quiz_total,
+                        )
+                    has_exercise, has_quiz = get_lesson_components(slug)
+                    recompute_progress(
+                        db,
+                        user_id=user.id,
+                        lesson_id=lesson.id,
+                        has_exercise=has_exercise,
+                        has_quiz=has_quiz,
+                        exercise_weight=LESSON_EXERCISE_WEIGHT,
+                        quiz_weight=LESSON_QUIZ_WEIGHT,
+                        done_min_percent=LESSON_DONE_MIN_PERCENT,
+                    )
+                elif parsed.state == "reset":
+                    set_progress(db, user_id=user.id, lesson_id=lesson.id, state="not_started")
+                    progress_reset += 1
+                    continue
+                else:
+                    set_progress(
+                        db,
+                        user_id=user.id,
+                        lesson_id=lesson.id,
+                        state=parsed.state,
+                        score_earned=parsed.score_earned,
+                        score_total=parsed.score_total,
+                    )
+
                 if row.student_id:
                     progress_restored += 1
                 else:
@@ -687,6 +741,7 @@ def run_student_import(
         "students_updated": students_updated,
         "progress_created": progress_created,
         "progress_restored": progress_restored,
+        "progress_reset": progress_reset,
         "user_ids": user_ids,
     }
 

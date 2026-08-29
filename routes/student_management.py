@@ -189,11 +189,12 @@ def import_students():
 
     logger.info(
         "Import CSV: students_created=%s students_updated=%s "
-        "progress_created=%s progress_restored=%s",
+        "progress_created=%s progress_restored=%s progress_reset=%s",
         result["students_created"],
         result["students_updated"],
         result["progress_created"],
         result["progress_restored"],
+        result.get("progress_reset", 0),
     )
     return jsonify(
         {
@@ -202,6 +203,7 @@ def import_students():
             "students_updated": result["students_updated"],
             "progress_created": result["progress_created"],
             "progress_restored": result["progress_restored"],
+            "progress_reset": result.get("progress_reset", 0),
         }
     )
 

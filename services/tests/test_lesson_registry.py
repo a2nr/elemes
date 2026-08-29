@@ -35,6 +35,7 @@ def test_specs_parse_from_home_md(tmp_path, monkeypatch):
     _write_content(tmp_path)
     monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))
     lesson_service.get_lessons.cache_clear()
+    lesson_service.find_lesson_file.cache_clear()
 
     specs = lesson_specs()
 
@@ -50,15 +51,18 @@ def test_specs_empty_without_available_lessons(tmp_path, monkeypatch):
     (tmp_path / "home.md").write_text("# Home\nno lessons section\n", encoding="utf-8")
     monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))
     lesson_service.get_lessons.cache_clear()
+    lesson_service.find_lesson_file.cache_clear()
     assert lesson_specs() == []
 
 
 @pytest.mark.skipif(not DB_REQUIRED, reason="butuh DATABASE_URL (PostgreSQL nyata)")
 def test_sync_creates_and_deactivates_lessons(tmp_path, monkeypatch):
     from services.database import SessionLocal
+    from services import repositories
 
     _write_content(tmp_path)
     monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))
+    lesson_service.find_lesson_file.cache_clear()
 
     db = SessionLocal()
     try:
@@ -72,6 +76,7 @@ def test_sync_creates_and_deactivates_lessons(tmp_path, monkeypatch):
             encoding="utf-8",
         )
         lesson_service.get_lessons.cache_clear()
+        lesson_service.find_lesson_file.cache_clear()
         second = sync_lesson_registry(db)
         assert second["deactivated"] == 1
         assert second["total"] == 2  # row quiz_test masih ada
@@ -114,6 +119,7 @@ def test_sync_includes_sub_bab_lessons(tmp_path, monkeypatch):
 
     monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))
     lesson_service.get_lessons.cache_clear()
+    lesson_service.find_lesson_file.cache_clear()
 
     db = SessionLocal()
     try:

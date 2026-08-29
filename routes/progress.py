@@ -93,7 +93,7 @@ def api_progress_report():
 
 @progress_bp.route('/progress-report/export-csv')
 def export_progress_csv():
-    """Export the progress report as CSV."""
+    """Export the progress report as CSV with composite scores."""
     token = request.args.get('token', '').strip()
     if not token:
         token = request.cookies.get('student_token', '').strip()
@@ -105,19 +105,36 @@ def export_progress_csv():
     if not student_info or not student_info.get('is_teacher'):
         return jsonify({'success': False, 'message': 'Forbidden'}), 403
 
-    all_students_progress, _ordered_lessons = get_all_students_progress(
+    all_students_progress, ordered_lessons = get_all_students_progress(
         get_lessons_with_learning_objectives,
     )
 
+    lesson_slugs = [l['filename'].replace('.md', '') for l in ordered_lessons]
+    fieldnames = ['nama_siswa'] + lesson_slugs + ['completed_count']
+
     output = io.StringIO()
-    if all_students_progress:
-        fieldnames = list(all_students_progress[0].keys())
-        writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';')
-        writer.writeheader()
-        writer.writerows(all_students_progress)
+    output.write('\ufeff')
+    writer = csv.DictWriter(output, fieldnames=fieldnames, delimiter=';')
+    writer.writeheader()
+
+    for student in all_students_progress:
+        row = {'nama_siswa': student.get('nama_siswa', '')}
+        for slug in lesson_slugs:
+            composite_val = student.get(f"{slug}_composite")
+            if composite_val is not None:
+                row[slug] = composite_val
+            else:
+                legacy = student.get(slug, '')
+                if legacy == 'completed':
+                    row[slug] = 100
+                else:
+                    row[slug] = ""
+        row['completed_count'] = student.get('completed_count', 0)
+        writer.writerow(row)
 
     return Response(
         output.getvalue(),
-        mimetype='text/csv',
+        mimetype='text/csv; charset=utf-8',
         headers={"Content-Disposition": "attachment; filename=progress_report.csv"},
     )
+

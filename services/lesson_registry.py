@@ -30,6 +30,7 @@ def lesson_specs() -> list[tuple[str, str, int]]:
     yang belum trigger restart tetap terpantau pada sync berikutnya.
     """
     lesson_service.get_lessons.cache_clear()
+    lesson_service.find_lesson_file.cache_clear()
     specs: dict[str, tuple[str, str, int]] = {}
 
     # 1) Root home.md — prioritas utama, urutan index-nya menjadi acuan.

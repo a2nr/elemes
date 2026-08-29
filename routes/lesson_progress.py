@@ -27,7 +27,7 @@ from services.database import SessionLocal
 from services.progress_status import parse_progress_status
 from services.student_roundtrip import is_canonical_uuid
 from config import LESSON_EXERCISE_WEIGHT, LESSON_QUIZ_WEIGHT, LESSON_DONE_MIN_PERCENT
-from services.lesson_service import render_markdown_content, find_lesson_file
+from services.lesson_service import render_markdown_content, find_lesson_file, get_lesson_components
 
 lesson_progress_bp = Blueprint("lesson_progress", __name__)
 
@@ -37,9 +37,6 @@ ALLOWED_REASONS = {"focus_lost", "spa_navigation", "page_unload", "user_exit", "
 MAX_PAYLOAD_BYTES = 64 * 1024
 MAX_SCORE_LENGTH = 32
 MAX_AGENT_LENGTH = 255
-
-# Tab-tipe yang dianggap "latihan" (memerlukan penyelesaian kode/alur).
-_EXERCISE_TABS = {"c", "python", "circuit", "flowchart", "velxio"}
 
 
 def _parse_ts(value, *, required: bool) -> datetime | None:
@@ -53,23 +50,8 @@ def _parse_ts(value, *, required: bool) -> datetime | None:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _lesson_components(lesson_name: str) -> tuple[bool, bool]:
-    """Tentukan apakah lesson memiliki komponen latihan dan/atau kuis.
-
-    Berdasarkan active_tabs hasil render markdown lesson. Lesson reading-only
-    (tanpa exercise maupun quiz) -> (False, False) -> auto-done composite=100.
-    """
-    file_path = find_lesson_file(f"{lesson_name}.md")
-    if not file_path:
-        return (False, False)
-    parsed = render_markdown_content(file_path)
-    tabs = set(parsed.get("active_tabs", []))
-    has_exercise = bool(tabs & _EXERCISE_TABS)
-    has_quiz = "quiz" in tabs
-    return (has_exercise, has_quiz)
-
-
 @lesson_progress_bp.route("/lesson-progress", methods=["POST"])
+@lesson_progress_bp.route("/api/lesson-progress", methods=["POST"])
 def submit_lesson_progress():
     if request.content_length is not None and request.content_length > MAX_PAYLOAD_BYTES:
         return jsonify({"success": False, "message": "Payload terlalu besar"}), 413
@@ -101,7 +83,7 @@ def submit_lesson_progress():
         if lesson is None:
             return jsonify({"success": False, "message": "Lesson tidak dikenal"}), 404
 
-        has_exercise, has_quiz = _lesson_components(lesson_name)
+        has_exercise, has_quiz = get_lesson_components(lesson_name)
 
         if progress_type == "exercise":
             repo.set_exercise_passed(db, user_id=user.id, lesson_id=lesson.id)
@@ -255,6 +237,7 @@ def submit_lesson_progress():
 
 
 @lesson_progress_bp.route("/lesson-progress/<lesson_name>", methods=["GET"])
+@lesson_progress_bp.route("/api/lesson-progress/<lesson_name>", methods=["GET"])
 def get_lesson_progress(lesson_name: str):
     """Ambil progress lesson + audit attempt kuis (review-after-refresh).
 

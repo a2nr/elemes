@@ -13,6 +13,7 @@ export interface ImportSummary {
 	students_to_update: number;
 	progress_to_create: number;
 	progress_to_restore: number;
+	progress_to_reset?: number;
 	conflicts: string[];
 }
 
@@ -37,6 +38,7 @@ export interface ImportApplyResponse {
 	students_updated?: number;
 	progress_created?: number;
 	progress_restored?: number;
+	progress_reset?: number;
 	message?: string;
 	errors?: string[];
 }

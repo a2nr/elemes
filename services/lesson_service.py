@@ -1230,3 +1230,24 @@ def render_home_content():
     parts = re.split(r'-{3,}Available_Lessons-{3,}', home_content)
     main_content = parts[0] if parts else home_content
     return md.markdown(main_content, extensions=['fenced_code', 'tables', 'mdx_math'])
+
+
+# Tab-tipe yang dianggap "latihan" (memerlukan penyelesaian kode/alur).
+_EXERCISE_TABS = {"c", "python", "circuit", "flowchart", "velxio"}
+
+
+def get_lesson_components(lesson_name: str) -> tuple[bool, bool]:
+    """Tentukan apakah lesson memiliki komponen latihan dan/atau kuis.
+
+    Berdasarkan active_tabs hasil render markdown lesson. Lesson reading-only
+    (tanpa exercise maupun quiz) -> (False, False) -> auto-done composite=100.
+    """
+    file_path = find_lesson_file(f"{lesson_name}.md")
+    if not file_path:
+        return (False, False)
+    parsed = render_markdown_content(file_path)
+    tabs = set(parsed.get("active_tabs", []))
+    has_exercise = bool(tabs & _EXERCISE_TABS)
+    has_quiz = "quiz" in tabs
+    return (has_exercise, has_quiz)
+

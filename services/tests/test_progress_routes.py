@@ -219,3 +219,118 @@ def test_quiz_breakdown_excludes_flashcards(client):
         f"eval breakdown harus 2/2 (MCQ saja), flashcard netral — dapat {budi['hello_world_eval']!r}"
     )
     assert budi["hello_world_diag"] == "0/0", "diag 0/0 (tidak ada MCQ diagnostik)"
+
+
+def test_quiz_combined_eval_diag_score_saved(client):
+    """Attempt campuran 4 eval + 2 diag menghasilkan score 3/6 di endpoint lesson-progress."""
+    answers = [
+        {"question_id": "eval-1", "selected_option_id": "o-a", "is_correct": True, "category": "evaluasi", "type": "mcq"},
+        {"question_id": "eval-2", "selected_option_id": "o-b", "is_correct": True, "category": "evaluasi", "type": "mcq"},
+        {"question_id": "eval-3", "selected_option_id": "o-c", "is_correct": False, "category": "evaluasi", "type": "mcq"},
+        {"question_id": "eval-4", "selected_option_id": "o-d", "is_correct": False, "category": "evaluasi", "type": "mcq"},
+        {"question_id": "diag-1", "selected_option_id": "o-e", "is_correct": True, "category": "diagnostik", "type": "mcq"},
+        {"question_id": "diag-2", "selected_option_id": "o-f", "is_correct": False, "category": "diagnostik", "type": "mcq"},
+    ]
+    # Client frontend menghitung 3/6 (gabungan 2 eval + 1 diag benar dari total 6 MCQ)
+    resp = _post_quiz(client, "3/6", answers=answers)
+    assert resp.status_code == 200
+
+    get_resp = client.get(f"/lesson-progress/hello_world?token={STUDENT_TOKEN}")
+    assert get_resp.status_code == 200
+    data = get_resp.get_json()
+    assert data["quiz_score_earned"] == 3
+    assert data["quiz_score_total"] == 6
+
+
+def test_progress_report_reflects_done_state_in_completed_count(client):
+    """Progress report JSON menghitung completed_count untuk siswa yang memiliki progress 'done'."""
+    from services.database import SessionLocal
+    from services import repositories as repo
+    from services.models import Lesson
+
+    db = SessionLocal()
+    try:
+        budi = repo.find_user_by_raw_token(db, STUDENT_TOKEN)
+        l1 = repo.get_lesson_by_slug(db, "hello_world")
+        l2 = Lesson(slug="variabel_test", title="Variabel Test", order_index=1)
+        db.add(l2)
+        db.commit()
+
+        repo.set_progress(db, user_id=budi.id, lesson_id=l1.id, state="done")
+        repo.set_progress(db, user_id=budi.id, lesson_id=l2.id, state="done")
+        db.commit()
+    finally:
+        db.close()
+
+    client.set_cookie("student_token", TEACHER_TOKEN)
+    resp = client.get("/progress-report.json")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    budi_entry = next(s for s in data["students"] if s["nama_siswa"] == "Budi Santoso")
+    assert budi_entry["completed_count"] == 2
+
+
+def test_export_progress_csv_requires_teacher(client):
+    """GET /progress-report/export-csv butuh otentikasi role guru."""
+    # Tanpa token -> 401
+    resp = client.get("/progress-report/export-csv")
+    assert resp.status_code == 401
+
+    # Token siswa -> 403
+    resp = client.get(f"/progress-report/export-csv?token={STUDENT_TOKEN}")
+    assert resp.status_code == 403
+
+
+def test_export_progress_csv_contains_composite_scores(client):
+    """GET /progress-report/export-csv menghasilkan CSV berisi nilai komposit per lesson."""
+    import csv
+    import io
+    from services.database import SessionLocal
+    from services import repositories as repo
+    from services.models import Lesson
+
+    db = SessionLocal()
+    try:
+        budi = repo.find_user_by_raw_token(db, STUDENT_TOKEN)
+        l1 = repo.get_lesson_by_slug(db, "hello_world")
+        l2 = Lesson(slug="variabel_test", title="Variabel Test", order_index=1)
+        db.add(l2)
+        db.commit()
+
+        # Budi: hello_world composite = 93.0, variabel_test composite = 70.0
+        p1 = repo.set_progress(db, user_id=budi.id, lesson_id=l1.id, state="done")
+        p1.composite_percent = 92.5
+        p2 = repo.set_progress(db, user_id=budi.id, lesson_id=l2.id, state="done")
+        p2.composite_percent = 70.0
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.get(f"/progress-report/export-csv?token={TEACHER_TOKEN}")
+    assert resp.status_code == 200
+    assert "text/csv" in resp.content_type
+
+    text = resp.data.decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(text), delimiter=";")
+    fieldnames = reader.fieldnames
+
+    # Header harus memuat nama_siswa, slug lesson, dan completed_count
+    assert "nama_siswa" in fieldnames
+    assert "hello_world" in fieldnames
+    assert "completed_count" in fieldnames
+    # Tidak boleh ada internal metadata fields seperti _attempt_status dsb
+    assert not any(f.endswith("_attempt_status") for f in fieldnames)
+    assert not any(f.endswith("_diag_unmastered") for f in fieldnames)
+
+    rows = list(reader)
+    budi_row = next(r for r in rows if r["nama_siswa"] == "Budi Santoso")
+    assert budi_row["hello_world"] == "92" or budi_row["hello_world"] == "93"  # round(92.5) == 92 or 93
+    assert budi_row["variabel_test"] == "70"
+    assert budi_row["completed_count"] == "2"
+
+    # Siswa lain yang belum mencoba harus bernilai kosong "" untuk kolom nilai
+    siti_row = next(r for r in rows if r["nama_siswa"] == "Siti Aminah")
+    assert siti_row["hello_world"] == ""
+    assert siti_row["completed_count"] == "0"
+
+

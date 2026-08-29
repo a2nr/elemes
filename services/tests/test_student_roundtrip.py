@@ -15,9 +15,12 @@ pytestmark = pytest.mark.unit
 from services.progress_status import (
     ParsedProgress,
     format_progress_status,
+    format_roundtrip_cell,
     parse_progress_status,
+    parse_roundtrip_cell,
 )
 from services.student_roundtrip import (
+    LEGEND_COMMENT_LINE,
     MAX_FILE_BYTES,
     MAX_ROWS,
     RoundTripImportError,
@@ -91,16 +94,18 @@ def test_export_serializer_bom_delimiter_and_header():
     assert not text.startswith("\ufeff")  # BOM sudah dikonsumsi decode utf-8-sig
     assert data.startswith("\ufeff".encode("utf-8"))  # raw bytes membawa BOM
     lines = text.strip().splitlines()
-    assert lines[0] == "student_id;token;nama_siswa;hello_world;variabel"
-    assert lines[1].startswith(f"{UUID_1};;Nama Siswa 1;completed;3/4")
+    assert lines[0].startswith("# Format kolom lesson:")
+    assert lines[1] == "student_id;token;nama_siswa;hello_world;variabel"
+    assert lines[2].startswith(f"{UUID_1};;Nama Siswa 1;completed;3/4")
     # row 2: UUID kosong, token kosong, hello_world blank → ";;Siswa Baru;;completed"
-    assert lines[2] == ";;Siswa Baru;;completed"
+    assert lines[3] == ";;Siswa Baru;;completed"
 
 
 def test_export_always_has_empty_token_column():
     data = serialize_export_csv(_sample_export_rows(), ["hello_world"])
     text = data.decode("utf-8-sig")
-    for line in text.strip().splitlines()[1:]:
+    data_lines = [l for l in text.strip().splitlines() if not l.startswith("#")]
+    for line in data_lines[1:]:
         cols = line.split(";")
         assert cols[1] == ""  # token selalu kosong tanpa pengecualian
 
@@ -540,3 +545,157 @@ def test_mask_student_id():
     assert mask_student_id(UUID_1) == "7eab651c…"
     assert mask_student_id(None) == ""
     assert mask_student_id("") == ""
+
+
+# ── grammar sel roundtrip (done, reset, format, parse) ───────────────
+
+
+def test_parse_roundtrip_cell_valid():
+    assert parse_roundtrip_cell("") is None
+    assert parse_roundtrip_cell("not_started") is None
+    assert parse_roundtrip_cell("completed") == ParsedProgress(state="completed")
+    assert parse_roundtrip_cell("3/4") == ParsedProgress(state="scored", score_earned=3, score_total=4)
+    assert parse_roundtrip_cell("0/10") == ParsedProgress(state="scored", score_earned=0, score_total=10)
+    # RESET case-insensitive
+    assert parse_roundtrip_cell("RESET") == ParsedProgress(state="reset")
+    assert parse_roundtrip_cell("reset") == ParsedProgress(state="reset")
+    assert parse_roundtrip_cell("Reset") == ParsedProgress(state="reset")
+    # done dengan berbagai variasi
+    assert parse_roundtrip_cell("done:1:3/6") == ParsedProgress(
+        state="done", exercise_passed=True, quiz_earned=3, quiz_total=6
+    )
+    assert parse_roundtrip_cell("done:0:0/4") == ParsedProgress(
+        state="done", exercise_passed=False, quiz_earned=0, quiz_total=4
+    )
+    assert parse_roundtrip_cell("done:1:") == ParsedProgress(
+        state="done", exercise_passed=True, quiz_earned=None, quiz_total=None
+    )
+    assert parse_roundtrip_cell("done:0:") == ParsedProgress(
+        state="done", exercise_passed=False, quiz_earned=None, quiz_total=None
+    )
+    assert parse_roundtrip_cell("done::4/4") == ParsedProgress(
+        state="done", exercise_passed=None, quiz_earned=4, quiz_total=4
+    )
+    assert parse_roundtrip_cell("done::") == ParsedProgress(
+        state="done", exercise_passed=None, quiz_earned=None, quiz_total=None
+    )
+
+
+def test_parse_roundtrip_cell_invalid():
+    invalid_cases = [
+        "done:2:3/6",       # ex bukan 1/0/kosong
+        "done:1:3/6/7",     # quiz format salah
+        "done:1:5/3",       # earned > total
+        "done:1:-1/3",      # negative earned
+        "done:1:3/0",       # total 0
+        "done:1:abc",       # non-numeric quiz
+        "done:1",           # kurang separator
+        "done:1:2:3",       # kelebihan separator
+        "done",             # bukan done:<ex>:<quiz>
+        "in_progress",      # bukan grammar roundtrip
+        "selesai",
+        "4/2",              # earned > total di scored biasa
+        "-1/5",
+        "1/0",
+        "abc",
+    ]
+    for bad in invalid_cases:
+        with pytest.raises(ValueError):
+            parse_roundtrip_cell(bad)
+
+
+def test_format_roundtrip_cell():
+    assert format_roundtrip_cell(None) == ""
+    assert format_roundtrip_cell(ParsedProgress("completed")) == "completed"
+    assert format_roundtrip_cell(ParsedProgress("scored", score_earned=3, score_total=4)) == "3/4"
+    assert format_roundtrip_cell(
+        ParsedProgress("done", exercise_passed=True, quiz_earned=3, quiz_total=6)
+    ) == "done:1:3/6"
+    assert format_roundtrip_cell(
+        ParsedProgress("done", exercise_passed=False, quiz_earned=0, quiz_total=4)
+    ) == "done:0:0/4"
+    assert format_roundtrip_cell(
+        ParsedProgress("done", exercise_passed=True)
+    ) == "done:1:"
+    assert format_roundtrip_cell(
+        ParsedProgress("done", exercise_passed=False)
+    ) == "done:0:"
+    assert format_roundtrip_cell(
+        ParsedProgress("done", quiz_earned=4, quiz_total=4)
+    ) == "done::4/4"
+    assert format_roundtrip_cell(
+        ParsedProgress("done")
+    ) == "done::"
+    assert format_roundtrip_cell(ParsedProgress("not_started")) == ""
+
+
+def test_export_preserves_done_state_in_csv():
+    rows = [
+        StudentRoundTripRow(
+            line=0,
+            student_id=UUID_1,
+            raw_token="",
+            display_name="Budi",
+            progress={
+                "hello_world": ParsedProgress(
+                    "done", exercise_passed=True, quiz_earned=3, quiz_total=6
+                ),
+                "variabel": ParsedProgress(
+                    "done", exercise_passed=True, quiz_earned=None, quiz_total=None
+                ),
+            },
+        )
+    ]
+    data = serialize_export_csv(rows, ["hello_world", "variabel"])
+    text = data.decode("utf-8-sig")
+    lines = text.strip().splitlines()
+    assert lines[0].startswith("# Format kolom lesson:")
+    assert lines[1] == "student_id;token;nama_siswa;hello_world;variabel"
+    assert lines[2] == f"{UUID_1};;Budi;done:1:3/6;done:1:"
+
+
+def test_parse_roundtrip_csv_with_legend_row_and_offset():
+    content = (
+        f"{LEGEND_COMMENT_LINE}\n"
+        "student_id;token;nama_siswa;hello_world;variabel\n"
+        f"{UUID_1};;Budi;done:1:3/6;RESET\n"
+        ";TOKEN_12345678;Siswa Baru;completed;done::4/4\n"
+    )
+    rows = parse_roundtrip_csv(content, ["hello_world", "variabel"])
+    assert len(rows) == 2
+    assert rows[0].line == 3  # physical line 3 in file (legend=1, header=2, row1=3)
+    assert rows[0].progress["hello_world"] == ParsedProgress(
+        "done", exercise_passed=True, quiz_earned=3, quiz_total=6
+    )
+    assert rows[0].progress["variabel"] == ParsedProgress("reset")
+    assert rows[1].line == 4
+    assert rows[1].progress["hello_world"] == ParsedProgress("completed")
+    assert rows[1].progress["variabel"] == ParsedProgress(
+        "done", exercise_passed=None, quiz_earned=4, quiz_total=4
+    )
+
+
+def test_parse_roundtrip_csv_error_reports_correct_physical_line_with_comment():
+    content = (
+        "# Baris komentar 1\n"
+        "# Baris komentar 2\n"
+        "student_id;token;nama_siswa;hello_world\n"
+        f"{UUID_1};;Budi;done:2:3/6\n"  # physical line 4, invalid exercise value
+    )
+    with pytest.raises(RoundTripImportError) as exc:
+        parse_roundtrip_csv(content, ["hello_world"])
+    assert "Baris 4, kolom hello_world" in "; ".join(exc.value.errors)
+
+
+def test_parse_roundtrip_csv_without_legend_row_backward_compatible():
+    content = (
+        "student_id;token;nama_siswa;hello_world\n"
+        f"{UUID_1};;Budi;done:1:3/6\n"
+    )
+    rows = parse_roundtrip_csv(content, ["hello_world"])
+    assert len(rows) == 1
+    assert rows[0].line == 2
+    assert rows[0].progress["hello_world"] == ParsedProgress(
+        "done", exercise_passed=True, quiz_earned=3, quiz_total=6
+    )
+

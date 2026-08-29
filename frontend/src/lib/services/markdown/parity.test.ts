@@ -14,8 +14,8 @@ interface FixtureData {
 	error?: string;
 }
 
-function normalizeHtml(html: string): string {
-	if (!html) return '';
+function normalizeHtml(html: any): string {
+	if (!html || typeof html !== 'string') return '';
 	return html
 		// Line endings
 		.replace(/\r\n/g, '\n')
