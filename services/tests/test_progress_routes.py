@@ -29,14 +29,14 @@ def _seed(seed_demo_users):
 
 def _post_exercise(client, lesson="hello_world"):
     return client.post(
-        "/api/lesson-progress",
+        "/lesson-progress",
         json={"token": STUDENT_TOKEN, "lesson_name": lesson, "type": "exercise"},
     )
 
 
 def _post_quiz(client, score, answers=None, lesson="hello_world"):
     return client.post(
-        "/api/lesson-progress",
+        "/lesson-progress",
         json={
             "token": STUDENT_TOKEN,
             "lesson_name": lesson,
@@ -61,14 +61,14 @@ def test_lesson_progress_exercise_updates(client):
 
 def test_lesson_progress_invalid_token(client):
     resp = client.post(
-        "/api/lesson-progress",
+        "/lesson-progress",
         json={"token": "TOKEN_SALAH", "lesson_name": "hello_world", "type": "exercise"},
     )
     assert resp.status_code == 401
 
 
 def test_lesson_progress_requires_fields(client):
-    resp = client.post("/api/lesson-progress", json={"token": STUDENT_TOKEN})
+    resp = client.post("/lesson-progress", json={"token": STUDENT_TOKEN})
     assert resp.status_code == 400
 
 

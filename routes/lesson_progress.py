@@ -51,7 +51,6 @@ def _parse_ts(value, *, required: bool) -> datetime | None:
 
 
 @lesson_progress_bp.route("/lesson-progress", methods=["POST"])
-@lesson_progress_bp.route("/api/lesson-progress", methods=["POST"])
 def submit_lesson_progress():
     if request.content_length is not None and request.content_length > MAX_PAYLOAD_BYTES:
         return jsonify({"success": False, "message": "Payload terlalu besar"}), 413
@@ -237,7 +236,6 @@ def submit_lesson_progress():
 
 
 @lesson_progress_bp.route("/lesson-progress/<lesson_name>", methods=["GET"])
-@lesson_progress_bp.route("/api/lesson-progress/<lesson_name>", methods=["GET"])
 def get_lesson_progress(lesson_name: str):
     """Ambil progress lesson + audit attempt kuis (review-after-refresh).
 

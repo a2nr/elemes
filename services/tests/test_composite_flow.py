@@ -1,4 +1,4 @@
-"""Flow komposit end-to-end via /api/lesson-progress.
+"""Flow komposit end-to-end via /lesson-progress.
 
 Skenario utama:
 - Lesson dengan BOTH exercise (tab c) DAN quiz → exercise + quiz 3/4
@@ -93,19 +93,19 @@ def _quiz_payload(attempt_id: str, score: str, status: str = "submitted") -> dic
 
 def _post_exercise(client):
     return client.post(
-        "/api/lesson-progress",
+        "/lesson-progress",
         json={"token": STUDENT_TOKEN, "lesson_name": LESSON_BOTH, "type": "exercise"},
     )
 
 
 def _fetch(client):
-    return client.get(f"/api/lesson-progress/{LESSON_BOTH}?token={STUDENT_TOKEN}")
+    return client.get(f"/lesson-progress/{LESSON_BOTH}?token={STUDENT_TOKEN}")
 
 
 def test_exercise_then_quiz_makes_done(client):
     _post_exercise(client)
     resp = client.post(
-        "/api/lesson-progress",
+        "/lesson-progress",
         json=_quiz_payload(str(uuid.uuid4()), "3/4"),
     )
     assert resp.status_code == 200
@@ -125,7 +125,7 @@ def test_exercise_only_not_done_without_quiz(client):
 def test_low_quiz_below_threshold_not_done(client):
     _post_exercise(client)
     resp = client.post(
-        "/api/lesson-progress",
+        "/lesson-progress",
         json=_quiz_payload(str(uuid.uuid4()), "0/4"),
     )
     assert resp.status_code == 200
@@ -147,7 +147,7 @@ def test_reading_flow_returns_audit_answer_fields(client):
         }
     ]
     resp = client.post(
-        "/api/lesson-progress",
+        "/lesson-progress",
         json={
             **_quiz_payload(str(uuid.uuid4()), "4/4"),
             "answers": ans,
