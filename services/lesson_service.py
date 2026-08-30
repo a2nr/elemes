@@ -829,6 +829,39 @@ def _extract_body_image(text):
     return None, text
 
 
+def _split_flashcard_parts(text):
+    """Split quiz markdown into per-question blocks on heading lines
+    (`^#{1,3}\\s+`), but ignore heading-looking lines that live INSIDE a
+    fenced code block (``` ... ```).
+
+    Re-implementasi dari `re.split(r'^#{1,3}\\s+', text, MULTILINE)` yang lama
+    agar komentar `#` di dalam kode (python/shell/bash/yaml) tidak membelah
+    soal. Penggunaan state-machine per-baris, bukan placeholder, supaya tidak
+    ada risiko tabrakan string.
+    """
+    parts: list[str] = []
+    buf: list[str] = []
+    in_fence = False
+    for line in text.split('\n'):
+        stripped = line.strip()
+        # Toggle fence state pada baris yang HANYA berisi ``` (atau ```lang)
+        if stripped.startswith('```'):
+            in_fence = not in_fence
+            buf.append(line)
+            continue
+        # Heading pembatas soal — hanya di luar fence
+        if not in_fence and re.match(r'^#{1,3}\s+', line):
+            if buf:
+                parts.append('\n'.join(buf))
+            buf = [line]
+            continue
+        buf.append(line)
+    if buf:
+        parts.append('\n'.join(buf))
+    # Baris pertama biasanya kosong (teks sebelum heading `###` pertama)
+    return [p for p in parts if p.strip()]
+
+
 def _parse_flashcards(text):
     """Parse a string of markdown with headings and options into a list of dicts.
     
@@ -848,9 +881,12 @@ def _parse_flashcards(text):
     """
     if not text.strip():
         return []
-        
-    # Split by headings starting with #, ##, or ###
-    parts = re.split(r'^#{1,3}\s+', text, flags=re.MULTILINE)
+
+    # Split by headings starting with #, ##, or ### — but ONLY outside fenced
+    # code blocks. A line like `# ini komentar` inside ```python must NOT be
+    # treated as a new question (it would split the question and steal its
+    # options, producing phantom questions / mismatched choices).
+    parts = _split_flashcard_parts(text)
     flashcards = []
     
     for part in parts:
