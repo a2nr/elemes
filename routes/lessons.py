@@ -228,7 +228,11 @@ def api_lesson(filename):
         parsed_data['slides'] = []
         # Keep lesson_html, lesson_info, etc. for reading
 
-    return jsonify({
+
+    # Anti-cache: tiap request lesson selalu fresh dari disk (bukan cache
+    # browser/SW/proxy). Ini mencegah soal kuis "stale" saat file lesson diubah
+    # — terutama setelah navigasi antar tipe soal (mcq ↔ flashcard).
+    resp = jsonify({
         'lesson_content': lesson_html,
         'exercise_content': exercise_html,
         'expected_output': expected_output,
@@ -267,6 +271,9 @@ def api_lesson(filename):
         'language': programming_language,
         'language_display_name': language_display_name,
     })
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    resp.headers['Pragma'] = 'no-cache'
+    return resp
 
 
 @lessons_bp.route('/get-key-text/<filename>')
