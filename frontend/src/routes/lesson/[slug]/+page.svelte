@@ -139,7 +139,7 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 
 	// Re-run the render pipeline whenever the active quiz question changes
 	$effect(() => {
-		const q = mgr.currentQuizQuestion;
+		const q = mgr.quizCurrentQuestion;
 		if (mgr.isQuizMode && q) {
 			tick().then(() => {
 				if (!quizQuestionEl) return;

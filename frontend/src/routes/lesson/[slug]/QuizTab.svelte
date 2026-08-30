@@ -300,7 +300,7 @@
 				{#if currentQuestion?.type === 'mcq'}
 					<p class="answer-sheet-label">Pilih jawabanmu</p>
 					<div class="options-grid" class:single-col={(currentQuestion.options?.length ?? 0) <= 2}>
-						{#each currentQuestion.options ?? [] as option, i}
+						{#each currentQuestion.options ?? [] as option, i (option.id)}
 							<button
 								type="button"
 								class="option-btn"

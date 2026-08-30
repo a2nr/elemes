@@ -51,18 +51,18 @@
 		<button type="button" class="btn-exit-quiz" onclick={() => mgr.submitQuiz()}>Keluar Kuis</button>
 	</div>
 
-	{#if mgr.currentQuizQuestion}
+	{#if mgr.quizCurrentQuestion}
 		<div class="quiz-question-prose">
-			{#if mgr.currentQuizQuestion.image}
+			{#if mgr.quizCurrentQuestion.image}
 				<img
-					src={mgr.currentQuizQuestion.image}
+					src={mgr.quizCurrentQuestion.image}
 					alt="Ilustrasi soal"
 					class="quiz-question-image"
 				/>
 			{/if}
 			<!-- Hanya prompt soal (question/front). Opsi, jawaban, dan penjelasan
 			     TIDAK pernah dirender di sini — itu bagian lembar jawaban/summary. -->
-			{@html mgr.currentQuizQuestion.question ?? mgr.currentQuizQuestion.front ?? ''}
+			{@html mgr.quizCurrentQuestion.question ?? mgr.quizCurrentQuestion.front ?? ''}
 		</div>
 	{:else}
 		<p class="quiz-empty">Tidak ada soal.</p>

@@ -33,6 +33,15 @@ export class LessonManager {
 	// Quiz session (single source of truth owned by the manager)
 	quizSession = $state<QuizSession | null>(null);
 	quizCurrentIndex = $state(0);
+	/**
+	 * Mirror eksplisit dari `quizSession.questions[quizCurrentIndex]` sebagai
+	 * `$state` (bukan getter `$derived`). Dipakai komponen agar render selalu
+	 * sinkron saat berpindah soal — terutama saat toggle tipe (mcq ↔ flashcard)
+	 * di mana `{#if type==='mcq'}` berganti blok. Getter bisa stale 1 frame
+	 * (opsi "hilang" lalu "muncul kembali" setelah navigasi). Selalu update
+	 * bareng `quizCurrentIndex` via `_syncCurrentQuestion()`.
+	 */
+	quizCurrentQuestion = $state<QuizQuestion | null>(null);
 	quizResult = $state<QuizResult | null>(null);
 
 	// Quiz attempt metadata (anti-cheat / focus-loss)
@@ -184,18 +193,19 @@ export class LessonManager {
 	init(lesson: LessonContent) {
 		untrack(() => {
 			this.data = lesson;
-				this.lessonCompleted = lesson.lesson_completed;
-				this.isQuizMode = false;
-				this.quizSession = null;
-				this.quizCurrentIndex = 0;
-				this.quizResult = null;
-				this.quizAttemptId = null;
-				this.quizStartedAt = null;
-				this.quizFinalized = false;
-				this.quizTerminationReason = null;
-				this.visibilityEventCount = 0;
+			this.lessonCompleted = lesson.lesson_completed;
+			this.isQuizMode = false;
+			this.quizSession = null;
+			this.quizCurrentIndex = 0;
+			this.quizCurrentQuestion = null;
+			this.quizResult = null;
+			this.quizAttemptId = null;
+			this.quizStartedAt = null;
+			this.quizFinalized = false;
+			this.quizTerminationReason = null;
+			this.visibilityEventCount = 0;
 
-		this.cCode = lesson.initial_code_c || '';
+			this.cCode = lesson.initial_code_c || '';
 			this.pythonCode = lesson.initial_python || '';
 
 			const hasC = lesson.active_tabs?.includes('c');
@@ -249,6 +259,16 @@ export class LessonManager {
 		return this.quizSession?.questions[this.quizCurrentIndex] ?? null;
 	}
 
+	/**
+	 * Sinkronkan `quizCurrentQuestion` (state eksplisit) dari index saat ini.
+	 * Wajib dipanggil tiap kali `quizCurrentIndex` atau `quizSession` berubah
+	 * agar komponen render (terutama `{#if type==='mcq'}`) langsung dapat
+	 * soal baru, tidak stale 1 frame.
+	 */
+	private _syncCurrentQuestion() {
+		this.quizCurrentQuestion = this.quizSession?.questions[this.quizCurrentIndex] ?? null;
+	}
+
 	get currentQuizAnswer(): QuizAnswer | null {
 		const q = this.currentQuizQuestion;
 		return q ? (this.quizSession?.answers[q.id] ?? null) : null;
@@ -278,6 +298,7 @@ export class LessonManager {
 		if (!source?.length) return;
 		this.quizSession = createQuizSession(source);
 		this.quizCurrentIndex = 0;
+		this._syncCurrentQuestion();
 		this.quizResult = null;
 		// Satu attempt_id untuk seluruh siklus kuis — semua exit path (finish,
 		// keluar, navigation, focus_lost, unload) memakai ID yang sama agar
@@ -307,6 +328,7 @@ export class LessonManager {
 	goToQuizQuestion(index: number) {
 		if (this.quizSession && index >= 0 && index < this.quizSession.questions.length) {
 			this.quizCurrentIndex = index;
+			this._syncCurrentQuestion();
 		}
 	}
 
