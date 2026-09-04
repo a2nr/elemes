@@ -15,11 +15,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy backend application code only with non-root ownership
+COPY --chown=app:app app.py config.py extensions.py gunicorn.conf.py alembic.ini pytest.ini ./
+COPY --chown=app:app routes/ ./routes/
+COPY --chown=app:app services/ ./services/
+COPY --chown=app:app scripts/ ./scripts/
+COPY --chown=app:app migrations/ ./migrations/
+COPY --chown=app:app docs/ ./docs/
+COPY --chown=app:app help/ ./help/
+COPY --chown=app:app compiler/ ./compiler/
 
-# Change ownership to the app user
-RUN chown -R app:app /app
 USER app
 
 # Expose port 5000
