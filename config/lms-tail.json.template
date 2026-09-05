@@ -22,6 +22,12 @@
         "/velxio/": {
           "Proxy": "__VELXIO_PROXY_TARGET__"
         },
+        "/components-metadata.json": {
+          "Proxy": "http://127.0.0.1:80/components-metadata.json"
+        },
+        "/component-svgs/": {
+          "Proxy": "http://127.0.0.1:80/component-svgs/"
+        },
         "/flowchart/": {
           "Proxy": "http://127.0.0.1:8081/"
         }
