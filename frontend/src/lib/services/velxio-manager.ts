@@ -1,5 +1,5 @@
-import { VelxioBridge } from '$services/velxio-bridge';
-import type { LessonContent } from '$types/lesson';
+import { VelxioBridge } from './velxio-bridge';
+import type { LessonContent } from '../types/lesson';
 
 const BOARD_KIND_MAP: Record<string, string> = {
 	'arduino-uno': 'arduino:avr:uno',
