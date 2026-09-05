@@ -633,6 +633,15 @@ velxio-status)
     fi
   fi
   ;;
+velxio-test)
+  echo "🧪 Menjalankan test suite modul Velxio (Frontend Vitest)..."
+  if [ -d "$SCRIPT_DIR/velxio/frontend" ]; then
+    (cd "$SCRIPT_DIR/velxio/frontend" && npx vitest run "${@:2}")
+  else
+    echo "❌ Direktori velxio/frontend tidak ditemukan."
+    exit 1
+  fi
+  ;;
 *)
   echo "💡 Cara Penggunaan elemes.sh:"
   echo "  ./elemes.sh init           # Inisialisasi konfigurasi, folder, & template .env"
@@ -662,6 +671,7 @@ velxio-status)
   echo "  ./elemes.sh velxio-runbuild # Build lalu jalankan Velxio standalone"
   echo "  ./elemes.sh velxio-stop     # Hentikan Velxio standalone"
   echo "  ./elemes.sh velxio-status   # Cek status & health Velxio (local/remote)"
+  echo "  ./elemes.sh velxio-test     # Jalankan test suite modul Velxio (terpisah)"
   ;;
 esac
 

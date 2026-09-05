@@ -189,7 +189,62 @@ def test_preview_invalid_quiz_two_correct(client):
     assert "tepat satu" in data["message"]
 
 
+def test_preview_arduino_velxio_tabs(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    body = (
+        "# LED Arduino\n\n"
+        "Materi pengenalan LED.\n\n"
+        "---INITIAL_CODE_ARDUINO---\n"
+        "void setup() { pinMode(13, OUTPUT); }\n"
+        "void loop() { digitalWrite(13, HIGH); }\n"
+        "---END_INITIAL_CODE_ARDUINO---\n\n"
+        "---VELXIO_CIRCUIT---\n"
+        '{"board": "arduino:avr:uno"}\n'
+        "---END_VELXIO_CIRCUIT---\n"
+    )
+    resp = client.post("/content/preview", json={"body": body})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["success"] is True
+    assert data["active_tabs"] == ["velxio"]
+    assert "LED Arduino" in data["lesson_content"]
+
+
 # ── Publish ───────────────────────────────────────────────────────
+
+def test_publish_arduino_velxio_lesson(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    target_path = "test_editor/arduino_lesson.md"
+    (TEST_CONTENT / target_path).write_text("# Old", encoding="utf-8")
+
+    body = (
+        "# Belajar Arduino Uno\n\n"
+        "---INITIAL_CODE_ARDUINO---\n"
+        "void setup() {}\n"
+        "---END_INITIAL_CODE_ARDUINO---\n\n"
+        "---VELXIO_CIRCUIT---\n"
+        '{"board": "arduino:avr:uno", "components": []}\n'
+        "---END_VELXIO_CIRCUIT---\n"
+    )
+
+    resp = client.post("/content/drafts", json={
+        "target_path": target_path,
+        "body": body,
+        "base_mtime": os.path.getmtime(str(TEST_CONTENT / target_path)),
+    })
+    draft_id = resp.get_json()["draft_id"]
+
+    resp = client.post(f"/content/drafts/{draft_id}/publish")
+    assert resp.status_code == 200
+    assert resp.get_json()["success"] is True
+
+    # Verify published file on disk
+    saved = (TEST_CONTENT / target_path).read_text(encoding="utf-8")
+    assert "---INITIAL_CODE_ARDUINO---" in saved
+    assert "---VELXIO_CIRCUIT---" in saved
+    assert "arduino:avr:uno" in saved
 
 def test_publish_success(client):
     _seed_and_setup()
