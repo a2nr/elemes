@@ -1,39 +1,77 @@
 import { VelxioBridge } from '$services/velxio-bridge';
 import type { LessonContent } from '$types/lesson';
 
+const BOARD_KIND_MAP: Record<string, string> = {
+	'arduino-uno': 'arduino:avr:uno',
+	'arduino-nano': 'arduino:avr:nano',
+	'arduino-mega': 'arduino:avr:mega',
+	'raspberry-pi-pico': 'rp2040:rp2040:rp2040',
+	'rp2040-pico': 'rp2040:rp2040:rp2040',
+	'esp32': 'esp32:esp32:esp32'
+};
+
 export function getVelxioState(velxioIframe: HTMLIFrameElement | null): { code: string; circuit: string } | null {
 	if (!velxioIframe) return null;
 	try {
 		const win = velxioIframe.contentWindow as any;
 		if (!win) return null;
-		
+
 		const editorStore = win.__VELXIO_EDITOR_STORE__?.getState?.();
 		const simStore = win.__VELXIO_SIMULATOR_STORE__?.getState?.();
-		
+
 		if (!editorStore || !simStore) return null;
-		
-		// Extract code
-		const code = (editorStore.files as any[] || []).map((f: any) => f.content).join('\n');
-		
+
+		// Extract active board and determine FQBN / board string
+		const activeBoard = simStore.boards?.find((b: any) => b.id === simStore.activeBoardId) ?? simStore.boards?.[0];
+		const boardKind = activeBoard?.boardKind || simStore.activeBoardId || 'arduino-uno';
+		const board = BOARD_KIND_MAP[boardKind] || (typeof boardKind === 'string' && boardKind.includes(':') ? boardKind : 'arduino:avr:uno');
+
+		// Extract code from active board file group or fallback to primary .ino / files
+		const activeGroupId = activeBoard?.activeFileGroupId ?? '';
+		const activeFiles = (editorStore.fileGroups?.[activeGroupId]?.length
+			? editorStore.fileGroups[activeGroupId]
+			: editorStore.files) ?? editorStore.files ?? [];
+
+		const code = activeFiles.find((f: any) => f.name?.endsWith('.ino'))?.content
+			?? activeFiles[0]?.content
+			?? (editorStore.files as any[] || []).map((f: any) => f.content).join('\n')
+			?? '';
+
 		// Extract circuit state (Diagram format compatible with elemes:load_circuit)
+		const components = (simStore.components as any[] || []).map((c: any) => ({
+			type: c.metadataId,
+			id: c.id,
+			x: Math.round((c.x || 0) * 10) / 10,
+			y: Math.round((c.y || 0) * 10) / 10,
+			rotation: c.properties?.rotation || 0,
+			props: { ...c.properties }
+		}));
+
+		const wires = (simStore.wires as any[] || [])
+			.filter((w: any) => w && w.start && w.end)
+			.map((w: any) => ({
+				start: {
+					componentId: w.start?.componentId,
+					pinName: w.start?.pinName
+				},
+				end: {
+					componentId: w.end?.componentId,
+					pinName: w.end?.pinName
+				}
+			}));
+
 		const circuit = {
-			board: simStore.activeBoardId,
-			components: (simStore.components as any[] || []).map((c: any) => ({
-				type: c.metadataId,
-				id: c.id,
-				x: c.x,
-				y: c.y,
-				rotation: c.properties?.rotation || 0,
-				props: { ...c.properties }
-			})),
-			wires: simStore.wires || []
+			board,
+			components,
+			wires
 		};
-		
+
 		return {
 			code,
-			circuit: JSON.stringify(circuit)
+			circuit: JSON.stringify(circuit, null, 2)
 		};
-	} catch {
+	} catch (e) {
+		console.error('[velxio-manager] Error getting Velxio state:', e);
 		return null;
 	}
 }

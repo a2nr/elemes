@@ -4,18 +4,21 @@
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
 	import CodeEditor from '$components/CodeEditor.svelte';
 	import CircuitEditor from '$components/CircuitEditor.svelte';
+	import TeacherVelxioEditor from '$components/TeacherVelxioEditor.svelte';
 	import ContentFileTree from '$components/ContentFileTree.svelte';
 	import LessonContentView from '$components/LessonContentView.svelte';
 	import QuizPreviewReadonly from '$components/QuizPreviewReadonly.svelte';
 	import { ContentEditorManager } from '$services/contentEditor.svelte';
 	import { getTree, createFolder, createFile, renameEntry, deleteEntry, uploadAsset } from '$services/contentEditor';
 	import type { TreeNode } from '$services/contentEditor';
+	import { upsertSection } from '$services/markdown';
 
 	const mgr = new ContentEditorManager();
 	const float = createFloatingPanel();
 
 	let editorRef = $state<any>(null);
 	let circuitEditorRef = $state<any>(null);
+	let velxioEditorRef = $state<any>(null);
 
 	// Mobile: show tree or editor
 	let mobileShowTree = $state(true);
@@ -82,6 +85,8 @@
 		}
 		return codes;
 	})());
+
+	let extractedCircuitVelxio = $derived(extractCode(mgr.body, 'VELXIO_CIRCUIT'));
 
 	// Tab label map for chrome tabs
 	let allTabs = $derived([
@@ -167,7 +172,66 @@
 		}
 	}
 
+	function syncVelxioToMarkdown(): boolean {
+		if (!velxioEditorRef) return false;
+		const state = velxioEditorRef.getCurrentState();
+		if (!state) return false;
+		applyVelxioToBody(state.code, state.circuit);
+		return true;
+	}
+
+	function applyVelxioToBody(code: string, circuitJson: string) {
+		let currentBody = mgr.body;
+
+		if (code !== undefined) {
+			currentBody = upsertSection(
+				currentBody,
+				'---INITIAL_CODE_ARDUINO---',
+				'---END_INITIAL_CODE_ARDUINO---',
+				code.trim()
+			);
+		}
+
+		if (circuitJson !== undefined) {
+			currentBody = upsertSection(
+				currentBody,
+				'---VELXIO_CIRCUIT---',
+				'---END_VELXIO_CIRCUIT---',
+				circuitJson.trim()
+			);
+		}
+
+		if (currentBody !== mgr.body) {
+			mgr.onBodyChange(currentBody);
+			if (editorRef) {
+				editorRef.setCode(currentBody);
+			}
+		}
+	}
+
+	async function handleSaveVelxioFromTab(state: { code: string; circuit: string }) {
+		applyVelxioToBody(state.code, state.circuit);
+		await mgr.handleSave();
+	}
+
+	async function handleSaveAction() {
+		if (mgr.activeTab === 'velxio') {
+			syncVelxioToMarkdown();
+		}
+		await mgr.handleSave();
+	}
+
+	async function handlePublishAction() {
+		if (mgr.activeTab === 'velxio') {
+			syncVelxioToMarkdown();
+		}
+		await mgr.handlePublish();
+	}
+
 	function handleTabClick(tab: string) {
+		if (mgr.activeTab === 'velxio' && tab !== 'velxio') {
+			syncVelxioToMarkdown();
+		}
 		mgr.activeTab = tab;
 		if (mgr.isMobile && mgr.mobileMode === 'hidden') {
 			mgr.mobileMode = 'h50';
@@ -584,10 +648,10 @@
 		{#snippet saveActions()}
 			{#if mgr.activePath && !isAssetFile}
 				<button class="panel-btn toolbar-toggle" class:active={featureSidebarOpen} onclick={() => featureSidebarOpen = !featureSidebarOpen} title="Tampilkan/sembunyikan panel Fitur">🧩</button>
-				<button class="panel-btn save-btn" onclick={() => mgr.handleSave()} disabled={mgr.saving || !mgr.dirty} title="Simpan">
+				<button class="panel-btn save-btn" onclick={() => handleSaveAction()} disabled={mgr.saving || !mgr.dirty} title="Simpan">
 					{mgr.saving ? '⏳' : '💾'}
 				</button>
-				<button class="panel-btn publish-btn" onclick={() => mgr.handlePublish()} disabled={mgr.publishing || !mgr.draftId} title="Publish">
+				<button class="panel-btn publish-btn" onclick={() => handlePublishAction()} disabled={mgr.publishing || !mgr.draftId} title="Publish">
 					{mgr.publishing ? '⏳' : '🚀'}
 				</button>
 			{/if}
@@ -802,10 +866,12 @@
 								</div>
 								{:else if dynTab.id === 'velxio'}
 									<div class="velxio-tab-content">
-										<iframe class="velxio-iframe" src="/velxio/editor?embed=true&hideEditor=true&lockComponents=true" title="Velxio Arduino Editor"
-											allow="cross-origin-isolated; fullscreen"
-											allowfullscreen
-										></iframe>
+										<TeacherVelxioEditor
+											bind:this={velxioEditorRef}
+											initialCode={extractedCodes.velxio}
+											initialCircuit={extractedCircuitVelxio}
+											onSave={handleSaveVelxioFromTab}
+										/>
 									</div>
 								{:else if dynTab.id === 'flowchart'}
 									<div class="flowchart-tab-content">

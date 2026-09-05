@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractSection } from './extractSections';
+import { extractSection, upsertSection } from './extractSections';
 import { detectActiveTabs } from './detectActiveTabs';
 import { processCircuitEmbeds, processFlowchartEmbeds, processEmbedEmbeds } from './processEmbeds';
 import { parseSlides } from './parseSlides';
@@ -20,6 +20,20 @@ describe('Markdown Renderer & Extractor Tests', () => {
 			const [extracted, remaining] = extractSection(input, '---START---', '---END---');
 			expect(extracted).toBe('');
 			expect(remaining).toBe(input);
+		});
+	});
+
+	describe('upsertSection', () => {
+		it('should replace existing section content while preserving surrounding text', () => {
+			const input = 'Header\n---INITIAL_CODE_ARDUINO---\nold code\n---END_INITIAL_CODE_ARDUINO---\nFooter';
+			const result = upsertSection(input, '---INITIAL_CODE_ARDUINO---', '---END_INITIAL_CODE_ARDUINO---', 'new code\nvoid setup() {}');
+			expect(result).toBe('Header\n---INITIAL_CODE_ARDUINO---\nnew code\nvoid setup() {}\n---END_INITIAL_CODE_ARDUINO---\nFooter');
+		});
+
+		it('should append section to content if markers do not exist', () => {
+			const input = 'Header content';
+			const result = upsertSection(input, '---VELXIO_CIRCUIT---', '---END_VELXIO_CIRCUIT---', '{"board": "arduino:avr:uno"}');
+			expect(result).toBe('Header content\n\n---VELXIO_CIRCUIT---\n{"board": "arduino:avr:uno"}\n---END_VELXIO_CIRCUIT---\n');
 		});
 	});
 

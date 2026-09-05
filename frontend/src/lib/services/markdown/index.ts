@@ -161,3 +161,5 @@ export function renderMarkdownPreview(rawMarkdown: string): RenderedPreview {
 		};
 	}
 }
+
+export { extractSection, upsertSection } from './extractSections';
