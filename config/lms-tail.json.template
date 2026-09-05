@@ -22,6 +22,12 @@
         "/component-svgs/": {
           "Proxy": "http://127.0.0.1:80/component-svgs/"
         },
+        "/wasm/": {
+          "Proxy": "http://127.0.0.1:80/wasm/"
+        },
+        "/boards/": {
+          "Proxy": "http://127.0.0.1:80/boards/"
+        },
         "/flowchart/": {
           "Proxy": "http://127.0.0.1:8081/"
         }
