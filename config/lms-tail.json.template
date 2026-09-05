@@ -16,17 +16,23 @@
         "/velxio/": {
           "Proxy": "__VELXIO_PROXY_TARGET__"
         },
+        "/editor/": {
+          "Proxy": "__VELXIO_PROXY_TARGET__editor/"
+        },
+        "/editor": {
+          "Proxy": "__VELXIO_PROXY_TARGET__editor"
+        },
         "/components-metadata.json": {
-          "Proxy": "http://127.0.0.1:80/components-metadata.json"
+          "Proxy": "__VELXIO_PROXY_TARGET__components-metadata.json"
         },
         "/component-svgs/": {
-          "Proxy": "http://127.0.0.1:80/component-svgs/"
+          "Proxy": "__VELXIO_PROXY_TARGET__component-svgs/"
         },
         "/wasm/": {
-          "Proxy": "http://127.0.0.1:80/wasm/"
+          "Proxy": "__VELXIO_PROXY_TARGET__wasm/"
         },
         "/boards/": {
-          "Proxy": "http://127.0.0.1:80/boards/"
+          "Proxy": "__VELXIO_PROXY_TARGET__boards/"
         },
         "/flowchart/": {
           "Proxy": "http://127.0.0.1:8081/"
