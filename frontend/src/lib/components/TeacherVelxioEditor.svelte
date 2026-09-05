@@ -5,10 +5,12 @@
 	let {
 		initialCode = '',
 		initialCircuit = '',
+		onTransfer,
 		onSave
 	}: {
 		initialCode?: string;
 		initialCircuit?: string;
+		onTransfer?: (state: { code: string; circuit: string }) => void;
 		onSave?: (state: { code: string; circuit: string }) => void;
 	} = $props();
 
@@ -63,17 +65,23 @@
 		showFeedback('Dimuat ulang dari dokumen');
 	}
 
-	function handleSave() {
+	function handleTransfer() {
 		const state = getCurrentState();
 		if (!state) {
 			showFeedback('Gagal membaca state simulator');
 			return;
 		}
 
-		if (onSave) {
+		if (onTransfer) {
+			onTransfer(state);
+		} else if (onSave) {
 			onSave(state);
 		}
-		showFeedback('Tersimpan ke dokumen!');
+		showFeedback('Hasil dipindahkan ke editor');
+	}
+
+	function handleSave() {
+		handleTransfer();
 	}
 
 	function showFeedback(msg: string) {
@@ -137,17 +145,7 @@
 
 <div class="teacher-velxio-container">
 	<div class="teacher-velxio-toolbar">
-		<div class="toolbar-status">
-			<span class="status-dot" class:ready={isReady}></span>
-			<span class="status-text">
-				{isReady ? 'Simulator Siap (Mode Lengkap)' : 'Menghubungkan Simulator...'}
-			</span>
-			{#if saveFeedback}
-				<span class="save-feedback">{saveFeedback}</span>
-			{/if}
-		</div>
-
-		<div class="toolbar-actions">
+		<div class="toolbar-left">
 			<button
 				type="button"
 				class="toolbar-btn btn-reload"
@@ -163,19 +161,33 @@
 				<span>Muat Ulang</span>
 			</button>
 
+			<div class="toolbar-status">
+				<span class="status-dot" class:ready={isReady}></span>
+				<span class="status-text">
+					{isReady ? 'Siap' : 'Menghubungkan...'}
+				</span>
+				{#if saveFeedback}
+					<span class="save-feedback">{saveFeedback}</span>
+				{/if}
+			</div>
+		</div>
+
+		<div class="toolbar-actions">
 			<button
 				type="button"
-				class="toolbar-btn btn-save"
-				onclick={handleSave}
-				title="Simpan rangkaian dan kode saat ini langsung ke dokumen markdown"
+				class="toolbar-btn btn-transfer"
+				onclick={handleTransfer}
+				title="Pindahkan rangkaian dan kode dari simulator ke dokumen editor"
 				disabled={!isReady}
 			>
 				<svg class="icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-					<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-					<polyline points="17 21 17 13 7 13 7 21"></polyline>
-					<polyline points="7 3 7 8 15 8"></polyline>
+					<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+					<polyline points="14 2 14 8 20 8"></polyline>
+					<line x1="16" y1="13" x2="8" y2="13"></line>
+					<line x1="16" y1="17" x2="8" y2="17"></line>
+					<polyline points="10 9 9 9 8 9"></polyline>
 				</svg>
-				<span>Simpan ke Dokumen</span>
+				<span>Pindahkan Hasil</span>
 			</button>
 		</div>
 	</div>
@@ -211,6 +223,13 @@
 		border-bottom: 1px solid var(--color-border, #dee2e6);
 		font-size: 0.82rem;
 		min-height: 40px;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+
+	.toolbar-left {
+		display: flex;
+		align-items: center;
 		gap: 12px;
 		flex-wrap: wrap;
 	}
@@ -292,13 +311,13 @@
 		cursor: not-allowed;
 	}
 
-	.btn-save {
+	.btn-transfer {
 		background: var(--color-primary, #0d6efd);
 		color: #ffffff;
 		border-color: var(--color-primary, #0d6efd);
 	}
 
-	.btn-save:hover:not(:disabled) {
+	.btn-transfer:hover:not(:disabled) {
 		background: var(--color-primary-dark, #0a58ca);
 		border-color: var(--color-primary-dark, #0a58ca);
 	}

@@ -209,9 +209,8 @@
 		}
 	}
 
-	async function handleSaveVelxioFromTab(state: { code: string; circuit: string }) {
+	function handleTransferVelxioFromTab(state: { code: string; circuit: string }) {
 		applyVelxioToBody(state.code, state.circuit);
-		await mgr.handleSave();
 	}
 
 	async function handleSaveAction() {
@@ -375,9 +374,39 @@
 				'\n---EXPECTED_SERIAL_OUTPUT---\n' +
 				'LED ON\nLED OFF\n' +
 				'---END_EXPECTED_SERIAL_OUTPUT---\n' +
+				'\n---EXPECTED_WIRING---\n' +
+				'{\n' +
+				'  "wires": [\n' +
+				'    {\n' +
+				'      "start": { "componentId": "arduino-uno", "pinName": "13" },\n' +
+				'      "end": { "componentId": "led-builtin", "pinName": "A" }\n' +
+				'    },\n' +
+				'    {\n' +
+				'      "start": { "componentId": "arduino-uno", "pinName": "GND" },\n' +
+				'      "end": { "componentId": "led-builtin", "pinName": "C" }\n' +
+				'    }\n' +
+				'  ]\n' +
+				'}\n' +
+				'---END_EXPECTED_WIRING---\n' +
 				'\n---KEY_TEXT---\n' +
 				'kata_kunci\n' +
 				'---END_KEY_TEXT---\n',
+		},
+		{
+			id: 'expected-wiring',
+			label: 'Expected Wiring',
+			group: 'set_soal',
+			snippet:
+				'\n---EXPECTED_WIRING---\n' +
+				'{\n' +
+				'  "wires": [\n' +
+				'    {\n' +
+				'      "start": { "componentId": "arduino-uno", "pinName": "13" },\n' +
+				'      "end": { "componentId": "led-builtin", "pinName": "A" }\n' +
+				'    }\n' +
+				'  ]\n' +
+				'}\n' +
+				'---END_EXPECTED_WIRING---\n',
 		},
 		{
 			id: 'set-flowchart',
@@ -648,7 +677,7 @@
 		{#snippet saveActions()}
 			{#if mgr.activePath && !isAssetFile}
 				<button class="panel-btn toolbar-toggle" class:active={featureSidebarOpen} onclick={() => featureSidebarOpen = !featureSidebarOpen} title="Tampilkan/sembunyikan panel Fitur">🧩</button>
-				<button class="panel-btn save-btn" onclick={() => handleSaveAction()} disabled={mgr.saving || !mgr.dirty} title="Simpan">
+				<button class="panel-btn save-btn" onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
 					{mgr.saving ? '⏳' : '💾'}
 				</button>
 				<button class="panel-btn publish-btn" onclick={() => handlePublishAction()} disabled={mgr.publishing || !mgr.draftId} title="Publish">
@@ -870,7 +899,8 @@
 											bind:this={velxioEditorRef}
 											initialCode={extractedCodes.velxio}
 											initialCircuit={extractedCircuitVelxio}
-											onSave={handleSaveVelxioFromTab}
+											onTransfer={handleTransferVelxioFromTab}
+											onSave={handleTransferVelxioFromTab}
 										/>
 									</div>
 								{:else if dynTab.id === 'flowchart'}

@@ -163,11 +163,20 @@
 			deployMessage = 'Mengompilasi kode...';
 
 			let code = '';
+			let boardFqbn = 'arduino:avr:uno';
 
 			if (velxioIframe) {
 				const state = getVelxioState(velxioIframe);
 				if (state?.code) {
 					code = state.code;
+				}
+				if (state?.circuit) {
+					try {
+						const parsed = JSON.parse(state.circuit);
+						if (parsed?.board) {
+							boardFqbn = parsed.board;
+						}
+					} catch {}
 				}
 			}
 
@@ -179,7 +188,7 @@
 				throw new Error('Tidak ada kode Arduino untuk di-deploy');
 			}
 
-			const res = await getHexContent({ code, board_fqbn: 'arduino:avr:uno' });
+			const res = await getHexContent({ code, board_fqbn: boardFqbn });
 
 			if (!res.success || !res.hex_content) {
 				throw new Error(res.error || 'Kompilasi gagal');
