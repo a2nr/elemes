@@ -197,6 +197,7 @@
 		flex-direction: column;
 		width: 100%;
 		height: 100%;
+		min-height: 400px;
 		overflow: hidden;
 		background: var(--color-bg, #ffffff);
 	}
@@ -310,6 +311,7 @@
 		flex: 1;
 		width: 100%;
 		height: 100%;
+		min-height: 350px;
 		border: none;
 		display: block;
 	}

@@ -25,6 +25,7 @@ services:
     hostname: ${ELEMES_HOST}
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_EXTRA_ARGS=--reset
       - TS_SERVE_CONFIG=/config/lms-tail.json
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=true

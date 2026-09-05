@@ -1217,8 +1217,11 @@
 	}
 	.tab-panel {
 		flex: 1;
+		display: flex;
+		flex-direction: column;
 		overflow-y: auto;
 		min-height: 0;
+		height: 100%;
 	}
 	.tab-panel.tab-hidden {
 		display: none;
@@ -1361,12 +1364,15 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		min-height: 0;
+		min-height: 400px;
 	}
 	.velxio-iframe {
 		width: 100%;
 		flex: 1;
+		height: 100%;
+		min-height: 350px;
 		border: none;
+		display: block;
 	}
 
 	/* Flowchart tab */
