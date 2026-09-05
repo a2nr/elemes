@@ -17,7 +17,7 @@
 	let saveFeedback = $state<string | null>(null);
 	let feedbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	const velxioSrc = '/velxio/editor?embed=true';
+	const velxioSrc = '/velxio/editor?embed=true&desktopLayout=true';
 
 	export function getCurrentState(): { code: string; circuit: string } | null {
 		return getVelxioState(iframeRef);

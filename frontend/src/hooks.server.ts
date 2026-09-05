@@ -20,6 +20,13 @@ function resolveBackend(): string {
 const API_BACKEND = resolveBackend();
 
 export const handle: Handle = async ({ event, resolve }) => {
+	console.log(`[hooks] ${event.request.method} ${event.url.pathname} (referer: ${event.request.headers.get('referer')})`);
+
+	// Redirect /editor or /editor/ to /velxio/editor
+	if (event.url.pathname === '/editor' || event.url.pathname === '/editor/' || event.url.pathname.startsWith('/editor/')) {
+		return Response.redirect(`${event.url.origin}/velxio/editor${event.url.search}`, 302);
+	}
+
 	// Proxy /api/* and /assets/* to Flask backend
 	const isApi = event.url.pathname.startsWith('/api/');
 	const isAsset = event.url.pathname.startsWith('/assets/');
