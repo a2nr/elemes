@@ -292,7 +292,7 @@ Semua endpoint Flask diakses via SvelteKit proxy (`/api/*` → Flask `:5000`, pr
 | GET | `/api/lesson/<slug>.json` | `/lesson/<slug>.json` | Data lesson lengkap |
 | GET | `/api/get-key-text/<slug>` | `/get-key-text/<slug>` | Key text untuk lesson |
 | POST | `/api/compile` | `/compile` | Compile & run kode (C/Python) via worker |
-| POST | `/velxio/api/compile` | `/velxio-compile` | **Rate-limited** Arduino compile proxy |
+| POST | `/api/velxio-compile` | `/velxio-compile` | **Rate-limited** Arduino compile proxy |
 | POST | `/api/track-progress` | `/track-progress` | Track progress siswa |
 | GET | `/api/progress-report.json` | `/progress-report.json` | Data progress semua siswa |
 | GET | `/api/progress-report/export-csv` | `/progress-report/export-csv` | Export CSV |

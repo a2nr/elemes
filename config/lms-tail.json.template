@@ -13,12 +13,6 @@
         "/assets/": {
           "Proxy": "http://127.0.0.1:5000/assets/"
         },
-        "/velxio/api/compile/": {
-          "Proxy": "http://127.0.0.1:5000/velxio-compile/"
-        },
-        "/velxio/api/compile": {
-          "Proxy": "http://127.0.0.1:5000/velxio-compile"
-        },
         "/velxio/": {
           "Proxy": "__VELXIO_PROXY_TARGET__"
         },

@@ -39,7 +39,7 @@ The backend is built with Flask, providing API endpoints for the SvelteKit front
 ### Compilation (`routes/compile.py`)
 - `def compile_code():` (POST `/compile`)
   Accepts `code` and `language`. Routes execution to the sandboxed worker using the `CompilerFactory`. Incorporates rate-limiting for anonymous users.
-- `def velxio_compile():` (POST `/velxio-compile` mapped from `/velxio/api/compile`)
+- `def velxio_compile():` (POST `/velxio-compile` mapped from `/api/velxio-compile`)
   A proxy endpoint that forwards Arduino compilation requests to the Velxio container, enforcing rate limits for anonymous users.
 
 ### Progress Tracking (`routes/progress.py`)
