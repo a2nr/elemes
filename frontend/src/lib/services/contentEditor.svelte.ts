@@ -133,9 +133,24 @@ export class ContentEditorManager {
 	}
 
 	async handlePublish() {
-		if (!this.draftId || this.publishing) return;
+		if (!this.activePath || this.publishing) return;
 		this.publishing = true;
 		try {
+			if (this.dirty || !this.draftId) {
+				const saveRes = await saveDraft(this.activePath, this.body, this.baseMtime);
+				if (!saveRes.success) {
+					this.showMessage('error', saveRes.message || 'Gagal menyimpan draft sebelum publish');
+					return;
+				}
+				this.draftId = saveRes.draft_id;
+				this.dirty = false;
+			}
+
+			if (!this.draftId) {
+				this.showMessage('error', 'Draft ID tidak ditemukan untuk dipublikasikan');
+				return;
+			}
+
 			const res = await publishDraft(this.draftId);
 			if (res.success) {
 				this.dirty = false;

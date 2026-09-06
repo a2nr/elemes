@@ -59,3 +59,35 @@ describe('renameEntry', () => {
 		expect(body.confirm_critical).toBe(true);
 	});
 });
+
+describe('saveDraft and publishDraft API', () => {
+	it('mengirim saveDraft dengan target_path dan body', async () => {
+		const { saveDraft } = await import('./contentEditor');
+		const fetchMock = vi.fn().mockResolvedValue({ json: async () => ({ success: true, draft_id: 'draft-1' }) });
+		global.fetch = fetchMock;
+
+		await saveDraft('arduino/led_blink_arduino.md', 'modified body', 12345);
+
+		expect(fetchMock).toHaveBeenCalled();
+		const call = fetchMock.mock.calls[0];
+		expect(call[0]).toBe('/api/content/drafts');
+		expect(JSON.parse(call[1].body)).toEqual({
+			target_path: 'arduino/led_blink_arduino.md',
+			body: 'modified body',
+			base_mtime: 12345
+		});
+	});
+
+	it('mengirim publishDraft dengan draft_id ke endpoint publish', async () => {
+		const { publishDraft } = await import('./contentEditor');
+		const fetchMock = vi.fn().mockResolvedValue({ json: async () => ({ success: true, published_path: 'arduino/led_blink_arduino.md' }) });
+		global.fetch = fetchMock;
+
+		await publishDraft('draft-1');
+
+		expect(fetchMock).toHaveBeenCalled();
+		const call = fetchMock.mock.calls[0];
+		expect(call[0]).toBe('/api/content/drafts/draft-1/publish');
+		expect(call[1].method).toBe('POST');
+	});
+});

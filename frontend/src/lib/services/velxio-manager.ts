@@ -76,6 +76,43 @@ export function getVelxioState(velxioIframe: HTMLIFrameElement | null): { code: 
 	}
 }
 
+export function resolveRestoredContent(
+	storageKey: string,
+	initialContent: string | undefined,
+	isTeacher = false
+): { content: string; shouldRestore: boolean } {
+	const initial = initialContent ?? '';
+	if (typeof window === 'undefined' || !window.localStorage) {
+		return { content: initial, shouldRestore: false };
+	}
+
+	if (isTeacher) {
+		localStorage.removeItem(storageKey);
+		localStorage.removeItem(storageKey + '_base');
+		return { content: initial, shouldRestore: false };
+	}
+
+	const saved = localStorage.getItem(storageKey);
+	const savedBase = localStorage.getItem(storageKey + '_base');
+
+	// A draft is outdated if its baseline doesn't match the current initial content,
+	// or if it was saved by legacy code (no baseline recorded).
+	const isLegacy = savedBase === null;
+	const isOutdated = isLegacy || savedBase !== initial;
+	const isUnmodified = saved === initial || (savedBase !== null && saved === savedBase);
+
+	if (saved && !isOutdated && !isUnmodified) {
+		return { content: saved, shouldRestore: true };
+	}
+
+	// Clean up stale or unmodified draft from storage
+	if (saved !== null || savedBase !== null) {
+		localStorage.removeItem(storageKey);
+		localStorage.removeItem(storageKey + '_base');
+	}
+	return { content: initial, shouldRestore: false };
+}
+
 export function initVelxioBridge(
 	iframe: HTMLIFrameElement,
 	data: LessonContent | null,
@@ -83,7 +120,8 @@ export function initVelxioBridge(
 	arduinoCodeKey: string,
 	onReady: (bridge: VelxioBridge) => void,
 	onSubmit: () => void,
-	onCountdown?: (msRemaining: number) => void
+	onCountdown?: (msRemaining: number) => void,
+	isTeacher = false
 ): () => void {
 	let settled = false;
 	let countdownInterval: ReturnType<typeof setInterval> | null = null;
@@ -104,22 +142,22 @@ export function initVelxioBridge(
 				lockComponents: true
 			});
 			
-			// Priority: Restore from localStorage if available, otherwise use data from backend
-			const savedCircuit = localStorage.getItem(arduinoCircuitKey);
-			const savedCode = localStorage.getItem(arduinoCodeKey);
-
-			if (savedCircuit) {
-				console.log('[Velxio Bridge] Restoring circuit from draft');
-				velxioBridge.loadCircuit(savedCircuit);
-			} else if (data.velxio_circuit) {
-				velxioBridge.loadCircuit(data.velxio_circuit);
+			// Priority: Restore from localStorage if modified by student on current baseline,
+			// otherwise use latest data from backend.
+			const restoredCircuit = resolveRestoredContent(arduinoCircuitKey, data.velxio_circuit, isTeacher);
+			if (restoredCircuit.content) {
+				if (restoredCircuit.shouldRestore) {
+					console.log('[Velxio Bridge] Restoring circuit from draft');
+				}
+				velxioBridge.loadCircuit(restoredCircuit.content);
 			}
 
-			if (savedCode) {
-				console.log('[Velxio Bridge] Restoring code from draft');
-				velxioBridge.loadCode([{ name: 'sketch.ino', content: savedCode }]);
-			} else if (data.initial_code_arduino) {
-				velxioBridge.loadCode([{ name: 'sketch.ino', content: data.initial_code_arduino }]);
+			const restoredCode = resolveRestoredContent(arduinoCodeKey, data.initial_code_arduino, isTeacher);
+			if (restoredCode.content) {
+				if (restoredCode.shouldRestore) {
+					console.log('[Velxio Bridge] Restoring code from draft');
+				}
+				velxioBridge.loadCode([{ name: 'sketch.ino', content: restoredCode.content }]);
 			}
 		}
 
@@ -173,27 +211,23 @@ export function initVelxioBridge(
 					lockComponents: true
 				}, '*');
 				
-				const savedCircuit = localStorage.getItem(arduinoCircuitKey);
-				const savedCode = localStorage.getItem(arduinoCodeKey);
-
-				if (savedCircuit) {
+				const restoredCircuit = resolveRestoredContent(arduinoCircuitKey, data.velxio_circuit, isTeacher);
+				if (restoredCircuit.content) {
 					try {
-						console.log('[Velxio Fallback] Restoring circuit from draft');
-						const circuitData = JSON.parse(savedCircuit);
-						win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
-					} catch {}
-				} else if (data.velxio_circuit) {
-					try {
-						const circuitData = JSON.parse(data.velxio_circuit);
+						if (restoredCircuit.shouldRestore) {
+							console.log('[Velxio Fallback] Restoring circuit from draft');
+						}
+						const circuitData = JSON.parse(restoredCircuit.content);
 						win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
 					} catch {}
 				}
 
-				if (savedCode) {
-					console.log('[Velxio Fallback] Restoring code from draft');
-					win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: savedCode }] }, '*');
-				} else if (data.initial_code_arduino) {
-					win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: data.initial_code_arduino }] }, '*');
+				const restoredCode = resolveRestoredContent(arduinoCodeKey, data.initial_code_arduino, isTeacher);
+				if (restoredCode.content) {
+					if (restoredCode.shouldRestore) {
+						console.log('[Velxio Fallback] Restoring code from draft');
+					}
+					win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: restoredCode.content }] }, '*');
 				}
 			}
 		} catch { /* cross-origin or not ready yet */ }

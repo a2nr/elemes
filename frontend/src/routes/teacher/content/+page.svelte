@@ -680,7 +680,7 @@
 				<button class="panel-btn save-btn" onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
 					{mgr.saving ? '⏳' : '💾'}
 				</button>
-				<button class="panel-btn publish-btn" onclick={() => handlePublishAction()} disabled={mgr.publishing || !mgr.draftId} title="Publish">
+				<button class="panel-btn publish-btn" onclick={() => handlePublishAction()} disabled={mgr.publishing || mgr.saving} title="Publish">
 					{mgr.publishing ? '⏳' : '🚀'}
 				</button>
 			{/if}

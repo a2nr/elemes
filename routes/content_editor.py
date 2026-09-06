@@ -31,7 +31,7 @@ from flask import Blueprint, jsonify, request
 from config import ASSETS_DIR, CONTENT_DIR
 from services import repositories
 from services.database import SessionLocal
-from services.lesson_service import _render_markdown_string
+from services.lesson_service import _render_markdown_string, invalidate_lesson_caches
 from services.teacher_auth import check_origin, teacher_user_from_cookie
 
 content_editor_bp = Blueprint("content_editor", __name__, url_prefix="/content")
@@ -215,6 +215,7 @@ def publish(draft_id):
             }), 500
 
         repositories.mark_draft_published(db, draft=draft)
+        invalidate_lesson_caches(abs_path)
         return jsonify({"success": True, "published_path": target_path})
     finally:
         db.close()
@@ -347,6 +348,7 @@ def create_file():
                 f.write(template)
         except PermissionError:
             return jsonify({"success": False, "message": "Permission denied — tidak bisa menulis file"}), 403
+        invalidate_lesson_caches(abs_path)
         return jsonify({"success": True, "path": rel})
     finally:
         db.close()
@@ -396,6 +398,8 @@ def rename_entry():
 
         if root == "content":
             repositories.retarget_drafts(db, old_prefix=old_rel, new_prefix=new_rel)
+            invalidate_lesson_caches(old_abs)
+            invalidate_lesson_caches(new_abs)
         return jsonify({"success": True, "path": new_rel})
     finally:
         db.close()
@@ -444,6 +448,7 @@ def delete_entry():
 
         if root == "content":
             repositories.drop_drafts_under(db, path=rel)
+            invalidate_lesson_caches(abs_path)
         return jsonify({"success": True})
     finally:
         db.close()

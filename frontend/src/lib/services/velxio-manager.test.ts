@@ -1,5 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import { getVelxioState } from './velxio-manager';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { getVelxioState, resolveRestoredContent } from './velxio-manager';
+
+class LocalStorageMock {
+	private store: Record<string, string> = {};
+	getItem(key: string) { return this.store[key] ?? null; }
+	setItem(key: string, val: string) { this.store[key] = String(val); }
+	removeItem(key: string) { delete this.store[key]; }
+	clear() { this.store = {}; }
+}
+const mockStorage = new LocalStorageMock();
+(global as any).localStorage = mockStorage;
+(global as any).window = { localStorage: mockStorage };
 
 describe('velxio-manager', () => {
 	describe('getVelxioState', () => {
@@ -135,6 +146,71 @@ describe('velxio-manager', () => {
 			expect(parsedCircuit.board).toBe('custom:arch:myboard');
 			expect(parsedCircuit.components).toEqual([]);
 			expect(parsedCircuit.wires).toEqual([]);
+		});
+	});
+
+	describe('resolveRestoredContent', () => {
+		const KEY = 'test_arduino_code';
+		const KEY_BASE = 'test_arduino_code_base';
+
+		beforeEach(() => {
+			localStorage.clear();
+		});
+
+		it('returns initial content when localStorage is empty', () => {
+			const res = resolveRestoredContent(KEY, 'void setup() {}');
+			expect(res.content).toBe('void setup() {}');
+			expect(res.shouldRestore).toBe(false);
+		});
+
+		it('clears legacy draft (missing _base) and loads fresh server initial content', () => {
+			localStorage.setItem(KEY, 'legacy code from old auto-save');
+			const res = resolveRestoredContent(KEY, 'void setup() { Serial.begin(9600); }');
+			expect(res.content).toBe('void setup() { Serial.begin(9600); }');
+			expect(res.shouldRestore).toBe(false);
+			expect(localStorage.getItem(KEY)).toBeNull();
+		});
+
+		it('clears draft when server initial content has changed (outdated baseline)', () => {
+			localStorage.setItem(KEY, 'student modified code');
+			localStorage.setItem(KEY_BASE, 'old initial code v1');
+
+			const res = resolveRestoredContent(KEY, 'new initial code v2 published by teacher');
+			expect(res.content).toBe('new initial code v2 published by teacher');
+			expect(res.shouldRestore).toBe(false);
+			expect(localStorage.getItem(KEY)).toBeNull();
+			expect(localStorage.getItem(KEY_BASE)).toBeNull();
+		});
+
+		it('clears draft when saved code is identical to initial content (unmodified)', () => {
+			localStorage.setItem(KEY, 'void setup() {}');
+			localStorage.setItem(KEY_BASE, 'void setup() {}');
+
+			const res = resolveRestoredContent(KEY, 'void setup() {}');
+			expect(res.content).toBe('void setup() {}');
+			expect(res.shouldRestore).toBe(false);
+			expect(localStorage.getItem(KEY)).toBeNull();
+		});
+
+		it('restores student draft when baseline matches and code was modified', () => {
+			localStorage.setItem(KEY, 'void setup() { pinMode(13, OUTPUT); }');
+			localStorage.setItem(KEY_BASE, 'void setup() {}');
+
+			const res = resolveRestoredContent(KEY, 'void setup() {}');
+			expect(res.content).toBe('void setup() { pinMode(13, OUTPUT); }');
+			expect(res.shouldRestore).toBe(true);
+			expect(localStorage.getItem(KEY)).toBe('void setup() { pinMode(13, OUTPUT); }');
+		});
+
+		it('always returns initial content and cleans up storage when isTeacher is true', () => {
+			localStorage.setItem(KEY, 'some draft code');
+			localStorage.setItem(KEY_BASE, 'void setup() {}');
+
+			const res = resolveRestoredContent(KEY, 'void setup() {}', true);
+			expect(res.content).toBe('void setup() {}');
+			expect(res.shouldRestore).toBe(false);
+			expect(localStorage.getItem(KEY)).toBeNull();
+			expect(localStorage.getItem(KEY_BASE)).toBeNull();
 		});
 	});
 });

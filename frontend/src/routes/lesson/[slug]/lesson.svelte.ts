@@ -2,7 +2,7 @@ import { page } from '$app/stores';
 import { get } from 'svelte/store';
 import { pickDefaultTab } from '$services/lesson-tabs';
 import { tick, untrack } from 'svelte';
-import { auth, authLoggedIn, authToken } from '$stores/auth';
+import { auth, authLoggedIn, authToken, authIsTeacher } from '$stores/auth';
 import { lessonContext } from '$stores/lessonContext';
 import { compileCode, submitLessonProgress, lessonProgressBeacon, type LessonProgressPayload } from '$services/api';
 import { createAttemptId, type QuizTerminationReason } from '$services/quiz-integrity';
@@ -136,28 +136,32 @@ export class LessonManager {
 			};
 			mql.addEventListener('change', handler);
 
-			// Auto-save Velxio state periodically
+			// Auto-save Velxio state periodically (only for logged-in students, not teachers)
 			$effect(() => {
-				if (this.velxioReady && get(authLoggedIn) && !this.showSolution) {
+				if (this.velxioReady && get(authLoggedIn) && !get(authIsTeacher) && !this.showSolution) {
 					const interval = setInterval(() => {
 						const state = getVelxioState(this.velxioIframe);
 						if (!state) return;
 						
 						let changed = false;
 						
-						// 1. Source Code
+						// 1. Source Code: only save if modified from initial code
+						const initialCode = this.data?.initial_code_arduino ?? '';
 						const savedCode = localStorage.getItem(this.arduinoCodeKey);
-						if (state.code && state.code !== savedCode) {
+						if (state.code && state.code !== initialCode && state.code !== savedCode) {
 							console.log('[Velxio Auto-save] Saving code changes (Zustand)');
 							localStorage.setItem(this.arduinoCodeKey, state.code);
+							localStorage.setItem(this.arduinoCodeKey + '_base', initialCode);
 							changed = true;
 						}
 
-						// 2. Circuit (Diagram + Wires)
+						// 2. Circuit (Diagram + Wires): only save if modified from initial circuit
+						const initialCircuit = this.data?.velxio_circuit ?? '';
 						const savedCircuit = localStorage.getItem(this.arduinoCircuitKey);
-						if (state.circuit && state.circuit !== savedCircuit) {
+						if (state.circuit && state.circuit !== initialCircuit && state.circuit !== savedCircuit) {
 							console.log('[Velxio Auto-save] Saving circuit changes (Zustand)');
 							localStorage.setItem(this.arduinoCircuitKey, state.circuit);
+							localStorage.setItem(this.arduinoCircuitKey + '_base', initialCircuit);
 							changed = true;
 						}
 						
@@ -615,7 +619,9 @@ export class LessonManager {
 			Object.assign(this.circuitOut, this.freshOutput());
 		} else if (this.activeTab === 'velxio') {
 			localStorage.removeItem(this.arduinoCodeKey);
+			localStorage.removeItem(this.arduinoCodeKey + '_base');
 			localStorage.removeItem(this.arduinoCircuitKey);
+			localStorage.removeItem(this.arduinoCircuitKey + '_base');
 			if (this.data.initial_code_arduino) {
 				this.velxioBridge?.loadCode([{ name: 'sketch.ino', content: this.data.initial_code_arduino }]);
 			}
@@ -688,7 +694,8 @@ export class LessonManager {
 					error: '',
 					success: null
 				});
-			}
+			},
+			get(authIsTeacher)
 		);
 	}
 

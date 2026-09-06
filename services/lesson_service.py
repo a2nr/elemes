@@ -63,23 +63,40 @@ def _read_md_cached(path):
     with _file_cache_lock:
         _file_cache[path] = {'content': content, 'mtime': current_mtime}
 
-    # If this is the root home.md, invalidate downstream caches
-    if os.path.abspath(path) == _HOME_MD_PATH:
-        find_lesson_file.cache_clear()
-        get_lessons.cache_clear()
-        get_lesson_names.cache_clear()
-        get_lessons_with_learning_objectives.cache_clear()
-        with _markdown_lock:
-            _markdown_cache.clear()
-
-    # If this is a sub-home.md, invalidate its parsed data cache so edits to
-    # the file (new lessons, reorder) show up without restarting the app.
-    if os.path.basename(path) == 'sub-home.md':
-        with _sub_home_cache_lock:
-            _sub_home_cache.clear()
-        find_lesson_file.cache_clear()
+    # If this is the root home.md or a sub-home.md, invalidate downstream caches
+    if os.path.abspath(path) == _HOME_MD_PATH or os.path.basename(path) == 'sub-home.md':
+        invalidate_lesson_caches(path)
 
     return content
+
+
+def invalidate_lesson_caches(file_path=None):
+    """Invalidate all in-memory caches related to lessons, files, and navigation.
+
+    If file_path is provided, specific file entries in _markdown_cache and _file_cache
+    are removed. LRU caches and sub_home cache are cleared unconditionally.
+    """
+    find_lesson_file.cache_clear()
+    get_lessons.cache_clear()
+    get_lesson_names.cache_clear()
+    get_lessons_with_learning_objectives.cache_clear()
+
+    with _markdown_lock:
+        if file_path:
+            _markdown_cache.pop(file_path, None)
+            _markdown_cache.pop(os.path.abspath(file_path), None)
+        else:
+            _markdown_cache.clear()
+
+    with _file_cache_lock:
+        if file_path:
+            _file_cache.pop(file_path, None)
+            _file_cache.pop(os.path.abspath(file_path), None)
+        else:
+            _file_cache.clear()
+
+    with _sub_home_cache_lock:
+        _sub_home_cache.clear()
 
 
 def _read_home_md():
