@@ -21,6 +21,13 @@ describe('Markdown Renderer & Extractor Tests', () => {
 			expect(extracted).toBe('');
 			expect(remaining).toBe(input);
 		});
+
+		it('should prefer line-boundary markers when marker name is mentioned in prose', () => {
+			const input = 'This tutorial explains ---EXPECTED_OUTPUT--- in body.\n---EXPECTED_OUTPUT---\nactual content\n---END_EXPECTED_OUTPUT---\nAfter';
+			const [extracted, remaining] = extractSection(input, '---EXPECTED_OUTPUT---', '---END_EXPECTED_OUTPUT---');
+			expect(extracted).toBe('actual content');
+			expect(remaining).toBe('This tutorial explains ---EXPECTED_OUTPUT--- in body.\n\nAfter');
+		});
 	});
 
 	describe('upsertSection', () => {

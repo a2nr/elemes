@@ -97,3 +97,69 @@ def maybe_sync_on_startup():
             db.close()
     except Exception as exc:  # noqa: BLE001 — startup tidak boleh crash karena DB
         logger.warning("Sync lesson registry gagal (akan dicoba lagi nanti): %s", exc)
+
+
+def backfill_legacy_progress(db: Session) -> int:
+    """Hitung ulang composite score & state untuk record progress yang state='in_progress'
+    tetapi sudah memiliki data kelulusan (exercise_passed atau quiz_score_earned).
+    Ini memastikan siswa yang datanya dimigrasi dari schema lama tidak kehilangan
+    status 'done' / skor kelulusan di UI.
+    """
+    from sqlalchemy import select
+    from config import LESSON_EXERCISE_WEIGHT, LESSON_QUIZ_WEIGHT, LESSON_DONE_MIN_PERCENT
+    from services.models import Lesson, StudentProgress
+    from services import repositories as repo
+
+    stmt = select(StudentProgress).where(
+        StudentProgress.state == "in_progress",
+        (StudentProgress.exercise_passed.is_(True)) | (StudentProgress.quiz_score_earned.is_not(None)),
+    )
+    records = list(db.scalars(stmt))
+    if not records:
+        return 0
+
+    recomputed = 0
+    lessons_cache = {l.id: l for l in db.scalars(select(Lesson))}
+
+    for p in records:
+        lesson = lessons_cache.get(p.lesson_id)
+        if not lesson:
+            continue
+        try:
+            has_exercise, has_quiz = lesson_service.get_lesson_components(lesson.slug)
+        except Exception:
+            has_exercise, has_quiz = True, False
+
+        repo.recompute_progress(
+            db,
+            user_id=p.user_id,
+            lesson_id=p.lesson_id,
+            has_exercise=has_exercise,
+            has_quiz=has_quiz,
+            exercise_weight=LESSON_EXERCISE_WEIGHT,
+            quiz_weight=LESSON_QUIZ_WEIGHT,
+            done_min_percent=LESSON_DONE_MIN_PERCENT,
+        )
+        recomputed += 1
+
+    db.commit()
+    return recomputed
+
+
+def maybe_backfill_on_startup():
+    """Auto-backfill progress state saat app init jika ada legacy in_progress records."""
+    from services.database import SessionLocal
+
+    if SessionLocal is None:
+        return
+    try:
+        db = SessionLocal()
+        try:
+            count = backfill_legacy_progress(db)
+            if count > 0:
+                logger.info("Backfill legacy progress selesai: %d record dihitung ulang", count)
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Backfill legacy progress gagal (akan dicoba lagi nanti): %s", exc)
+

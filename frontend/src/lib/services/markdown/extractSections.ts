@@ -2,6 +2,27 @@
  * Extract content between startMarker and endMarker, returning the extracted content
  * and the remaining content with the markers and extracted block removed.
  */
+function findMarkerIndex(content: string, marker: string, fromIndex = 0): number {
+	let idx = content.indexOf(marker, fromIndex);
+	let fallbackIdx = -1;
+	while (idx !== -1) {
+		const prevNewline = content.lastIndexOf('\n', idx - 1);
+		const linePrefix = content.slice(prevNewline + 1, idx);
+		if (/^[ \t]*$/.test(linePrefix)) {
+			return idx;
+		}
+		if (fallbackIdx === -1) {
+			fallbackIdx = idx;
+		}
+		idx = content.indexOf(marker, idx + marker.length);
+	}
+	return fallbackIdx;
+}
+
+/**
+ * Extract content between startMarker and endMarker, returning the extracted content
+ * and the remaining content with the markers and extracted block removed.
+ */
 export function extractSection(
 	content: string,
 	startMarker: string,
@@ -11,10 +32,13 @@ export function extractSection(
 		return ['', content];
 	}
 
-	const startIdx = content.indexOf(startMarker);
-	const endIdx = content.indexOf(endMarker);
+	const startIdx = findMarkerIndex(content, startMarker);
+	if (startIdx === -1) {
+		return ['', content];
+	}
 
-	if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+	const endIdx = findMarkerIndex(content, endMarker, startIdx + startMarker.length);
+	if (endIdx === -1 || endIdx <= startIdx) {
 		return ['', content];
 	}
 
@@ -35,8 +59,8 @@ export function upsertSection(
 	newInnerContent: string
 ): string {
 	const trimmedInner = newInnerContent.trim();
-	const startIdx = content.indexOf(startMarker);
-	const endIdx = content.indexOf(endMarker);
+	const startIdx = findMarkerIndex(content, startMarker);
+	const endIdx = startIdx !== -1 ? findMarkerIndex(content, endMarker, startIdx + startMarker.length) : -1;
 
 	if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
 		return (

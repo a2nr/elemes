@@ -186,7 +186,8 @@ export class VelxioBridge {
 	// === Internal ===
 
 	private send(type: string, payload: Record<string, any> = {}) {
-		this.iframe.contentWindow?.postMessage({ type, ...payload }, '*');
+		const targetOrigin = typeof window !== 'undefined' ? window.location.origin : '*';
+		this.iframe.contentWindow?.postMessage({ type, ...payload }, targetOrigin);
 	}
 
 	private request(sendType: string, expectType: string): Promise<any | null> {

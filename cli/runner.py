@@ -154,6 +154,7 @@ def execute_process(
 
     # Redirect to binary file directly (e.g. pg_dump)
     if stdout_file:
+        proc = None
         try:
             stdin_src = stdin_file if stdin_file else (subprocess.PIPE if stdin_data else None)
             proc = subprocess.Popen(
@@ -181,11 +182,21 @@ def execute_process(
             stderr_thread.join()
             return proc.returncode, "", "".join(captured_stderr)
         except Exception as e:
+            if proc and proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=2)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
             return 1, "", str(e)
 
     # Capturing or streaming output
     stdout_lines: List[str] = []
     stderr_lines: List[str] = []
+    proc = None
 
     try:
         stdin_pipe = stdin_file if stdin_file else (subprocess.PIPE if stdin_data else subprocess.DEVNULL)
@@ -236,6 +247,15 @@ def execute_process(
         return proc.returncode, "".join(stdout_lines), "".join(stderr_lines)
 
     except Exception as e:
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
         if verbose:
             sys.stderr.write(f"Process execution error: {e}\n")
         return 1, "", str(e)

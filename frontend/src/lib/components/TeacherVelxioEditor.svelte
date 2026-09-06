@@ -28,6 +28,7 @@
 	export function loadStateToSimulator(code: string, circuit: string) {
 		if (!iframeRef?.contentWindow) return;
 		const win = iframeRef.contentWindow;
+		const targetOrigin = typeof window !== 'undefined' ? window.location.origin : '*';
 
 		// Teacher mode: embed mode with components and editor fully editable
 		win.postMessage(
@@ -37,13 +38,13 @@
 				hideComponentPicker: false,
 				lockComponents: false
 			},
-			'*'
+			targetOrigin
 		);
 
 		if (circuit) {
 			try {
 				const circuitData = typeof circuit === 'string' ? JSON.parse(circuit) : circuit;
-				win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
+				win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, targetOrigin);
 			} catch (err) {
 				console.error('[TeacherVelxioEditor] Error parsing circuit JSON:', err);
 			}
@@ -55,7 +56,7 @@
 					type: 'elemes:load_code',
 					files: [{ name: 'sketch.ino', content: code }]
 				},
-				'*'
+				targetOrigin
 			);
 		}
 	}
@@ -97,18 +98,20 @@
 	}
 
 	function checkIframeReady() {
+		if (isReady) return;
 		try {
 			const win = iframeRef?.contentWindow as any;
-			if (!win || !win.document) return;
-			const root = win.document.getElementById('root');
-			if (root && root.children.length > 0) {
-				if (!isReady) {
+			if (!win) return;
+			// Safely check origin before touching document
+			if (win.location?.origin === window.location.origin) {
+				const root = win.document?.getElementById('root');
+				if (root && root.children?.length > 0) {
 					isReady = true;
 					loadStateToSimulator(initialCode, initialCircuit);
 				}
 			}
 		} catch {
-			// Cross-origin fallback or not yet loaded
+			// Cross-origin fallback or still navigating
 		}
 	}
 
@@ -128,7 +131,7 @@
 				return;
 			}
 			checkIframeReady();
-		}, 600);
+		}, 1000);
 
 		const pollTimeout = setTimeout(() => {
 			clearInterval(poll);

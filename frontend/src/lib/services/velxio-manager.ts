@@ -204,12 +204,13 @@ export function initVelxioBridge(
 			onReady(new VelxioBridge(iframe)); // Just provide dummy or initialize
 
 			if (data) {
+				const targetOrigin = typeof window !== 'undefined' ? window.location.origin : '*';
 				win.postMessage({
 					type: 'elemes:set_embed_mode',
 					hideAuth: true,
 					hideComponentPicker: true,
 					lockComponents: true
-				}, '*');
+				}, targetOrigin);
 				
 				const restoredCircuit = resolveRestoredContent(arduinoCircuitKey, data.velxio_circuit, isTeacher);
 				if (restoredCircuit.content) {
@@ -218,7 +219,7 @@ export function initVelxioBridge(
 							console.log('[Velxio Fallback] Restoring circuit from draft');
 						}
 						const circuitData = JSON.parse(restoredCircuit.content);
-						win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, '*');
+						win.postMessage({ type: 'elemes:load_circuit', ...circuitData }, targetOrigin);
 					} catch {}
 				}
 
@@ -227,7 +228,7 @@ export function initVelxioBridge(
 					if (restoredCode.shouldRestore) {
 						console.log('[Velxio Fallback] Restoring code from draft');
 					}
-					win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: restoredCode.content }] }, '*');
+					win.postMessage({ type: 'elemes:load_code', files: [{ name: 'sketch.ino', content: restoredCode.content }] }, targetOrigin);
 				}
 			}
 		} catch { /* cross-origin or not ready yet */ }

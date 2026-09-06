@@ -57,21 +57,17 @@ def upgrade() -> None:
         "state IN ('not_started','in_progress','completed','scored','done')",
     )
 
-    # Backfill: completed → exercise lulus; scored → ambil skor kuis lama.
+    # Backfill: completed → exercise lulus & composite 100%; scored → ambil skor kuis lama & hitung composite.
     op.execute(
-        "UPDATE student_progress SET exercise_passed = true "
+        "UPDATE student_progress SET exercise_passed = true, composite_percent = 100.0, state = 'done' "
         "WHERE state = 'completed'"
     )
     op.execute(
         "UPDATE student_progress "
-        "SET quiz_score_earned = score_earned, quiz_score_total = score_total "
+        "SET quiz_score_earned = score_earned, quiz_score_total = score_total, "
+        "    composite_percent = CASE WHEN score_total > 0 THEN ROUND((score_earned::numeric / score_total) * 100, 2) ELSE NULL END, "
+        "    state = CASE WHEN score_total > 0 AND (score_earned::numeric / score_total) * 100 >= 75.0 THEN 'done' ELSE 'in_progress' END "
         "WHERE state = 'scored'"
-    )
-    # Legacy 'completed'/'scored' belum punya composite → turunkan ke
-    # 'in_progress' agar backend menghitung ulang jadi 'done'/'in_progress'.
-    op.execute(
-        "UPDATE student_progress SET state = 'in_progress' "
-        "WHERE state IN ('completed', 'scored')"
     )
 
 

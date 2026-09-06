@@ -7,13 +7,16 @@ Reproduce quiz option-display bug via Playwright.
   panjang options dari server quiz_data (cocokkan by question text/prose)
 - Log ke /tmp/repro_quiz.log
 """
-import sys, json, urllib.request
+import json
+import os
+import sys
+import urllib.request
 from pathlib import Path
 
-BASE = "https://sinau-c-dev.manakin-gentoo.ts.net"
-TOKEN = "141214"
-SLUG = "quiz_test"
-LOG = "/tmp/repro_quiz.log"
+BASE = os.environ.get("ELEMES_TEST_BASE_URL", "https://sinau-c-dev.manakin-gentoo.ts.net")
+TOKEN = os.environ.get("ELEMES_TEST_TOKEN", "141214")
+SLUG = os.environ.get("ELEMES_TEST_SLUG", "quiz_test")
+LOG = os.environ.get("ELEMES_TEST_LOG", "/tmp/repro_quiz.log")
 
 def log(msg):
     with open(LOG, "a") as f:

@@ -65,7 +65,8 @@ export class ContentEditorManager {
 			} else {
 				this.showMessage('error', res.message || 'Gagal memuat file');
 			}
-		} catch {
+		} catch (err) {
+			console.error('[contentEditor] loadDraft error:', err);
 			this.showMessage('error', 'Gagal terhubung ke server');
 		} finally {
 			this.loading = false;
@@ -107,6 +108,7 @@ export class ContentEditorManager {
 				this.previewError = res.message || 'Preview gagal';
 			}
 		} catch (e: any) {
+			console.error('[contentEditor] runPreview error:', e);
 			this.previewError = e.message || 'Gagal merender preview';
 		} finally {
 			this.previewLoading = false;
@@ -125,7 +127,8 @@ export class ContentEditorManager {
 			} else {
 				this.showMessage('error', res.message || 'Gagal menyimpan draft');
 			}
-		} catch {
+		} catch (err) {
+			console.error('[contentEditor] handleSave error:', err);
 			this.showMessage('error', 'Gagal terhubung ke server');
 		} finally {
 			this.saving = false;
@@ -166,7 +169,8 @@ export class ContentEditorManager {
 					this.showMessage('error', res.message || 'Gagal mempublikasikan');
 				}
 			}
-		} catch {
+		} catch (err) {
+			console.error('[contentEditor] handlePublish error:', err);
 			this.showMessage('error', 'Gagal terhubung ke server');
 		} finally {
 			this.publishing = false;

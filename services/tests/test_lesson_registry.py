@@ -172,3 +172,17 @@ def test_specs_union_root_and_sub_bab_no_db(tmp_path, monkeypatch):
     title_by_slug = {s: t for s, t, _ in specs}
     assert title_by_slug["shared"] == "Shared"
     assert title_by_slug["sub_only"] == "Sub Only"
+
+
+@pytest.mark.skipif(not DB_REQUIRED, reason="butuh DATABASE_URL (PostgreSQL nyata)")
+def test_backfill_legacy_progress():
+    from services.database import SessionLocal
+    from services.lesson_registry import backfill_legacy_progress
+
+    db = SessionLocal()
+    try:
+        count = backfill_legacy_progress(db)
+        assert isinstance(count, int)
+    finally:
+        db.close()
+

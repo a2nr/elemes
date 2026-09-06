@@ -53,4 +53,39 @@ describe('hooks.server handle', () => {
 		expect(resolve).toHaveBeenCalledWith(mockEvent);
 		expect(response).toBe(mockResponse);
 	});
+
+	it('should read body as arrayBuffer when proxying POST requests', async () => {
+		const arrayBufferMock = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+		const mockEvent: any = {
+			request: {
+				method: 'POST',
+				headers: new Headers({ 'content-type': 'application/octet-stream' }),
+				arrayBuffer: arrayBufferMock
+			},
+			url: new URL('https://sinau-c-dev.manakin-gentoo.ts.net/api/upload')
+		};
+
+		// Mock global fetch
+		const origFetch = global.fetch;
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ success: true }), {
+				status: 200,
+				headers: { 'content-type': 'application/json' }
+			})
+		) as any;
+
+		try {
+			const resolve = vi.fn();
+			const response = await handle({ event: mockEvent, resolve });
+
+			expect(arrayBufferMock).toHaveBeenCalled();
+			expect(global.fetch).toHaveBeenCalled();
+			const fetchInit = (global.fetch as any).mock.calls[0][1];
+			expect(fetchInit.body).toBeInstanceOf(ArrayBuffer);
+			expect(response.status).toBe(200);
+		} finally {
+			global.fetch = origFetch;
+		}
+	});
 });
+

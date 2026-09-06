@@ -11,7 +11,7 @@ from sqlalchemy import select
 
 from services import repositories as repo
 from services.database import SessionLocal
-from services.models import User
+from services.models import QuizAttempt, StudentProgress, User
 from services.progress_status import format_progress_status, parse_progress_status
 from services.repositories import (
     count_completed_lessons,
@@ -164,12 +164,21 @@ def get_all_students_progress(all_lessons_func):
                 .order_by(User.created_at, User.id)
             )
         )
+        # Bulk-fetch semua progress & quiz attempts dalam 2 query (hindari N+1).
+        all_progress = db.scalars(select(StudentProgress)).all()
+        progress_by_user = {}
+        for p in all_progress:
+            progress_by_user.setdefault(p.user_id, {})[p.lesson_id] = p
+
+        all_attempts = db.scalars(select(QuizAttempt)).all()
+        attempts_by_user = {}
+        for a in all_attempts:
+            attempts_by_user.setdefault(a.user_id, {})[a.lesson_id] = a
+
         students = []
         for user in users:
-            rows = {p.lesson_id: p for p in list_progress_for_user(db, user_id=user.id)}
-            attempts = {
-                a.lesson_id: a for a in list_quiz_attempts_for_user(db, user_id=user.id)
-            }
+            rows = progress_by_user.get(user.id, {})
+            attempts = attempts_by_user.get(user.id, {})
             student = {'nama_siswa': user.display_name, 'id': user.id, 'role': user.role}
             for lesson in lessons:
                 student[lesson.slug] = _status_to_string(rows.get(lesson.id))

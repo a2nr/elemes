@@ -59,7 +59,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			};
 
 			if (event.request.method !== 'GET' && event.request.method !== 'HEAD') {
-				init.body = await event.request.text();
+				init.body = await event.request.arrayBuffer();
 			}
 
 			const res = await fetch(backendUrl, init);
