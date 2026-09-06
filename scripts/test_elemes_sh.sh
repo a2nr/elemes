@@ -25,6 +25,12 @@ mkdir -p "$WORKSPACE" "$FAKEBIN"
 touch "$PARENT_DIR/.env" # PARENT_DIR/.env (dibaca run_compose & db_init)
 
 cp "$(dirname "$0")/../elemes.sh" "$WORKSPACE/elemes.sh"
+cp "$(dirname "$0")/../elemes.py" "$WORKSPACE/elemes.py"
+cp "$(dirname "$0")/../requirements-cli.txt" "$WORKSPACE/requirements-cli.txt" 2>/dev/null || true
+cp -r "$(dirname "$0")/../cli" "$WORKSPACE/cli"
+if [ -d "$(dirname "$0")/../../venv" ]; then
+  ln -s "$(cd "$(dirname "$0")/../../venv" && pwd)" "$PARENT_DIR/venv"
+fi
 export FAKE_PROJECT="$PROJECT_NAME"
 
 # --- Fake podman-compose: catat semua panggilan, jawab config/exec/restart ----

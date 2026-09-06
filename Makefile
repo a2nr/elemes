@@ -23,7 +23,7 @@ export PYTHONPATH
 
 # --- Default (backward-compat): `make test` = test-all ---
 
-.PHONY: test test-unit test-integration test-all test-worker test-smoke test-shell test-list test-stats help
+.PHONY: test test-unit test-integration test-all test-worker test-smoke test-shell test-cli test-list test-stats help
 
 help:
 	@echo "Elemes Test Suite:"
@@ -33,6 +33,7 @@ help:
 	@echo "  make test-worker       Compiler worker tests (separate project)"
 	@echo "  make test-smoke        # Smoke test post-deploy (unit + sub-home subset)"
 	@echo "  make test-shell        # Shell regression test (elemes.sh structure)"
+	@echo "  make test-cli          CLI and TUI unit tests"
 	@echo "  make test-list         List collected tests"
 	@echo "  make test-stats        Show test counts by marker"
 
@@ -64,6 +65,10 @@ test-smoke:
 ## Shell regression test — elemes.sh structure (dynamic PROJECT_NAME, no hard-coded names)
 test-shell:
 	bash scripts/test_elemes_sh.sh
+
+## CLI and TUI unit tests — pure logic, fast
+test-cli:
+	$(PYTEST) services/tests/test_cli_tui.py -v
 
 ## List collected tests
 test-list:

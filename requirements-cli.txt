@@ -1,0 +1,3 @@
+# Dependensi host CLI & TUI untuk Elemes LMS
+# Diinstall di virtualenv tingkat parent (../venv) agar elemes/ tetap bersih
+rich>=13.0.0
