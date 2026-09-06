@@ -68,7 +68,7 @@ test-shell:
 
 ## CLI and TUI unit tests — pure logic, fast
 test-cli:
-	$(PYTEST) services/tests/test_cli_tui.py -v
+	$(PYTEST) cli/tests/test_cli_tui.py -v
 
 ## List collected tests
 test-list:
