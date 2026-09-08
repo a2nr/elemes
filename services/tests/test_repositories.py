@@ -150,7 +150,7 @@ def test_export_csv_content_and_no_leak():
         assert csv_bytes.startswith("\ufeff".encode("utf-8"))
         lines = text.strip().splitlines()
         assert lines[0].startswith("# Format kolom lesson:")
-        assert lines[1] == "student_id;token;nama_siswa;hello_world;variabel"
+        assert lines[1] == "student_id;token;nama_siswa;hello_world [completed];variabel [completed]"
         assert len(lines) == 3  # hanya 1 siswa (teacher tidak ikut)
         cols = lines[2].split(";")
         assert cols[0] == s1.id
@@ -612,7 +612,7 @@ def test_roundtrip_export_restore_delete_recreate():
         text = csv_bytes.decode("utf-8-sig")
         lines = text.strip().splitlines()
         assert lines[0].startswith("# Format kolom lesson:")
-        assert lines[1] == "student_id;token;nama_siswa;hello_world;variabel"
+        assert lines[1] == "student_id;token;nama_siswa;hello_world [completed];variabel [completed]"
         cols = lines[2].split(";")
         assert cols[0] == s1.id and cols[1] == ""  # token kosong
         assert cols[2] == "Budi Santoso" and cols[3] == "completed" and cols[4] == "3/4"

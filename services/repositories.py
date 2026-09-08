@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from config import LESSON_EXERCISE_WEIGHT, LESSON_QUIZ_WEIGHT, LESSON_DONE_MIN_PERCENT
 from services.models import AccessToken, ContentDraft, Lesson, QuizAttempt, StudentProgress, User
 from services.evaluation import compute_composite
-from services.lesson_service import get_lesson_components
+from services.lesson_service import get_lesson_components, get_lesson_quiz_total
 from services.progress_status import ParsedProgress
 from services.student_roundtrip import (
     RoundTripImportError,
@@ -483,6 +483,24 @@ def list_students_for_export(
     )
 
 
+def get_lesson_expected_format(slug: str) -> str:
+    """Tentukan panduan expected format kolom lesson berdasarkan komponennya.
+
+    - Exercise only: 'completed'
+    - Quiz only: '<earned>/N' jika total soal diketahui, atau '<earned>/<total>'
+    - Exercise + Quiz: 'done:<1|0>:<earned>/N' (atau '<total>')
+    - Reading only: 'completed'
+    """
+    has_exercise, has_quiz = get_lesson_components(slug)
+    quiz_total = get_lesson_quiz_total(slug) if has_quiz else None
+    if has_exercise and has_quiz:
+        q_fmt = f"<earned>/{quiz_total}" if quiz_total else "<earned>/<total>"
+        return f"done:<1|0>:{q_fmt}"
+    if has_quiz:
+        return f"<earned>/{quiz_total}" if quiz_total else "<earned>/<total>"
+    return "completed"
+
+
 def export_students_csv(
     db: Session,
     student_ids: list[str] | None = None,
@@ -490,10 +508,15 @@ def export_students_csv(
     """Export siswa (selection atau seluruh) + progress → CSV round-trip bytes.
 
     Kolom token selalu kosong; teacher tidak pernah ikut; export tidak mengubah DB.
+    Header kolom lesson dilengkapi format yang diharapkan (mis. 'hello_world [completed]').
     """
     users = list_students_for_export(db, student_ids)
     lessons = list_active_lessons(db)
     lesson_slugs = [lesson.slug for lesson in lessons]
+    lesson_headers = {
+        lesson.slug: f"{lesson.slug} [{get_lesson_expected_format(lesson.slug)}]"
+        for lesson in lessons
+    }
 
     rows: list[StudentRoundTripRow] = []
     for user in users:
@@ -527,7 +550,7 @@ def export_students_csv(
                 progress=progress,
             )
         )
-    return serialize_export_csv(rows, lesson_slugs)
+    return serialize_export_csv(rows, lesson_slugs, lesson_headers=lesson_headers)
 
 
 def find_student_import_conflicts(
@@ -707,6 +730,47 @@ def run_student_import(
                         quiz_weight=LESSON_QUIZ_WEIGHT,
                         done_min_percent=LESSON_DONE_MIN_PERCENT,
                     )
+                elif parsed.state == "completed":
+                    has_exercise, has_quiz = get_lesson_components(slug)
+                    progress = set_progress(
+                        db,
+                        user_id=user.id,
+                        lesson_id=lesson.id,
+                        state="completed",
+                    )
+                    if progress is not None:
+                        if has_exercise:
+                            progress.exercise_passed = True
+                        progress.composite_percent = 100.0
+                        db.flush()
+                elif parsed.state == "scored":
+                    has_exercise, has_quiz = get_lesson_components(slug)
+                    effective_has_quiz = has_quiz or (
+                        parsed.score_total is not None and parsed.score_total > 0
+                    )
+                    progress = set_progress(
+                        db,
+                        user_id=user.id,
+                        lesson_id=lesson.id,
+                        state="scored",
+                        score_earned=parsed.score_earned,
+                        score_total=parsed.score_total,
+                    )
+                    if progress is not None:
+                        progress.quiz_score_earned = parsed.score_earned
+                        progress.quiz_score_total = parsed.score_total
+                        result = compute_composite(
+                            exercise_passed=progress.exercise_passed,
+                            quiz_earned=progress.quiz_score_earned,
+                            quiz_total=progress.quiz_score_total,
+                            has_exercise=has_exercise,
+                            has_quiz=effective_has_quiz,
+                            exercise_weight=LESSON_EXERCISE_WEIGHT,
+                            quiz_weight=LESSON_QUIZ_WEIGHT,
+                            done_min_percent=LESSON_DONE_MIN_PERCENT,
+                        )
+                        progress.composite_percent = result.composite_percent
+                        db.flush()
                 elif parsed.state == "reset":
                     set_progress(db, user_id=user.id, lesson_id=lesson.id, state="not_started")
                     progress_reset += 1

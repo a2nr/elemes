@@ -691,3 +691,98 @@ def test_add_student_empty_name_rejected(client):
     assert data["success"] is False
     assert resp.status_code == 400
 
+
+def test_export_modify_import_progress_sync_roundtrip(client):
+    """Verifikasi bahwa modifikasi progres di CSV (completed, skor, RESET)
+    tersinkronisasi ke model progres komposit dan terefleksi di /progress-report.json.
+    """
+    seeded = _seed_teacher_and_students()
+    _login_teacher(client)
+    s1, s2 = seeded["students"]
+
+    # 1) Export CSV awal
+    resp_export = client.post("/students/export-csv", json={"student_ids": [s1.id, s2.id]})
+    assert resp_export.status_code == 200
+
+    # 2) Ubah progres: s1 dapat 'completed' di hello_world, s2 dapat '3/4' di variabel
+    modified_rows = [
+        f"{s1.id};;{s1.display_name};completed;",
+        f"{s2.id};;{s2.display_name};;3/4",
+    ]
+    csv_content = _valid_csv(modified_rows)
+
+    # 3) Import CSV kembali
+    resp_import = _upload(client, "/students/import", csv_content)
+    assert resp_import.status_code == 200
+    assert resp_import.get_json()["success"] is True
+
+    # 4) Periksa /progress-report.json
+    resp_report = client.get("/progress-report.json")
+    assert resp_report.status_code == 200
+    assert "no-store" in resp_report.headers.get("Cache-Control", "")
+    data = resp_report.get_json()
+    students = {st["id"]: st for st in data["students"]}
+
+    # s1 hello_world harus punya composite 100 dan status completed
+    st1 = students[s1.id]
+    assert st1["hello_world_composite"] == 100
+    assert st1["hello_world"] == "completed"
+
+    # s2 variabel harus punya quiz_score '3/4' dan composite terhitung
+    st2 = students[s2.id]
+    assert st2["variabel_quiz_score"] == "3/4"
+    assert st2["variabel_composite"] is not None
+
+    # 5) Reset progres s1 via CSV 'RESET'
+    reset_rows = [
+        f"{s1.id};;{s1.display_name};RESET;",
+        f"{s2.id};;{s2.display_name};;3/4",
+    ]
+    resp_reset = _upload(client, "/students/import", _valid_csv(reset_rows))
+    assert resp_reset.status_code == 200
+
+    resp_report_after = client.get("/progress-report.json")
+    st1_after = next(s for s in resp_report_after.get_json()["students"] if s["id"] == s1.id)
+    assert st1_after["hello_world_composite"] is None
+
+
+def test_export_csv_headers_contain_expected_format_guide(client):
+    """Verifikasi bahwa file CSV yang diekspor memuat expected format di header kolom lesson
+    dan file tersebut dapat dimodifikasi serta diimpor kembali dengan sukses.
+    """
+    seeded = _seed_teacher_and_students()
+    _login_teacher(client)
+    s1, s2 = seeded["students"]
+
+    resp_export = client.post("/students/export-csv", json={"student_ids": [s1.id, s2.id]})
+    assert resp_export.status_code == 200
+
+    text = resp_export.data.decode("utf-8-sig")
+    lines = text.strip().splitlines()
+    assert lines[0].startswith("# Format kolom lesson:")
+    header_line = lines[1]
+    assert "hello_world [completed]" in header_line
+    assert "variabel [completed]" in header_line
+
+    # Modifikasi langsung baris CSV hasil export dengan format baru
+    # Pertahankan header asli berformat: student_id;token;nama_siswa;hello_world [completed];variabel [completed]
+    modified_csv = (
+        f"{lines[0]}\n"
+        f"{header_line}\n"
+        f"{s1.id};;{s1.display_name};completed;\n"
+        f"{s2.id};;{s2.display_name};;3/4\n"
+    ).encode("utf-8-sig")
+
+    resp_import = _upload(client, "/students/import", modified_csv)
+    assert resp_import.status_code == 200
+    assert resp_import.get_json()["success"] is True
+
+    resp_report = client.get("/progress-report.json")
+    assert resp_report.status_code == 200
+    data = resp_report.get_json()
+    students = {st["id"]: st for st in data["students"]}
+    assert students[s1.id]["hello_world_composite"] == 100
+    assert students[s2.id]["variabel_quiz_score"] == "3/4"
+
+
+

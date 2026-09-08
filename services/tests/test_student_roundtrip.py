@@ -27,6 +27,7 @@ from services.student_roundtrip import (
     StudentRoundTripRow,
     is_canonical_uuid,
     mask_student_id,
+    extract_slug_from_header,
     parse_roundtrip_csv,
     serialize_export_csv,
 )
@@ -698,4 +699,54 @@ def test_parse_roundtrip_csv_without_legend_row_backward_compatible():
     assert rows[0].progress["hello_world"] == ParsedProgress(
         "done", exercise_passed=True, quiz_earned=3, quiz_total=6
     )
+
+
+def test_extract_slug_from_header_various_formats():
+    active = {"hello_world", "quiz_test", "c_loop"}
+    assert extract_slug_from_header("hello_world", active) == "hello_world"
+    assert extract_slug_from_header("hello_world [completed]", active) == "hello_world"
+    assert extract_slug_from_header("quiz_test [<earned>/4]", active) == "quiz_test"
+    assert extract_slug_from_header("quiz_test [<earned>/<total>]", active) == "quiz_test"
+    assert extract_slug_from_header("c_loop [done:<1|0>:<earned>/5]", active) == "c_loop"
+    assert extract_slug_from_header("Hello World (hello_world) [completed]", active) == "hello_world"
+    assert extract_slug_from_header("Hello World (hello_world)", active) == "hello_world"
+    assert extract_slug_from_header("unknown_col [completed]", active) == "unknown_col"
+
+
+def test_export_serializer_with_lesson_headers_mapping():
+    rows = _sample_export_rows()
+    lesson_headers = {
+        "hello_world": "hello_world [completed]",
+        "variabel": "variabel [<earned>/4]",
+    }
+    data = serialize_export_csv(rows, ["hello_world", "variabel"], lesson_headers=lesson_headers)
+    text = data.decode("utf-8-sig")
+    lines = text.strip().splitlines()
+    assert lines[1] == "student_id;token;nama_siswa;hello_world [completed];variabel [<earned>/4]"
+    assert lines[2].startswith(f"{UUID_1};;Nama Siswa 1;completed;3/4")
+
+
+def test_parse_roundtrip_csv_with_inline_format_headers():
+    content = (
+        f"{LEGEND_COMMENT_LINE}\n"
+        "student_id;token;nama_siswa;hello_world [completed];variabel [<earned>/4]\n"
+        f"{UUID_1};;Budi;completed;3/4\n"
+    )
+    rows = parse_roundtrip_csv(content, ["hello_world", "variabel"])
+    assert len(rows) == 1
+    assert rows[0].student_id == UUID_1
+    assert rows[0].progress["hello_world"] == ParsedProgress("completed")
+    assert rows[0].progress["variabel"] == ParsedProgress("scored", 3, 4)
+
+
+def test_parse_roundtrip_csv_error_with_inline_format_header_reports_column_name():
+    content = (
+        f"{LEGEND_COMMENT_LINE}\n"
+        "student_id;token;nama_siswa;hello_world [completed]\n"
+        f"{UUID_1};;Budi;invalid_format\n"
+    )
+    with pytest.raises(RoundTripImportError) as exc:
+        parse_roundtrip_csv(content, ["hello_world"])
+    assert "kolom hello_world [completed]" in "; ".join(exc.value.errors)
+
 

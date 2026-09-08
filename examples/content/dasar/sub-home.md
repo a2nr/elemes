@@ -9,5 +9,6 @@ Materi fundamental untuk memulai belajar pemrograman C.
 4. [Uji Coba Kuis](lesson/quiz_test.md)
 5. [Uji Coba LaTeX](lesson/latex_test.md)
 6. [Uji Coba Slide](lesson/test_slides.md)
+7. [Uji Coba Komposit](lesson/composite_test.md)
 
 

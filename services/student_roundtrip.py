@@ -172,6 +172,40 @@ def _row_is_empty(record: dict) -> bool:
     return all(not (v or "").strip() for v in record.values())
 
 
+def extract_slug_from_header(header: str, active_slugs: set[str] | None = None) -> str:
+    """Ekstrak slug lesson canonical dari nama kolom header.
+
+    Mendukung format:
+    - Bare slug: "hello_world"
+    - Slug + expected format: "hello_world [completed]", "quiz_test [<earned>/4]"
+    - Title + (slug) + format: "Hello World (hello_world) [completed]"
+    - Title + (slug): "Hello World (hello_world)"
+    """
+    raw = (header or "").strip()
+    if not raw:
+        return ""
+    if active_slugs and raw in active_slugs:
+        return raw
+
+    # 1. Hapus kurung siku [expected format] di akhir bila ada
+    base = raw
+    if base.endswith("]") and "[" in base:
+        base = base[: base.rfind("[")].strip()
+
+    if active_slugs and base in active_slugs:
+        return base
+
+    # 2. Bila ada kurung biasa (slug) di akhir: "Title (slug)"
+    if base.endswith(")") and "(" in base:
+        inside = base[base.rfind("(") + 1 : -1].strip()
+        if active_slugs and inside in active_slugs:
+            return inside
+        if inside:
+            return inside
+
+    return base
+
+
 def parse_roundtrip_csv(
     content: str | bytes,
     active_lesson_slugs: list[str] | set[str],
@@ -226,14 +260,20 @@ def parse_roundtrip_csv(
             errors.append(f"Header duplikat: {col!r}")
         seen_headers.add(col)
 
-    lesson_columns: list[str] = []
+    header_to_slug: dict[str, str] = {}
+    seen_slugs: set[str] = set()
     for col in fieldnames:
         if col in REQUIRED_COLUMNS:
             continue
-        if col not in active:
+        slug = extract_slug_from_header(col, active)
+        if slug not in active:
             errors.append(f"Kolom lesson tidak dikenal atau tidak aktif: {col!r}")
             continue
-        lesson_columns.append(col)
+        if slug in seen_slugs:
+            errors.append(f"Header duplikat untuk lesson: {col!r}")
+            continue
+        seen_slugs.add(slug)
+        header_to_slug[col] = slug
 
     if errors:
         raise RoundTripImportError(errors)
@@ -322,12 +362,12 @@ def parse_roundtrip_csv(
 
         # progress per lesson
         progress: dict[str, ParsedProgress] = {}
-        for slug in lesson_columns:
-            value = record.get(slug) or ""
+        for col, slug in header_to_slug.items():
+            value = record.get(col) or ""
             try:
                 parsed = parse_roundtrip_cell(value)
             except ValueError as exc:
-                errors.append(f"Baris {line}, kolom {slug}: {exc}")
+                errors.append(f"Baris {line}, kolom {col}: {exc}")
                 continue
             if parsed is not None:
                 progress[slug] = parsed
@@ -350,15 +390,23 @@ def parse_roundtrip_csv(
 def serialize_export_csv(
     rows: list[StudentRoundTripRow],
     lesson_slugs: list[str],
+    lesson_headers: dict[str, str] | None = None,
 ) -> bytes:
     """Serialize row export → CSV UTF-8 BOM, delimiter ';', token selalu kosong.
 
     - Baris pertama: legend grammar sel progress (# Format kolom lesson...).
-    - Header: student_id;token;nama_siswa;<lesson_slugs...> sesuai urutan.
+    - Header: student_id;token;nama_siswa;<lesson_headers...> sesuai urutan.
     - Status ditulis dengan grammar roundtrip (kosong/completed/<earned>/<total>/done:...).
     - `completed_count`, role, hash token, dan metadata internal tidak diekspor.
     """
-    fieldnames = ["student_id", "token", "nama_siswa", *lesson_slugs]
+    headers_map = lesson_headers or {}
+    resolved_columns: list[tuple[str, str]] = []
+    for item in lesson_slugs:
+        header_label = headers_map.get(item, item)
+        canonical_slug = extract_slug_from_header(item)
+        resolved_columns.append((canonical_slug, header_label))
+
+    fieldnames = ["student_id", "token", "nama_siswa", *[lbl for _, lbl in resolved_columns]]
     out = io.StringIO()
     out.write(f"{LEGEND_COMMENT_LINE}\n")
     writer = csv.DictWriter(
@@ -371,7 +419,7 @@ def serialize_export_csv(
             "token": "",  # selalu kosong — tidak ada export/recovery token
             "nama_siswa": row.display_name,
         }
-        for slug in lesson_slugs:
-            record[slug] = format_roundtrip_cell(row.progress.get(slug))
+        for slug, col_name in resolved_columns:
+            record[col_name] = format_roundtrip_cell(row.progress.get(slug))
         writer.writerow(record)
     return out.getvalue().encode("utf-8-sig")

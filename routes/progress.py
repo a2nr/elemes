@@ -85,10 +85,12 @@ def api_progress_report():
         get_lessons_with_learning_objectives,
     )
 
-    return jsonify({
+    resp = jsonify({
         'students': all_students_progress,
         'lessons': [{'filename': l['filename'], 'title': l['title']} for l in ordered_lessons],
     })
+    resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    return resp
 
 
 @progress_bp.route('/progress-report/export-csv')

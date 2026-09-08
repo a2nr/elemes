@@ -56,7 +56,9 @@
 
 		loading = true;
 		try {
-			const res = await fetch(`/api/progress-report.json?token=${encodeURIComponent($authToken)}`);
+			const res = await fetch(`/api/progress-report.json?token=${encodeURIComponent($authToken)}&_t=${Date.now()}`, {
+				cache: 'no-store'
+			});
 			const data = await res.json();
 			students = data.students ?? [];
 			lessons = data.lessons ?? [];
@@ -286,6 +288,7 @@
 							</td>
 							{#each lessons as lesson}
 								{@const key = lesson.filename.replace('.md', '')}
+								{@const status = student[key]}
 								{@const composite = student[key + '_composite']}
 								{@const exercisePassed = student[key + '_exercise_passed']}
 								{@const quizScore = student[key + '_quiz_score']}
@@ -305,6 +308,10 @@
 											{#if quizScore}
 												<span class="badge quiz-score" title="Skor quiz">{quizScore}</span>
 											{/if}
+										{:else if status === 'completed'}
+											<span class="badge exercise-done" title="Selesai">&#10003;</span>
+										{:else if status && status !== 'not_started'}
+											<span class="badge score" title="Status progres">{status}</span>
 										{:else}
 											<span class="badge empty">&mdash;</span>
 										{/if}
@@ -333,7 +340,7 @@
 											{/if}
 										{/if}
 
-										{#if composite !== null && composite !== undefined}
+										{#if (composite !== null && composite !== undefined) || (status && status !== 'not_started')}
 											<button
 												class="btn-reset-mini"
 												onclick={() => handleReset(student.id as string, key, student.nama_siswa)}

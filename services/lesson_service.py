@@ -1304,3 +1304,35 @@ def get_lesson_components(lesson_name: str) -> tuple[bool, bool]:
     has_quiz = "quiz" in tabs
     return (has_exercise, has_quiz)
 
+
+def get_lesson_quiz_total(lesson_name: str) -> int | None:
+    """Kembalikan jumlah soal kuis untuk lesson jika ada, atau None."""
+    file_path = find_lesson_file(f"{lesson_name}.md")
+    if not file_path:
+        return None
+    try:
+        parsed = render_markdown_content(file_path)
+        quiz_data = parsed.get("quiz_data") or []
+        return len(quiz_data) if quiz_data else None
+    except Exception:
+        return None
+
+
+def get_lesson_expected_format(lesson_name: str) -> str:
+    """Tentukan panduan expected format kolom lesson berdasarkan komponennya.
+
+    - Exercise only: 'completed'
+    - Quiz only: '<earned>/N' jika total soal diketahui, atau '<earned>/<total>'
+    - Exercise + Quiz: 'done:<1|0>:<earned>/N' (atau '<total>')
+    - Reading only: 'completed'
+    """
+    has_exercise, has_quiz = get_lesson_components(lesson_name)
+    quiz_total = get_lesson_quiz_total(lesson_name) if has_quiz else None
+    if has_exercise and has_quiz:
+        q_fmt = f"<earned>/{quiz_total}" if quiz_total else "<earned>/<total>"
+        return f"done:<1|0>:{q_fmt}"
+    if has_quiz:
+        return f"<earned>/{quiz_total}" if quiz_total else "<earned>/<total>"
+    return "completed"
+
+
