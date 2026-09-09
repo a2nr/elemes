@@ -9,21 +9,28 @@
 
 	const questions = $derived(mgr.quizSession?.questions ?? []);
 
+	let submitting = $state(false);
+
 	function isAnswered(qId: string): boolean {
 		const a = mgr.quizSession?.answers[qId];
 		if (!a) return false;
 		return a.selectedOptionId !== null || a.acknowledged;
 	}
 
-	function handleFinish() {
-		if (!mgr.quizAllAnswered) return;
+	async function handleFinish() {
+		if (!mgr.quizAllAnswered || submitting) return;
 
 		if (
 			window.confirm(
 				'Apakah anda yakin untuk menyelesaikan kuis? Materi akan muncul kembali setelah ini.'
 			)
 		) {
-			mgr.finishQuiz();
+			submitting = true;
+			try {
+				await mgr.finishQuiz();
+			} finally {
+				submitting = false;
+			}
 		}
 	}
 </script>
@@ -48,7 +55,7 @@
 				{/each}
 			</div>
 		{/if}
-		<button type="button" class="btn-exit-quiz" onclick={() => mgr.submitQuiz()}>Keluar Kuis</button>
+		<button type="button" class="btn-exit-quiz" onclick={() => mgr.submitQuiz()} disabled={submitting}>Keluar Kuis</button>
 	</div>
 
 	{#if mgr.quizCurrentQuestion}
@@ -87,9 +94,9 @@
 					type="button"
 					class="btn btn-success"
 					onclick={handleFinish}
-					disabled={!mgr.quizAllAnswered}
+					disabled={!mgr.quizAllAnswered || submitting}
 				>
-					Selesai Kuis
+					{submitting ? 'Menyimpan...' : 'Selesai Kuis'}
 				</button>
 			{/if}
 		</div>

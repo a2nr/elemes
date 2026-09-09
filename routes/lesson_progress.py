@@ -84,9 +84,10 @@ def submit_lesson_progress():
 
         has_exercise, has_quiz = get_lesson_components(lesson_name)
 
+        progress_rec = None
         if progress_type == "exercise":
             repo.set_exercise_passed(db, user_id=user.id, lesson_id=lesson.id)
-            repo.recompute_progress(
+            progress_rec = repo.recompute_progress(
                 db,
                 user_id=user.id,
                 lesson_id=lesson.id,
@@ -97,7 +98,19 @@ def submit_lesson_progress():
                 done_min_percent=LESSON_DONE_MIN_PERCENT,
             )
             db.commit()
-            return jsonify({"success": True, "idempotent": False})
+            return jsonify(
+                {
+                    "success": True,
+                    "idempotent": False,
+                    "is_done": progress_rec.state == "done" if progress_rec else False,
+                    "state": progress_rec.state if progress_rec else "not_started",
+                    "composite_percent": (
+                        round(progress_rec.composite_percent, 2)
+                        if progress_rec and progress_rec.composite_percent is not None
+                        else None
+                    ),
+                }
+            )
 
         # ── progress_type == 'quiz' ── mirror submit_quiz_attempt ─────
         attempt_id = str(data.get("attempt_id") or "").strip()
@@ -199,7 +212,7 @@ def submit_lesson_progress():
                 quiz_earned=earned,
                 quiz_total=total,
             )
-            repo.recompute_progress(
+            progress_rec = repo.recompute_progress(
                 db,
                 user_id=user.id,
                 lesson_id=lesson.id,
@@ -209,6 +222,8 @@ def submit_lesson_progress():
                 quiz_weight=LESSON_QUIZ_WEIGHT,
                 done_min_percent=LESSON_DONE_MIN_PERCENT,
             )
+        else:
+            progress_rec = repo.get_progress(db, user_id=user.id, lesson_id=lesson.id)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -231,6 +246,13 @@ def submit_lesson_progress():
             "success": True,
             "idempotent": not created,
             "attempt_id": attempt.id,
+            "is_done": progress_rec.state == "done" if progress_rec else False,
+            "state": progress_rec.state if progress_rec else "not_started",
+            "composite_percent": (
+                round(progress_rec.composite_percent, 2)
+                if progress_rec and progress_rec.composite_percent is not None
+                else None
+            ),
         }
     )
 

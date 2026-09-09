@@ -173,6 +173,9 @@ export interface LessonProgressResponse {
 	idempotent?: boolean;
 	attempt_id?: string;
 	message?: string;
+	is_done?: boolean;
+	state?: string;
+	composite_percent?: number | null;
 }
 
 export async function submitLessonProgress(

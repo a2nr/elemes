@@ -47,5 +47,6 @@ export interface LessonContent {
 	evaluation_config: Record<string, any>;
 	quiz_data?: QuizQuestion[];
 	lesson_progress_status?: string;
+	has_quiz_attempt?: boolean;
 	hex_content?: string;
 }

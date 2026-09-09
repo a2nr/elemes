@@ -16,11 +16,19 @@
 	let { mgr }: Props = $props();
 
 	const isLoggedIn = $derived($authLoggedIn);
+
+	// --- Review-after-refresh: fetch stored attempt (one-attempt → session lost) ---
+	let storedAttempt: LessonProgressFetchResponse | null = $state(null);
+	let reviewQuestions: QuizQuestion[] = $state([]);
+	let reviewAnswers: Record<string, QuizAnswer> = $state({});
+
 	// Gate 2: Quiz already completed (one-attempt enforcement)
 	const quizAlreadyCompleted = $derived(
-		!!mgr.data?.lesson_progress_status &&
+		(!!mgr.data?.lesson_progress_status &&
 			mgr.data.lesson_progress_status !== 'not_started' &&
-			mgr.data.lesson_progress_status !== ''
+			mgr.data.lesson_progress_status !== '') ||
+		!!mgr.data?.has_quiz_attempt ||
+		!!storedAttempt
 	);
 
 	const currentQuestion = $derived(mgr.currentQuizQuestion);
@@ -31,11 +39,6 @@
 	// pembahasan (siswa yang kehilangan fokus tidak mendapat bocoran jawaban).
 	const showReview = $derived(shouldShowQuizReview(mgr.quizTerminationReason));
 
-	// --- Review-after-refresh: fetch stored attempt (one-attempt → session lost) ---
-	let storedAttempt: LessonProgressFetchResponse | null = $state(null);
-	let reviewQuestions: QuizQuestion[] = $state([]);
-	let reviewAnswers: Record<string, QuizAnswer> = $state({});
-
 	async function loadStoredAttempt() {
 		const token = get(authToken) || localStorage.getItem('student_token') || '';
 		if (!token || !mgr.data) return;
@@ -43,7 +46,7 @@
 		try {
 			const resp = await fetchLessonProgress(lessonName, token);
 			const storedAnswers = resp.answers ?? [];
-			if (resp.success && storedAnswers.length) {
+			if (resp.success && (storedAnswers.length > 0 || resp.attempt_id)) {
 				storedAttempt = resp;
 				// Rekonstruksi question+answer maps dari stored attempt agar
 				// summary review per-soal bisa dirender setelah refresh.
@@ -71,7 +74,7 @@
 	// Fetch attempt bila sudah selesai tapi session hilang (refresh/page-open)
 	onMount(() => {
 		const r = result;
-		if (!r && quizAlreadyCompleted && !mgr.quizSession) {
+		if (!r && (quizAlreadyCompleted || mgr.data?.has_quiz_attempt) && !mgr.quizSession) {
 			loadStoredAttempt();
 		}
 	});
@@ -113,11 +116,22 @@
 				{#if quizAlreadyCompleted && !result}
 					{#if storedAttempt}
 						{@const s = storedAttempt}
-						<p class="score-display">Nilai Anda: <strong>{s.attempt_score ?? s.quiz_score_total != null ? `${s.quiz_score_earned ?? '-'}/${s.quiz_score_total}` : mgr.data?.lesson_progress_status}</strong></p>
+						{@const earned = s.quiz_score_earned ?? (s.attempt_score?.includes('/') ? parseInt(s.attempt_score.split('/')[0], 10) : null)}
+						{@const total = s.quiz_score_total ?? (s.attempt_score?.includes('/') ? parseInt(s.attempt_score.split('/')[1], 10) : null)}
+						<p class="score-display">Nilai Anda: <strong>{s.attempt_score ?? (total != null ? `${earned ?? '-'}/${total}` : mgr.data?.lesson_progress_status)}</strong></p>
 						{#if s.attempt_started_at || s.attempt_status}
 							<div class="score-breakdown">
 								{#if s.attempt_status}<span class="breakdown-item">Status: <strong>{s.attempt_status}</strong></span>{/if}
 								{#if s.attempt_score}<span class="breakdown-item">Skor: <strong>{s.attempt_score}</strong></span>{/if}
+							</div>
+						{/if}
+						{#if total != null && total > 0 && (earned ?? 0) / total < 0.75}
+							<div class="alert alert-warning">
+								Nilai Anda di bawah ambang batas 75%. Pelajari kembali topik di bawah ini.
+							</div>
+						{:else if total != null && total > 0}
+							<div class="alert alert-success">
+								Selamat! Anda telah memahami materi ini dengan baik.
 							</div>
 						{/if}
 					{:else}

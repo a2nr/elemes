@@ -99,6 +99,26 @@ def get_student_progress(token):
         db.close()
 
 
+def has_quiz_attempt(token, lesson_name):
+    """Cek apakah siswa sudah memiliki rekaman attempt kuis untuk lesson ini."""
+    if not token or SessionLocal is None:
+        return False
+    db = SessionLocal()
+    try:
+        user = find_user_by_raw_token(db, token)
+        if user is None:
+            return False
+        lesson = get_lesson_by_slug(db, lesson_name)
+        if lesson is None:
+            return False
+        attempt = repo.get_quiz_attempt_for_user_lesson(
+            db, user_id=user.id, lesson_id=lesson.id
+        )
+        return attempt is not None
+    finally:
+        db.close()
+
+
 def reset_progress(student_id, lesson_name):
     """Reset via student_id = user.id (PG) — teacher tidak perlu token siswa.
 

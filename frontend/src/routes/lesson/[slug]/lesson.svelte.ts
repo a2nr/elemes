@@ -249,13 +249,32 @@ export class LessonManager {
 
 	async completeLesson(status = 'completed') {
 		if (this.lessonCompleted && status === 'completed') return;
-		this.showCelebration = true;
 
 		if (get(authLoggedIn)) {
 			const lessonName = this.slug.replace('.md', '');
-			await submitLessonProgress({ token: auth.token, lesson_name: lessonName, type: 'exercise' });
+			const res = await submitLessonProgress({ token: auth.token, lesson_name: lessonName, type: 'exercise' });
+			const isDone = res && typeof res.is_done === 'boolean' ? res.is_done : true;
+			this.lessonCompleted = isDone;
+			if (isDone) {
+				this.showCelebration = true;
+			}
+			lessonContext.update(ctx => ctx ? { ...ctx, completed: isDone } : ctx);
+			if (this.data?.ordered_lessons) {
+				const current = this.data.ordered_lessons.find(
+					(l) => l.filename === this.slug || l.filename.replace('.md', '') === this.slug.replace('.md', '')
+				);
+				if (current) current.completed = isDone;
+			}
+		} else {
+			this.showCelebration = true;
 			this.lessonCompleted = true;
 			lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
+			if (this.data?.ordered_lessons) {
+				const current = this.data.ordered_lessons.find(
+					(l) => l.filename === this.slug || l.filename.replace('.md', '') === this.slug.replace('.md', '')
+				);
+				if (current) current.completed = true;
+			}
 		}
 	}
 
@@ -384,10 +403,30 @@ export class LessonManager {
 		const payload = this.buildQuizAttemptPayload(reason);
 		if (!payload) return;
 
-		// Update status UI lokal (tanpa menulis progress ulang — endpoint
-		// attempt atomic yang menulis progress). Celebration hanya untuk
-		// penyelesaian normal, bukan exit penalti/termination.
-		this.markQuizCompletedLocally(reason === 'completed');
+		// Hitung perkiraan awal (optimistic) lulus/tidaknya kuis (ambang batas 75%)
+		const isQuizScorePassed =
+			reason === 'completed' && this.quizResult
+				? this.quizResult.totalMcq > 0
+					? this.quizResult.correctMcq / this.quizResult.totalMcq >= 0.75
+					: true
+				: false;
+
+		const hasExerciseTab =
+			this.data?.active_tabs?.some((t) =>
+				['c', 'python', 'circuit', 'flowchart', 'velxio'].includes(t)
+			) ?? false;
+
+		// Jika lesson juga memiliki latihan dan latihan belum selesai, kuis saja belum menyelesaikan lesson
+		const exerciseDone =
+			this.data?.lesson_progress_status?.startsWith('done:1:') ||
+			this.cPassed ||
+			this.pythonPassed ||
+			this.circuitPassed ||
+			this.flowchartPassed;
+		const optimisticLessonDone = isQuizScorePassed && (!hasExerciseTab || exerciseDone);
+
+		// Update status UI lokal secara optimis
+		this.markQuizCompletedLocally(optimisticLessonDone);
 
 		if (reason === 'focus_lost' || reason === 'page_unload') {
 			// Jangan mengandalkan await dari event lifecycle. Beacon pertama;
@@ -395,21 +434,31 @@ export class LessonManager {
 			const ok = lessonProgressBeacon(payload);
 			if (!ok && typeof document !== 'undefined' && document.visibilityState === 'visible') {
 				try {
-					await submitLessonProgress(payload);
+					const res = await submitLessonProgress(payload);
+					if (this.data) this.data.has_quiz_attempt = true;
+					if (res && res.success && typeof res.is_done === 'boolean') {
+						this.markQuizCompletedLocally(res.is_done);
+					}
 				} catch {
 					/* best-effort saja — jangan memblokir UI */
 				}
 			}
 			return;
-			}
+		}
 
-			try {
-			await submitLessonProgress(payload);
+		try {
+			const res = await submitLessonProgress(payload);
+			if (this.data) this.data.has_quiz_attempt = true;
+			if (res && res.success && typeof res.is_done === 'boolean') {
+				this.markQuizCompletedLocally(res.is_done);
+			}
 		} catch {
 			// Fallback legacy: skor tetap tersimpan walau endpoint attempt
 			// tidak bisa dijangkau. Tidak membuat attempt kedua — endpoint
 			// attempt atomic; jalur ini hanya penyelamat last-resort.
-			await this.completeLesson(this.quizResult.statusString);
+			if (isQuizScorePassed) {
+				await this.completeLesson(this.quizResult.statusString);
+			}
 		}
 	}
 
@@ -418,10 +467,16 @@ export class LessonManager {
 	 * memanggil endpoint terpisah — attempt atomic /api/lesson-progress
 	 * yang menulis progress.
 	 */
-	private markQuizCompletedLocally(celebrate: boolean) {
-		this.lessonCompleted = true;
-		if (celebrate) this.showCelebration = true;
-		lessonContext.update((ctx) => (ctx ? { ...ctx, completed: true } : ctx));
+	private markQuizCompletedLocally(passed: boolean) {
+		this.lessonCompleted = passed;
+		this.showCelebration = passed;
+		lessonContext.update((ctx) => (ctx ? { ...ctx, completed: passed } : ctx));
+		if (this.data?.ordered_lessons) {
+			const current = this.data.ordered_lessons.find(
+				(l) => l.filename === this.slug || l.filename.replace('.md', '') === this.slug.replace('.md', '')
+			);
+			if (current) current.completed = passed;
+		}
 	}
 
 	/**

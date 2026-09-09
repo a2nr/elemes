@@ -27,6 +27,11 @@ def get_student_progress(token):
     return _backend().get_student_progress(token)
 
 
+def has_quiz_attempt(token, lesson_name):
+    """Cek apakah siswa sudah memiliki rekaman attempt kuis untuk lesson."""
+    return _backend().has_quiz_attempt(token, lesson_name)
+
+
 def reset_student_progress(student_id, lesson_name):
     """Reset progress siswa by student_id (id anonim dari report — bukan token)."""
     return _backend().reset_progress(student_id, lesson_name)

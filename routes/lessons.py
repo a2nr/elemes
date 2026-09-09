@@ -19,7 +19,7 @@ from services.lesson_service import (
     render_home_content,
     find_lesson_file,
 )
-from services.token_service import get_student_progress
+from services.token_service import get_student_progress, has_quiz_attempt
 
 lessons_bp = Blueprint('lessons', __name__)
 
@@ -142,12 +142,15 @@ def api_lesson(filename):
     progress = None
     lesson_completed = False
     lesson_progress_status = ''
+    lesson_slug = full_filename.replace('.md', '')
+    user_has_quiz_attempt = False
     if token:
         progress = get_student_progress(token)
         if progress:
-            status = progress.get(full_filename.replace('.md', ''), '')
+            status = progress.get(lesson_slug, '')
             lesson_progress_status = status
             lesson_completed = status not in (None, '', 'not_started')
+        user_has_quiz_attempt = has_quiz_attempt(token, lesson_slug)
 
     # Detect sub-home for this lesson's folder (untuk sidebar & navigasi)
     sub_home_path, sub_home_folder = find_sub_home_for_lesson(file_path)
@@ -262,6 +265,7 @@ def api_lesson(filename):
         'lesson_progress_status': lesson_progress_status,
         'lesson_title': current_lesson_meta['title'] if current_lesson_meta else full_filename.replace('.md', '').replace('_', ' ').title(),
         'lesson_completed': lesson_completed,
+        'has_quiz_attempt': user_has_quiz_attempt,
         'locked': is_locked,
         'missing_prerequisites': missing_prereqs,
         'prev_lesson': prev_lesson,

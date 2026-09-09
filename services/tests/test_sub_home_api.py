@@ -303,3 +303,13 @@ def test_lesson_detail_missing_prerequisites_with_score(client, tmp_path, monkey
     data = resp.get_json()
     assert data["locked"] is True
     assert data["missing_prerequisites"] == ["dasar"]
+    assert "has_quiz_attempt" in data
+
+
+def test_lesson_detail_has_quiz_attempt_field(client, tmp_path, monkeypatch):
+    _make_bab_with_prereq(tmp_path, monkeypatch, "- [Dasar](lesson/dasar.md)")
+    from routes import lessons as lessons_routes
+    monkeypatch.setattr(lessons_routes, "has_quiz_attempt", lambda token, slug: True)
+    resp = client.get("/lesson/lanjutan.json?token=siswa1")
+    assert resp.status_code == 200
+    assert resp.get_json()["has_quiz_attempt"] is True

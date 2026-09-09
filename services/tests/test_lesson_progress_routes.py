@@ -129,6 +129,25 @@ def test_quiz_submit_creates_attempt(client):
     assert body["success"] is True
     assert body["idempotent"] is False
     assert "attempt_id" in body
+    assert body["is_done"] is True
+    assert body["state"] == "done"
+    assert body["composite_percent"] == 100.0
+
+
+def test_quiz_submit_below_threshold_marks_in_progress(client, monkeypatch):
+    import routes.lesson_progress as lp
+
+    monkeypatch.setattr(lp, "get_lesson_components", lambda name: (False, True))
+    resp = client.post(
+        "/lesson-progress",
+        json=_payload({"status": "submitted", "termination_reason": None, "score": "1/4"}),
+    )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["success"] is True
+    assert body["is_done"] is False
+    assert body["state"] == "in_progress"
+    assert body["composite_percent"] == 25.0
 
 
 def test_quiz_retry_same_attempt_id_idempotent(client):
