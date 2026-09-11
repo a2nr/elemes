@@ -275,19 +275,6 @@
 
 <svelte:head>
 	<title>Developer Playground — Elemes</title>
-	<style>
-		/* Override root container constrainer — playground is full viewport.
-		   main.container default-nya display:block + height auto, jadi anak
-		   .playground-page{height:100%} cuma ngisi tinggi intrinsic-nya.
-		   Jadikan flex-column agar playground memenuhi ruang sisa setelah navbar. */
-		main.container {
-			display: flex;
-			flex-direction: column;
-			max-width: none !important;
-			padding-inline: 0 !important;
-			min-height: 0;
-		}
-	</style>
 </svelte:head>
 
 <div class="playground-page">
@@ -425,11 +412,13 @@
 <style>
 	.playground-page {
 		width: 100%;
-		flex: 1;
+		height: 100%;
+		flex: 1 1 0;
 		min-height: 0;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
+		position: relative;
 	}
 
 	/* ── Tab bar ── */
@@ -440,8 +429,11 @@
 		padding: 0 8px;
 		background: var(--color-bg-secondary);
 		border-bottom: 1px solid var(--color-border);
+		height: 36px;
 		min-height: 36px;
 		flex-shrink: 0;
+		position: relative;
+		z-index: 10;
 	}
 
 	.pg-tab {
@@ -486,19 +478,25 @@
 
 	/* ── Content area ── */
 	.pg-content {
-		flex: 1;
+		flex: 1 1 0;
 		min-height: 0;
+		width: 100%;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
+		position: relative;
+		z-index: 1;
 	}
 
 	.pg-iframe {
 		width: 100%;
-		flex: 1;
+		height: 100%;
+		flex: 1 1 0;
 		border: none;
 		display: block;
 		min-height: 0;
+		touch-action: pan-y;
+		overscroll-behavior: contain;
 	}
 
 	.pg-circuit-wrap {
@@ -672,9 +670,11 @@
 		}
 		.pg-content {
 			min-height: 400px;
+			height: auto;
 		}
 		.pg-iframe {
 			min-height: 400px;
+			height: auto;
 		}
 		.pg-file-tree-shell {
 			width: 180px;
