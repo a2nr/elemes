@@ -4,6 +4,7 @@ import CWorker from './c-worker.ts?worker';
 import PyWorker from './python-worker.ts?worker';
 
 const DEFAULT_TIMEOUT_MS = 5000;
+const INTERACTIVE_TIMEOUT_MS = 60000; // 60s for human interactive typing
 const SAB_SIZE = 4096; // 4 KB for one line of stdin buffer
 
 export interface RunOptions {
@@ -18,6 +19,7 @@ export class ClientRunner {
 	private cWorker: Worker | null = null;
 	private pyWorker: Worker | null = null;
 	private stdinSAB: SharedArrayBuffer | null = null;
+	private onInputSent?: () => void;
 
 	onWaitingForInput?: () => void;
 	onStdout?: (text: string) => void;
@@ -44,10 +46,13 @@ export class ClientRunner {
 		const arr = new Int32Array(this.stdinSAB);
 		const view = new Uint8Array(this.stdinSAB);
 		const encoded = new TextEncoder().encode(text.endsWith('\n') ? text : text + '\n');
-		view.set(encoded, 8);
-		Atomics.store(arr, 1, encoded.length);
+		const maxPayload = this.stdinSAB.byteLength - 8;
+		const payload = encoded.length > maxPayload ? encoded.slice(0, maxPayload) : encoded;
+		view.set(payload, 8);
+		Atomics.store(arr, 1, payload.length);
 		Atomics.store(arr, 0, 1); // flag ready = 1
 		Atomics.notify(arr, 0);   // wake up worker
+		this.onInputSent?.();
 	}
 
 	async run(
@@ -70,19 +75,40 @@ export class ClientRunner {
 			let output = '';
 			let error = '';
 			let settled = false;
+			let currentTimer: ReturnType<typeof setTimeout> | null = null;
+
+			const clearTimer = () => {
+				if (currentTimer) {
+					clearTimeout(currentTimer);
+					currentTimer = null;
+				}
+			};
+
+			const resetTimer = (durationMs: number, reasonMsg?: string) => {
+				clearTimer();
+				currentTimer = setTimeout(() => {
+					if (settled) return;
+					settled = true;
+					this.onInputSent = undefined;
+					this.killWorker(lang);
+					resolve({
+						success: false,
+						output: output.trimEnd(),
+						error:
+							reasonMsg ??
+							`⏱️ Eksekusi dihentikan — batas waktu ${durationMs / 1000} detik terlampaui (kemungkinan infinite loop).`
+					});
+				}, durationMs);
+			};
+
+			this.onInputSent = () => {
+				if (!settled) {
+					resetTimer(timeoutMs);
+				}
+			};
 
 			const worker = this.spawnWorker(lang);
-
-			const timer = setTimeout(() => {
-				if (settled) return;
-				settled = true;
-				this.killWorker(lang);
-				resolve({
-					success: false,
-					output: output.trimEnd(),
-					error: `⏱️ Eksekusi dihentikan — batas waktu ${timeoutMs / 1000} detik terlampaui (kemungkinan infinite loop).`
-				});
-			}, timeoutMs);
+			resetTimer(timeoutMs);
 
 			worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
 				const msg = e.data;
@@ -95,12 +121,18 @@ export class ClientRunner {
 					this.onStderr?.(msg.text);
 					options.onStderr?.(msg.text);
 				} else if (msg.type === 'waiting_for_input') {
+					// Program sedang menunggu input pengguna — beri waktu lebih longgar untuk mengetik
+					resetTimer(
+						INTERACTIVE_TIMEOUT_MS,
+						`⏱️ Eksekusi dihentikan — waktu tunggu input (${INTERACTIVE_TIMEOUT_MS / 1000} detik) terlampaui.`
+					);
 					this.onWaitingForInput?.();
 					options.onWaitingForInput?.();
 				} else if (msg.type === 'done') {
 					if (settled) return;
 					settled = true;
-					clearTimeout(timer);
+					clearTimer();
+					this.onInputSent = undefined;
 					resolve({
 						success: msg.success,
 						output: output.trimEnd(),
@@ -113,7 +145,8 @@ export class ClientRunner {
 				console.error('[client-runner] Worker onerror event:', errEvent);
 				if (settled) return;
 				settled = true;
-				clearTimeout(timer);
+				clearTimer();
+				this.onInputSent = undefined;
 				const details = [
 					errEvent.message,
 					errEvent.filename ? `(${errEvent.filename}:${errEvent.lineno}:${errEvent.colno})` : null,

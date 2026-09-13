@@ -8,20 +8,24 @@ let stdinDataView: Uint8Array | null = null;
 let prefilledLines: string[] = [];
 let prefilledLineIdx = 0;
 
-function readlineSync(): string {
-	if (prefilledLines.length > 0) {
-		if (prefilledLineIdx < prefilledLines.length) {
-			return prefilledLines[prefilledLineIdx++];
-		}
-		return '';
+function readlineSync(prompt?: string): string {
+	if (prompt) {
+		self.postMessage({ type: 'stdout', text: prompt } satisfies WorkerMessage);
+	}
+
+	if (prefilledLineIdx < prefilledLines.length) {
+		return prefilledLines[prefilledLineIdx++];
 	}
 
 	if (!stdinArray || !stdinDataView) {
 		return '';
 	}
 
-	self.postMessage({ type: 'waiting_for_input' } satisfies WorkerMessage);
-	Atomics.wait(stdinArray, 0, 0);
+	// If main thread has not already written input (flag != 1), notify UI and wait
+	if (Atomics.load(stdinArray, 0) === 0) {
+		self.postMessage({ type: 'waiting_for_input' } satisfies WorkerMessage);
+		Atomics.wait(stdinArray, 0, 0);
+	}
 
 	const len = Atomics.load(stdinArray, 1);
 	if (len <= 0) {
@@ -53,7 +57,7 @@ async function getMicroPython(): Promise<any> {
 		});
 
 		mpInstance.registerJsModule('_elemes_io', {
-			readline: () => readlineSync()
+			readline: (prompt?: string) => readlineSync(prompt)
 		});
 
 		mpInstance.runPython(`
@@ -61,9 +65,7 @@ import _elemes_io
 import builtins
 
 def _interactive_input(prompt=''):
-    if prompt:
-        print(prompt, end='')
-    return _elemes_io.readline()
+    return _elemes_io.readline(prompt)
 
 builtins.input = _interactive_input
 `);

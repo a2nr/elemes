@@ -8,19 +8,26 @@ let charIndex: number = 0;
 let justFinishedLine: boolean = false;
 let prefilledStdin: string = '';
 let prefilledIdx: number = 0;
+let stdoutBuf: number[] = [];
+let stderrBuf: number[] = [];
+
+function flushStdout(): void {
+	if (stdoutBuf.length > 0) {
+		const text = new TextDecoder().decode(new Uint8Array(stdoutBuf));
+		self.postMessage({ type: 'stdout', text } satisfies WorkerMessage);
+		stdoutBuf = [];
+	}
+}
+
+function flushStderr(): void {
+	if (stderrBuf.length > 0) {
+		const text = new TextDecoder().decode(new Uint8Array(stderrBuf));
+		self.postMessage({ type: 'stderr', text } satisfies WorkerMessage);
+		stderrBuf = [];
+	}
+}
 
 function stdinRead(): number | null {
-	if (prefilledStdin.length > 0) {
-		if (prefilledIdx < prefilledStdin.length) {
-			return prefilledStdin.charCodeAt(prefilledIdx++);
-		}
-		return null;
-	}
-
-	if (!stdinArray || !stdinDataView) {
-		return null;
-	}
-
 	if (charIndex < currentLine.length) {
 		return currentLine.charCodeAt(charIndex++);
 	}
@@ -30,8 +37,21 @@ function stdinRead(): number | null {
 		return null;
 	}
 
-	self.postMessage({ type: 'waiting_for_input' } satisfies WorkerMessage);
-	Atomics.wait(stdinArray, 0, 0);
+	if (prefilledIdx < prefilledStdin.length) {
+		return prefilledStdin.charCodeAt(prefilledIdx++);
+	}
+
+	if (!stdinArray || !stdinDataView) {
+		return null;
+	}
+
+	flushStdout();
+
+	// If main thread has not already written input (flag != 1), notify UI and wait
+	if (Atomics.load(stdinArray, 0) === 0) {
+		self.postMessage({ type: 'waiting_for_input' } satisfies WorkerMessage);
+		Atomics.wait(stdinArray, 0, 0);
+	}
 
 	const len = Atomics.load(stdinArray, 1);
 	if (len <= 0) {
@@ -52,6 +72,23 @@ function stdinRead(): number | null {
 	return currentLine.charCodeAt(charIndex++);
 }
 
+function prepareCCode(code: string): string {
+	if (!code.includes('setbuf(') && !code.includes('setvbuf(')) {
+		const mainRegex = /\b(int|void)?\s*main\s*\([^)]*\)\s*\{/;
+		if (mainRegex.test(code)) {
+			code = code.replace(mainRegex, (match) => `${match}\n    setbuf(stdout, NULL);`);
+		}
+	}
+	// In PicoC, 32-bit float in scanf("%f") writes 0 due to 64-bit JS numbers representation;
+	// upgrading to double/%lf allows normal float code to execute accurately.
+	code = code.replace(/\bfloat\b/g, 'double');
+	code = code.replace(/scanf\s*\(\s*"([^"]*)"/g, (match, fmt) => {
+		const upgradedFmt = fmt.replace(/%f/g, '%lf');
+		return `scanf("${upgradedFmt}"`;
+	});
+	return code;
+}
+
 self.onmessage = (e: MessageEvent<RunRequest>) => {
 	const { code, stdinBuffer, stdinText } = e.data;
 	const start = performance.now();
@@ -69,37 +106,25 @@ self.onmessage = (e: MessageEvent<RunRequest>) => {
 	currentLine = '';
 	charIndex = 0;
 	justFinishedLine = false;
+	stdoutBuf = [];
+	stderrBuf = [];
 
 	try {
-		let stdoutBuf: number[] = [];
-		let stderrBuf: number[] = [];
-		let callbackError = '';
-
 		let hasExecuted = false;
 		const execute = () => {
 			if (hasExecuted) return;
 			hasExecuted = true;
 			try {
-				pc.runc(code, (text: string) => {
+				pc.runc(prepareCCode(code), (text: string) => {
 					if (text) {
-						callbackError += text + '\n';
 						self.postMessage({ type: 'stdout', text: text + '\n' } satisfies WorkerMessage);
 					}
 				});
-				if (stdoutBuf.length > 0) {
-					const remaining = new TextDecoder().decode(new Uint8Array(stdoutBuf));
-					self.postMessage({ type: 'stdout', text: remaining } satisfies WorkerMessage);
-					stdoutBuf = [];
-				}
-				if (stderrBuf.length > 0) {
-					const remaining = new TextDecoder().decode(new Uint8Array(stderrBuf));
-					self.postMessage({ type: 'stderr', text: remaining } satisfies WorkerMessage);
-					stderrBuf = [];
-				}
+				flushStdout();
+				flushStderr();
 				self.postMessage({
 					type: 'done',
-					success: !callbackError,
-					error: callbackError || undefined,
+					success: true,
 					executionTimeMs: performance.now() - start
 				} satisfies WorkerMessage);
 			} catch (err: any) {
@@ -143,7 +168,6 @@ self.onmessage = (e: MessageEvent<RunRequest>) => {
 			},
 			consoleWrite: (text: string) => {
 				if (text) {
-					callbackError += text + '\n';
 					self.postMessage({ type: 'stdout', text: text + '\n' } satisfies WorkerMessage);
 				}
 			},

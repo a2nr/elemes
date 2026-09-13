@@ -42,7 +42,7 @@
 	]);
 
 	function consoleLine(type: ConsoleLine['type'], text: string): ConsoleLine {
-		return { type, text, timestamp: Date.now() };
+		return { id: crypto.randomUUID(), type, text, timestamp: Date.now() };
 	}
 
 	function selectCodeLanguage(lang: 'c' | 'python') {
@@ -96,11 +96,24 @@
 			consoleLine('info', `$ run project [${lang}]${stdin ? ' (dengan stdin antrean)' : ''}`)
 		);
 
+		// Pastikan console terbuka saat program dijalankan
+		if (!$playgroundStore.consoleVisible) {
+			playgroundStore.toggleConsole();
+		}
+
 		generation += 1;
 		const myGen = generation;
 		clearPollTimer();
 
 		if (execMode === 'browser') {
+			if (!clientRunner.isSharedArrayBufferSupported) {
+				playgroundStore.appendConsole(
+					consoleLine(
+						'info',
+						'⚠ SharedArrayBuffer tidak aktif di browser ini — input interaktif terbatas. Gunakan mode Server atau pastikan browser mendukung cross-origin isolation.'
+					)
+				);
+			}
 			playgroundStore.startRunSession('local-browser', 'running');
 			try {
 				const activeContent = files.find((f) => f.name === active_file)?.content || files[0]?.content || '';
@@ -113,7 +126,7 @@
 						playgroundStore.appendConsole(consoleLine('error', text));
 					},
 					onWaitingForInput: () => {
-						playgroundStore.appendConsole(consoleLine('info', 'Menunggu input...'));
+						playgroundStore.setWaitingForInput(true);
 					}
 				});
 
@@ -226,6 +239,7 @@
 
 	async function sendInputToSession(text: string) {
 		const s = $playgroundStore;
+		playgroundStore.setWaitingForInput(false);
 		if (s.runSessionId === 'local-browser') {
 			clientRunner.sendInput(text);
 			return;
@@ -317,8 +331,12 @@
 		clearPollTimer();
 		const sid = $playgroundStore.runSessionId;
 		if (sid) {
-			// Best-effort cleanup sesi (keepalive agar tak ter-blokir navigasi)
-			void stopCompileSession(sid);
+			if (sid === 'local-browser') {
+				clientRunner.terminate();
+			} else {
+				// Best-effort cleanup sesi (keepalive agar tak ter-blokir navigasi)
+				void stopCompileSession(sid);
+			}
 			playgroundStore.resetRunSession();
 		}
 	});

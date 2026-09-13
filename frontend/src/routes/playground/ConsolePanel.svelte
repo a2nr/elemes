@@ -12,15 +12,26 @@
 	let { onSendInput, onStop }: Props = $props();
 
 	let outputEl: HTMLDivElement | undefined = $state();
+	let inputEl: HTMLInputElement | undefined = $state();
 	let sending = $state(false);
 
 	const consoleHistory = $derived($playgroundStore.consoleHistory);
 	const consoleVisible = $derived($playgroundStore.consoleVisible);
 	const runStatus = $derived($playgroundStore.runStatus);
+	const waitingForInput = $derived($playgroundStore.waitingForInput);
 	const isActive = $derived(
 		runStatus === 'queued' || runStatus === 'compiling' || runStatus === 'running'
 	);
 	const isStopping = $derived(runStatus === 'stopping');
+
+	// Auto-focus input saat program menunggu input
+	$effect(() => {
+		if (waitingForInput && inputEl) {
+			queueMicrotask(() => {
+				inputEl?.focus();
+			});
+		}
+	});
 
 	// Auto-scroll ke bawah saat ada output baru
 	$effect(() => {
@@ -32,26 +43,24 @@
 	});
 
 	async function sendInput() {
-		if (sending) return;
+		if (sending || !isActive || !onSendInput) return;
 		const text = get(playgroundStore).consoleInput;
-		if (!text) return;
 
-		if (!isActive || !onSendInput) {
-			// Mode antrean (idle/terminal): simpan ke stdinQueue utk Run berikutnya
-			playgroundStore.enqueueStdin(text);
-			const line: ConsoleLine = { type: 'input', text: text.trim(), timestamp: Date.now() };
-			playgroundStore.appendConsole(line);
-			playgroundStore.setConsoleInput('');
-			return;
-		}
-
-		// Mode aktif: kirim ke sesi — history hanya setelah POST berhasil
+		// Mode aktif: kirim ke sesi — history hanya setelah kirim berhasil
 		sending = true;
 		try {
 			await onSendInput(text);
-			const line: ConsoleLine = { type: 'input', text, timestamp: Date.now() };
+			const line: ConsoleLine = {
+				id: crypto.randomUUID(),
+				type: 'input',
+				text,
+				timestamp: Date.now()
+			};
 			playgroundStore.appendConsole(line);
 			playgroundStore.setConsoleInput('');
+			queueMicrotask(() => {
+				inputEl?.focus();
+			});
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			playgroundStore.appendConsole(consoleErrorLine(`Input gagal dikirim: ${msg}`));
@@ -61,13 +70,15 @@
 	}
 
 	function consoleErrorLine(text: string): ConsoleLine {
-		return { type: 'error', text, timestamp: Date.now() };
+		return { id: crypto.randomUUID(), type: 'error', text, timestamp: Date.now() };
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
 			e.preventDefault();
-			void sendInput();
+			if (isActive) {
+				void sendInput();
+			}
 		}
 	}
 
@@ -88,9 +99,18 @@
 
 	function statusLabel(): string | null {
 		if (isStopping) return '⏹ Menghentikan…';
+		if (waitingForInput) return '⌨️ Menunggu input…';
 		if (isActive) return '⏳ Menjalankan…';
 		return null;
 	}
+
+	const inputPlaceholder = $derived(
+		waitingForInput
+			? 'Program menunggu input kamu, ketik di sini lalu tekan Enter…'
+			: isActive
+				? 'Ketik jawaban, Enter untuk mengirim…'
+				: 'Klik ▶ Run untuk menjalankan program…'
+	);
 </script>
 
 <div class="console-panel" class:collapsed={!consoleVisible}>
@@ -98,7 +118,7 @@
 		<span class="console-title">Console</span>
 		<div class="console-actions">
 			{#if statusLabel()}
-				<span class="console-running">{statusLabel()}</span>
+				<span class="console-running" class:waiting={waitingForInput}>{statusLabel()}</span>
 			{/if}
 			{#if isActive && !isStopping}
 				<button
@@ -129,7 +149,7 @@
 					Klik ▶ Run di editor untuk menjalankan program. Output dan error akan muncul di sini.
 				</div>
 			{:else}
-				{#each consoleHistory as line (line.timestamp + '-' + line.text.length)}
+				{#each consoleHistory as line (line.id)}
 					<div class="console-line" style="color: {getLineColor(line.type)}">
 						{#if line.type === 'input'}
 							<span class="console-prompt">&gt;</span>
@@ -140,33 +160,26 @@
 			{/if}
 		</div>
 
-		<div class="console-input-area">
+		<div class="console-input-area" class:waiting-input={waitingForInput}>
 			<span class="console-ps1">&gt;</span>
 			<input
+				bind:this={inputEl}
 				class="console-input"
 				value={$playgroundStore.consoleInput}
 				oninput={(e) => playgroundStore.setConsoleInput(e.currentTarget.value)}
 				onkeydown={handleKeydown}
-				placeholder={
-					isActive
-						? 'Ketik jawaban, Enter untuk mengirim…'
-						: 'Ketik input, Enter untuk mengantre, lalu Run…'
-				}
+				placeholder={inputPlaceholder}
+				disabled={!isActive}
 			/>
-			{#if isActive && !isStopping}
-				<button class="console-send" onclick={() => void sendInput()} disabled={sending}>
-					{sending ? '…' : 'Kirim'}
-				</button>
-			{:else}
-				<button
-					class="console-send"
-					onclick={() => void sendInput()}
-					disabled={isStopping}
-					title="Antrekan sebagai input untuk Run berikutnya"
-				>
-					Antrekan
-				</button>
-			{/if}
+			<button
+				class="console-send"
+				class:highlight={waitingForInput}
+				onclick={() => void sendInput()}
+				disabled={!isActive || sending || isStopping}
+				title={!isActive ? 'Jalankan program terlebih dahulu' : waitingForInput ? 'Kirim input ke program' : 'Kirim'}
+			>
+				{sending ? '…' : waitingForInput ? 'Kirim ⏎' : 'Kirim'}
+			</button>
 		</div>
 	{/if}
 </div>
@@ -213,6 +226,16 @@
 		font-size: 0.7rem;
 		color: var(--color-warning);
 		font-weight: 600;
+	}
+
+	.console-running.waiting {
+		color: var(--color-primary);
+		animation: pulse-waiting 1.5s infinite ease-in-out;
+	}
+
+	@keyframes pulse-waiting {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.5; }
 	}
 
 	.console-btn {
@@ -272,6 +295,15 @@
 		border-top: 1px solid var(--color-border);
 		background: var(--color-bg-secondary);
 		flex-shrink: 0;
+		transition: box-shadow 0.2s;
+	}
+
+	.console-input-area.waiting-input {
+		box-shadow: inset 0 0 0 1px var(--color-primary);
+	}
+
+	.console-input-area.waiting-input .console-input {
+		border-color: var(--color-primary);
 	}
 
 	.console-ps1 {
@@ -298,6 +330,11 @@
 		border-color: var(--color-primary);
 	}
 
+	.console-input:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
 	.console-send {
 		background: var(--color-primary);
 		color: #fff;
@@ -307,7 +344,11 @@
 		cursor: pointer;
 		font-size: 0.78rem;
 		font-weight: 500;
-		transition: opacity 0.15s;
+		transition: opacity 0.15s, filter 0.15s;
+	}
+
+	.console-send.highlight {
+		filter: brightness(1.15);
 	}
 
 	.console-send:hover:not(:disabled) {

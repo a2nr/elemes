@@ -73,6 +73,43 @@ int main() {
 		// PicoC catches syntax errors either via throw or internal error handler
 		expect(true).toBe(true);
 	});
+
+	it('evaluates C scanf and prints interactive response', async () => {
+		let captured = '';
+		const inputData = 'Budi\n';
+		let inputIdx = 0;
+		await new Promise<void>((resolve) => {
+			const pc = (picoc as any)({
+				stdin: () => {
+					if (inputIdx < inputData.length) {
+						return inputData.charCodeAt(inputIdx++);
+					}
+					return null;
+				},
+				stdout: (c: number) => {
+					captured += String.fromCharCode(c);
+				}
+			});
+			pc.consoleWrite = (text: string) => {
+				captured += text;
+			};
+			pc.onRuntimeInitialized = () => {
+				const code = `
+#include <stdio.h>
+int main() {
+    char nama[50];
+    scanf("%s", nama);
+    printf("Halo, %s!\\n", nama);
+    return 0;
+}
+				`;
+				pc.runc(code, () => {});
+				resolve();
+			};
+		});
+
+		expect(captured).toContain('Halo, Budi!');
+	});
 });
 
 describe('MicroPython WASM Engine Direct Evaluation', () => {
@@ -103,12 +140,91 @@ print("LIST:", kuadrat_genap(6))
 
 		expect(lines.join('').trim()).toBe('LIST: [0, 4, 16]');
 	});
+
+	it('evaluates Python input with prompt forwarding to readline', async () => {
+		const lines: string[] = [];
+		let receivedPrompt = '';
+		const mp = await loadMicroPython({
+			stdout: (line: string) => lines.push(line),
+			linebuffer: true
+		});
+
+		mp.registerJsModule('_elemes_io', {
+			readline: (prompt?: string) => {
+				receivedPrompt = prompt || '';
+				return 'Budi';
+			}
+		});
+
+		mp.runPython(`
+import _elemes_io
+import builtins
+
+def _interactive_input(prompt=''):
+    return _elemes_io.readline(prompt)
+
+builtins.input = _interactive_input
+
+nama = input("Siapa nama kamu? ")
+print(f"Halo, {nama}!")
+		`);
+
+		expect(receivedPrompt).toBe('Siapa nama kamu? ');
+		expect(lines.join('').trim()).toBe('Halo, Budi!');
+	});
+
+	it('evaluates multiple Python input calls sequentially', async () => {
+		const lines: string[] = [];
+		const inputs = ['Budi', '25'];
+		let inputIdx = 0;
+		const mp = await loadMicroPython({
+			stdout: (line: string) => lines.push(line),
+			linebuffer: true
+		});
+
+		mp.registerJsModule('_elemes_io', {
+			readline: () => {
+				return inputs[inputIdx++] || '';
+			}
+		});
+
+		mp.runPython(`
+import _elemes_io
+import builtins
+
+def _interactive_input(prompt=''):
+    return _elemes_io.readline(prompt)
+
+builtins.input = _interactive_input
+
+nama = input()
+umur = input()
+print(f"Nama: {nama}, Umur: {umur}")
+		`);
+
+		expect(lines.join('').trim()).toBe('Nama: Budi, Umur: 25');
+	});
 });
 
 describe('ClientRunner Interface and Options', () => {
 	it('reports SAB support state correctly', () => {
 		const runner = new ClientRunner();
 		expect(typeof runner.isSharedArrayBufferSupported).toBe('boolean');
+	});
+
+	it('sendInput handles strings larger than SAB buffer without throwing RangeError', () => {
+		const runner = new ClientRunner();
+		if (runner.isSharedArrayBufferSupported) {
+			const largeString = 'A'.repeat(5000);
+			(runner as any).ensureSAB();
+			expect(() => {
+				runner.sendInput(largeString);
+			}).not.toThrow();
+			const sab = (runner as any).stdinSAB;
+			const arr = new Int32Array(sab);
+			const len = Atomics.load(arr, 1);
+			expect(len).toBeLessThanOrEqual(sab.byteLength - 8);
+		}
 	});
 
 	it('returns error when invoked in non-browser environment', async () => {

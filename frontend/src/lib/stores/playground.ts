@@ -22,6 +22,7 @@ export interface PlaygroundFile {
 export type ConsoleLineType = 'input' | 'output' | 'error' | 'info';
 
 export interface ConsoleLine {
+	id: string;
 	type: ConsoleLineType;
 	text: string;
 	timestamp: number;
@@ -46,21 +47,34 @@ interface PlaygroundState {
 	outputCursor: number;
 	/** Pesan error runtime/sesi terakhir (null saat tidak ada). */
 	runError: string | null;
+	/** Apakah sesi sedang menunggu input pengguna. */
+	waitingForInput: boolean;
 }
 
 const STORAGE_KEY = 'elemes_playground_files_v1';
 
-const DEFAULT_C_CONTENT = `#include <stdio.h>
+export const DEFAULT_C_CONTENT = `#include <stdio.h>
+
+int main() {
+    char nama[50];
+    printf("Siapa nama kamu? ");
+    scanf("%s", nama);
+    printf("Halo, %s! Selamat belajar pemrograman.\\n", nama);
+    return 0;
+}
+`;
+
+export const DEFAULT_PY_CONTENT = `# Program Python sederhana
+nama = input("Siapa nama kamu? ")
+print(f"Halo, {nama}! Selamat belajar pemrograman.")
+`;
+
+const OLD_DEFAULT_C = `#include <stdio.h>
 
 int main() {
     printf("Halo, dunia!\\n");
     return 0;
 }
-`;
-
-const DEFAULT_PY_CONTENT = `# Program Python sederhana
-nama = input("Siapa nama kamu? ")
-print(f"Halo, {nama}! Selamat belajar pemrograman.")
 `;
 
 function generateId(): string {
@@ -80,7 +94,19 @@ function loadPersistedFiles(): PlaygroundFile[] {
 		if (!raw) return defaultFiles();
 		const parsed = JSON.parse(raw) as PlaygroundFile[];
 		if (!Array.isArray(parsed) || parsed.length === 0) return defaultFiles();
-		return parsed.filter((f) => f && typeof f.name === 'string');
+		const files = parsed.filter((f) => f && typeof f.name === 'string');
+		let hasChanges = false;
+		const migrated = files.map((f) => {
+			if (f.name === 'main.c' && (!f.content || f.content.trim() === OLD_DEFAULT_C.trim())) {
+				hasChanges = true;
+				return { ...f, content: DEFAULT_C_CONTENT };
+			}
+			return f;
+		});
+		if (hasChanges) {
+			persistFiles(migrated);
+		}
+		return migrated;
 	} catch {
 		return defaultFiles();
 	}
@@ -107,7 +133,8 @@ function initialState(): PlaygroundState {
 		runStatus: 'idle',
 		runSessionId: null,
 		outputCursor: 0,
-		runError: null
+		runError: null,
+		waitingForInput: false
 	};
 }
 
@@ -119,10 +146,15 @@ function createPlaygroundStore() {
 
 		// ── File management ──────────────────────────────────────────
 
-		addFile: (name: string): string => {
+		addFile: (name: string, initialContent?: string): string => {
 			const id = generateId();
+			let content = initialContent ?? '';
+			if (!initialContent) {
+				if (name === 'main.c') content = DEFAULT_C_CONTENT;
+				else if (name === 'main.py') content = DEFAULT_PY_CONTENT;
+			}
 			update((s) => {
-				const files = [...s.files, { id, name, content: '', modified: true }];
+				const files = [...s.files, { id, name, content, modified: true }];
 				persistFiles(files);
 				return { ...s, files, activeFileId: id };
 			});
@@ -178,10 +210,20 @@ function createPlaygroundStore() {
 
 		// ── Console ──────────────────────────────────────────────────
 
-		appendConsole: (line: ConsoleLine) => {
+		appendConsole: (line: ConsoleLine | Omit<ConsoleLine, 'id'>) => {
+			const withId: ConsoleLine =
+				'id' in line && line.id
+					? (line as ConsoleLine)
+					: {
+							...(line as Omit<ConsoleLine, 'id'>),
+							id:
+								typeof crypto !== 'undefined' && crypto.randomUUID
+									? crypto.randomUUID()
+									: 'cl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+						};
 			update((s) => ({
 				...s,
-				consoleHistory: [...s.consoleHistory, line].slice(-500)
+				consoleHistory: [...s.consoleHistory, withId].slice(-500)
 			}));
 		},
 
@@ -202,8 +244,8 @@ function createPlaygroundStore() {
 		consumeStdin: (): string => {
 			let stdin = '';
 			update((s) => {
-				stdin = s.stdinQueue.map((line) => line + '\n').join('') + s.consoleInput;
-				return { ...s, stdinQueue: [], consoleInput: '' };
+				stdin = s.stdinQueue.map((line) => line + '\n').join('');
+				return { ...s, stdinQueue: [] };
 			});
 			return stdin;
 		},
@@ -228,13 +270,18 @@ function createPlaygroundStore() {
 
 		// ── Interactive session lifecycle ────────────────────────────
 
+		setWaitingForInput: (waiting: boolean) => {
+			update((s) => ({ ...s, waitingForInput: waiting }));
+		},
+
 		startRunSession: (sessionId: string, status: InteractiveRunStatus) => {
 			update((s) => ({
 				...s,
 				runStatus: status,
 				runSessionId: sessionId,
 				outputCursor: 0,
-				runError: null
+				runError: null,
+				waitingForInput: false
 			}));
 		},
 
@@ -258,7 +305,8 @@ function createPlaygroundStore() {
 			update((s) => ({
 				...s,
 				runStatus: status,
-				runError: error ?? s.runError
+				runError: error ?? s.runError,
+				waitingForInput: false
 			}));
 		},
 
@@ -269,7 +317,8 @@ function createPlaygroundStore() {
 				runStatus: 'idle',
 				runSessionId: null,
 				outputCursor: 0,
-				runError: null
+				runError: null,
+				waitingForInput: false
 			}));
 		},
 

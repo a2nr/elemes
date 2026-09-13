@@ -22,15 +22,25 @@ describe('playgroundStore stdinQueue', () => {
 		expect(state.stdinQueue).toEqual([]);
 	});
 
-	it('consumeStdin mengembalikan seluruh antrean + draft, digabung dengan newline, lalu mengosongkan', () => {
+	it('consumeStdin mengembalikan seluruh antrean tanpa memakan draft consoleInput', () => {
 		playgroundStore.enqueueStdin('Budi');
 		playgroundStore.enqueueStdin('17');
 		playgroundStore.setConsoleInput('draft yang belum dikirim');
 		const stdin = playgroundStore.consumeStdin();
-		expect(stdin).toBe('Budi\n17\ndraft yang belum dikirim');
+		expect(stdin).toBe('Budi\n17\n');
 		const state = get(playgroundStore);
 		expect(state.stdinQueue).toEqual([]);
-		expect(state.consoleInput).toBe('');
+		expect(state.consoleInput).toBe('draft yang belum dikirim');
+	});
+
+	it('appendConsole menambahkan id unik pada ConsoleLine', () => {
+		playgroundStore.appendConsole({ type: 'output', text: 'Hello', timestamp: 123 } as any);
+		playgroundStore.appendConsole({ type: 'output', text: 'World', timestamp: 123 } as any);
+		const history = get(playgroundStore).consoleHistory;
+		expect(history.length).toBe(2);
+		expect(history[0].id).toBeDefined();
+		expect(history[1].id).toBeDefined();
+		expect(history[0].id).not.toBe(history[1].id);
 	});
 
 	it('consumeStdin mengembalikan string kosong jika tidak ada baris maupun draft', () => {
@@ -135,5 +145,57 @@ describe('playgroundStore session lifecycle', () => {
 		playgroundStore.updateRunStatus('compiling');
 		playgroundStore.updateRunStatus('running');
 		expect(get(playgroundStore).runStatus).toBe('running');
+	});
+
+	it('setWaitingForInput mengubah state dan dibersihkan saat finishRun/resetRunSession', () => {
+		playgroundStore.startRunSession('sess-1', 'running');
+		expect(get(playgroundStore).waitingForInput).toBe(false);
+
+		playgroundStore.setWaitingForInput(true);
+		expect(get(playgroundStore).waitingForInput).toBe(true);
+
+		playgroundStore.finishRun('exited');
+		expect(get(playgroundStore).waitingForInput).toBe(false);
+
+		playgroundStore.setWaitingForInput(true);
+		expect(get(playgroundStore).waitingForInput).toBe(true);
+
+		playgroundStore.resetRunSession();
+		expect(get(playgroundStore).waitingForInput).toBe(false);
+	});
+});
+
+describe('playgroundStore default files & content', () => {
+	beforeEach(() => {
+		playgroundStore.reset();
+	});
+
+	it('file default memuat template C dengan scanf dan template Python dengan input', () => {
+		const state = get(playgroundStore);
+		const cFile = state.files.find((f) => f.name === 'main.c');
+		const pyFile = state.files.find((f) => f.name === 'main.py');
+
+		expect(cFile).toBeDefined();
+		expect(cFile?.content).toContain('scanf');
+		expect(cFile?.content).toContain('Siapa nama kamu?');
+
+		expect(pyFile).toBeDefined();
+		expect(pyFile?.content).toContain('input(');
+		expect(pyFile?.content).toContain('Siapa nama kamu?');
+	});
+
+	it('addFile untuk main.c dan main.py secara otomatis mengisi template default jika kosong', () => {
+		const cId = playgroundStore.addFile('main.c');
+		const pyId = playgroundStore.addFile('main.py');
+		const otherId = playgroundStore.addFile('helper.c');
+
+		const state = get(playgroundStore);
+		const cFile = state.files.find((f) => f.id === cId);
+		const pyFile = state.files.find((f) => f.id === pyId);
+		const otherFile = state.files.find((f) => f.id === otherId);
+
+		expect(cFile?.content).toContain('scanf');
+		expect(pyFile?.content).toContain('input(');
+		expect(otherFile?.content).toBe('');
 	});
 });
