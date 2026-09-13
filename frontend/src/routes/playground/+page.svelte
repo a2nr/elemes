@@ -306,6 +306,9 @@
 
 	onMount(() => {
 		window.addEventListener('message', handleMessage);
+		if (window.innerWidth <= 768 && $playgroundStore.fileTreeVisible) {
+			playgroundStore.toggleFileTree();
+		}
 	});
 
 	onDestroy(() => {
@@ -758,21 +761,24 @@
 
 	/* ── Mobile ── */
 	@media (max-width: 768px) {
-		.playground-page {
-			overflow-y: auto;
-			height: auto;
-			min-height: 100dvh;
-		}
-		.pg-content {
-			min-height: 400px;
-			height: auto;
-		}
-		.pg-iframe {
-			min-height: 400px;
-			height: auto;
-		}
 		.pg-file-tree-shell {
-			width: 180px;
+			width: 150px;
+		}
+		.pg-code-toolbar {
+			gap: 0.35rem;
+			padding: 0.25rem 0.5rem;
+		}
+		.pg-file-name {
+			max-width: 90px;
+			font-size: 0.75rem;
+		}
+		.pg-mode-btn {
+			padding: 0.15rem 0.35rem;
+			font-size: 0.68rem;
+		}
+		.pg-run-btn {
+			padding: 0.25rem 0.6rem;
+			font-size: 0.75rem;
 		}
 	}
 </style>

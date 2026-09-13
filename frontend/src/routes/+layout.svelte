@@ -24,19 +24,17 @@
 <svelte:head>
 	{#if isPlayground}
 		<style>
-			@media (min-width: 769px) {
-				html,
-				body {
-					height: 100dvh !important;
-					max-height: 100dvh !important;
-					overflow: hidden !important;
-					overscroll-behavior: none !important;
-				}
-				nav.navbar {
-					position: relative !important;
-					flex-shrink: 0 !important;
-					top: auto !important;
-				}
+			html,
+			body {
+				height: 100dvh !important;
+				max-height: 100dvh !important;
+				overflow: hidden !important;
+				overscroll-behavior: none !important;
+			}
+			nav.navbar {
+				position: relative !important;
+				flex-shrink: 0 !important;
+				top: auto !important;
 			}
 		</style>
 	{/if}

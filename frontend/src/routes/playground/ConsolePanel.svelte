@@ -268,7 +268,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.4rem;
-		padding: 0.4rem 0.75rem;
+		padding: 0.4rem 0.75rem max(0.4rem, env(safe-area-inset-bottom, 0px));
 		border-top: 1px solid var(--color-border);
 		background: var(--color-bg-secondary);
 		flex-shrink: 0;
@@ -326,5 +326,14 @@
 	.console-panel ::-webkit-scrollbar-thumb {
 		background: var(--color-border);
 		border-radius: 3px;
+	}
+
+	@media (max-width: 768px) {
+		.console-panel {
+			height: 200px;
+		}
+		.console-panel.collapsed {
+			height: 38px;
+		}
 	}
 </style>
