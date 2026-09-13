@@ -35,5 +35,6 @@
 		onload={(e) => onSetupBridge(e.currentTarget as HTMLIFrameElement)}
 		allow="cross-origin-isolated; fullscreen"
 		allowfullscreen
+		credentialless
 	></iframe>
 {/if}

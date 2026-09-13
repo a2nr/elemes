@@ -43,7 +43,9 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/compile') ||
       url.pathname.startsWith('/api/lesson-progress') ||
       url.pathname.startsWith('/api/login') ||
-      url.pathname.startsWith('/api/logout')) {
+      url.pathname.startsWith('/api/logout') ||
+      url.pathname.includes('/workers/') ||
+      url.pathname.endsWith('.wasm')) {
     return; // biarkan browser handle
   }
 

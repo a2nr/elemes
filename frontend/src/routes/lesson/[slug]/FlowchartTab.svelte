@@ -120,6 +120,7 @@
     class="flowchart-iframe"
     src="/flowchart/?iframe=true&cb={cb}"
     title="Flowchart Editor"
+    credentialless
   ></iframe>
 </div>
 

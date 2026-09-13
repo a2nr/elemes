@@ -36,7 +36,7 @@ describe('hooks.server handle', () => {
 		expect(resolve).not.toHaveBeenCalled();
 	});
 
-	it('should pass through normal page routes to resolve()', async () => {
+	it('should pass through normal page routes to resolve() and attach COOP/COEP/CORP headers', async () => {
 		const mockEvent: any = {
 			request: {
 				method: 'GET',
@@ -52,6 +52,9 @@ describe('hooks.server handle', () => {
 
 		expect(resolve).toHaveBeenCalledWith(mockEvent);
 		expect(response).toBe(mockResponse);
+		expect(response.headers.get('Cross-Origin-Opener-Policy')).toBe('same-origin');
+		expect(response.headers.get('Cross-Origin-Embedder-Policy')).toBe('credentialless');
+		expect(response.headers.get('Cross-Origin-Resource-Policy')).toBe('cross-origin');
 	});
 
 	it('should read body as arrayBuffer when proxying POST requests', async () => {

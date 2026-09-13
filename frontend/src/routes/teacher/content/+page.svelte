@@ -909,6 +909,7 @@
 											class="flowchart-iframe"
 											src="/flowchart/?iframe=true"
 											title="Flowchart Editor"
+											credentialless
 										></iframe>
 									</div>
 								{:else if extractedCodes[dynTab.id]}

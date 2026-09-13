@@ -203,6 +203,7 @@
 		onload={handleIframeLoad}
 		allow="cross-origin-isolated; fullscreen"
 		allowfullscreen
+		credentialless
 	></iframe>
 </div>
 

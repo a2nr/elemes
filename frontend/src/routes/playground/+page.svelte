@@ -9,6 +9,7 @@
 		stopCompileSession
 	} from '$services/api';
 	import type { InteractiveRunStatus } from '$types/compiler';
+	import { clientRunner } from '$services/code-runner/client-runner';
 	import DeployFAB from '$components/DeployFAB.svelte';
 	import CircuitEditor from '$components/CircuitEditor.svelte';
 	import CodeEditor from '$components/CodeEditor.svelte';
@@ -19,6 +20,7 @@
 	type PlaygroundTab = 'velxio' | 'flowchart' | 'circuit' | 'code';
 
 	let activeTab = $state<PlaygroundTab>('velxio');
+	let execMode = $state<'browser' | 'server'>('browser');
 	let codeEditor = $state<CodeEditor | null>(null);
 
 	// ── File tree (C/Python) ──
@@ -97,6 +99,42 @@
 		generation += 1;
 		const myGen = generation;
 		clearPollTimer();
+
+		if (execMode === 'browser') {
+			playgroundStore.startRunSession('local-browser', 'running');
+			try {
+				const activeContent = files.find((f) => f.name === active_file)?.content || files[0]?.content || '';
+				const res = await clientRunner.run(lang, activeContent, {
+					stdinText: stdin || undefined,
+					onStdout: (text) => {
+						playgroundStore.appendConsole(consoleLine('output', text));
+					},
+					onStderr: (text) => {
+						playgroundStore.appendConsole(consoleLine('error', text));
+					},
+					onWaitingForInput: () => {
+						playgroundStore.appendConsole(consoleLine('info', 'Menunggu input...'));
+					}
+				});
+
+				if (myGen !== generation) return;
+
+				if (res.success) {
+					playgroundStore.appendConsole(consoleLine('info', '(selesai, exit code 0)'));
+					playgroundStore.finishRun('exited', null);
+				} else {
+					playgroundStore.appendConsole(consoleLine('error', res.error || 'Eksekusi berhenti dengan error'));
+					playgroundStore.finishRun('error', res.error || null);
+				}
+			} catch (err) {
+				if (myGen !== generation) return;
+				playgroundStore.appendConsole(
+					consoleLine('error', `Error: ${err instanceof Error ? err.message : String(err)}`)
+				);
+				playgroundStore.resetRunSession();
+			}
+			return;
+		}
 
 		try {
 			const res = await startCompileSession({
@@ -188,6 +226,10 @@
 
 	async function sendInputToSession(text: string) {
 		const s = $playgroundStore;
+		if (s.runSessionId === 'local-browser') {
+			clientRunner.sendInput(text);
+			return;
+		}
 		if (!s.runSessionId || s.runStatus !== 'running') {
 			// Jatuh ke mode antrean — ConsolePanel menangani sendiri saat idle;
 			// di sini hanya mencegah kirim ke sesi yang tidak aktif.
@@ -199,6 +241,12 @@
 	async function stopRun() {
 		const sid = $playgroundStore.runSessionId;
 		if (!sid) return;
+		if (sid === 'local-browser') {
+			clientRunner.terminate();
+			playgroundStore.finishRun('stopped', 'program dihentikan oleh pengguna');
+			playgroundStore.resetRunSession();
+			return;
+		}
 		clearPollTimer();
 		playgroundStore.updateRunStatus('stopping');
 		try {
@@ -354,6 +402,26 @@
 						<span class="pg-file-name" title={activeFile?.name}>{activeFile?.name ?? '—'}</span>
 						<span class="pg-file-lang">{codeLanguage}</span>
 						<div class="pg-toolbar-spacer"></div>
+						<div class="pg-mode-toggle" title="Pilih engine eksekusi">
+							<button
+								type="button"
+								class="pg-mode-btn"
+								class:active={execMode === 'browser'}
+								onclick={() => (execMode = 'browser')}
+								title="Eksekusi langsung di browser (Cepat, Offline)"
+							>
+								⚡ Browser
+							</button>
+							<button
+								type="button"
+								class="pg-mode-btn"
+								class:active={execMode === 'server'}
+								onclick={() => (execMode = 'server')}
+								title="Eksekusi di server PTY GCC/Python3 (Terminal Penuh)"
+							>
+								🖥️ Server
+							</button>
+						</div>
 						<button
 							class="pg-run-btn"
 							onclick={() => void startRun()}
@@ -614,6 +682,33 @@
 
 	.pg-toolbar-spacer {
 		flex: 1;
+	}
+
+	.pg-mode-toggle {
+		display: inline-flex;
+		align-items: center;
+		background: var(--color-bg, #0f172a);
+		border: 1px solid var(--color-border, #334155);
+		border-radius: 6px;
+		padding: 2px;
+		gap: 2px;
+	}
+
+	.pg-mode-btn {
+		font-size: 0.72rem;
+		padding: 0.2rem 0.55rem;
+		border: none;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--color-text-muted, #94a3b8);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.pg-mode-btn.active {
+		background: var(--color-primary, #3b82f6);
+		color: #ffffff;
+		font-weight: 600;
 	}
 
 	.pg-run-btn {

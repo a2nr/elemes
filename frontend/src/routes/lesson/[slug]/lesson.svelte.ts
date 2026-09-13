@@ -5,6 +5,8 @@ import { tick, untrack } from 'svelte';
 import { auth, authLoggedIn, authToken, authIsTeacher } from '$stores/auth';
 import { lessonContext } from '$stores/lessonContext';
 import { compileCode, submitLessonProgress, lessonProgressBeacon, type LessonProgressPayload } from '$services/api';
+import { clientRunner } from '$services/code-runner/client-runner';
+import { syncManager } from '$services/offline-db/sync-manager';
 import { createAttemptId, type QuizTerminationReason } from '$services/quiz-integrity';
 import { evaluateVelxioSubmission } from '$services/velxio-evaluator';
 import { evaluateFlowchartSubmission } from '$services/flowchart-evaluator';
@@ -252,8 +254,15 @@ export class LessonManager {
 
 		if (get(authLoggedIn)) {
 			const lessonName = this.slug.replace('.md', '');
-			const res = await submitLessonProgress({ token: auth.token, lesson_name: lessonName, type: 'exercise' });
-			const isDone = res && typeof res.is_done === 'boolean' ? res.is_done : true;
+			let isDone = true;
+			try {
+				const res = await submitLessonProgress({ token: auth.token, lesson_name: lessonName, type: 'exercise' });
+				isDone = res && typeof res.is_done === 'boolean' ? res.is_done : true;
+			} catch {
+				// Offline fallback: treat as done locally, sync queue will push to server later
+				isDone = true;
+			}
+			await syncManager.recordProgress(lessonName, isDone, { token: auth.token, lesson_name: lessonName, type: 'exercise' });
 			this.lessonCompleted = isDone;
 			if (isDone) {
 				this.showCelebration = true;
@@ -613,9 +622,9 @@ export class LessonManager {
 		this.activeTab = 'output';
 		try {
 			const code = (this.currentLanguage === lang) ? (this.editor?.getCode() ?? this.currentCode) : (lang === 'c' ? this.cCode : this.pythonCode);
-			const res = await compileCode({ code, language: lang, token: auth.token });
+			const res = await clientRunner.run(lang, code);
 			if (!res.success) {
-				Object.assign(out, { error: res.error || 'Compilation failed', success: false });
+				Object.assign(out, { error: res.error || 'Eksekusi gagal', success: false });
 				return;
 			}
 			out.output = res.output;
@@ -641,8 +650,8 @@ export class LessonManager {
 					}
 				}
 			}
-		} catch {
-			Object.assign(out, { error: 'Gagal terhubung ke server', success: false });
+		} catch (err: any) {
+			Object.assign(out, { error: `Gagal menjalankan kode: ${err?.message || err}`, success: false });
 		} finally {
 			out.loading = false;
 		}

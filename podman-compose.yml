@@ -111,11 +111,14 @@ services:
     volumes:
       - velxio-data:/app/data
       - velxio-arduino-libs:/root/.arduino15
+      - ./velxio/docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
   flowchart:
     build: ./flowchart
     image: lms-flowchart:latest
     network_mode: service:elemes-ts
+    volumes:
+      - ./flowchart/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     restart: unless-stopped
     depends_on:
       - elemes-ts

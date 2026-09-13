@@ -61,7 +61,7 @@ Halo Dunia
 #include <stdio.h>
 
 int main() {
-    printf("Halo Dunia\\n");
+    printf("Halo Dunia\n");
     return 0;
 }
 ---END_INITIAL_CODE---
@@ -83,7 +83,7 @@ print("Halo Dunia")
 #include <stdio.h>
 
 int main() {
-    printf("Halo Dunia\\n");
+    printf("Halo Dunia\n");
     return 0;
 }
 ---END_SOLUTION_CODE---
