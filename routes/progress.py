@@ -13,7 +13,13 @@ from services.token_service import (
     reset_student_progress,
     get_all_students_progress,
 )
-from services.lesson_service import get_lessons_with_learning_objectives
+from services.lesson_service import (
+    get_lessons_with_learning_objectives,
+    find_lesson_file,
+    find_sub_home_for_lesson,
+    get_sub_home_data,
+    find_all_sub_home_folders,
+)
 
 progress_bp = Blueprint('progress', __name__)
 
@@ -85,9 +91,31 @@ def api_progress_report():
         get_lessons_with_learning_objectives,
     )
 
+    # Petakan sub-bab dari sub-home.md yang terdaftar
+    sub_home_folders = find_all_sub_home_folders()
+    sub_bab_map = {}
+    for folder in sub_home_folders:
+        data = get_sub_home_data(folder)
+        if data and data.get('title'):
+            sub_bab_map[folder] = data['title']
+
+    def _lesson_to_dict(lesson):
+        d = {'filename': lesson['filename'], 'title': lesson['title']}
+        file_path = lesson.get('path') or find_lesson_file(lesson['filename'])
+        if file_path:
+            _sub_home_path, folder_name = find_sub_home_for_lesson(file_path)
+            if folder_name and folder_name in sub_bab_map:
+                d['sub_bab'] = folder_name
+                d['sub_bab_title'] = sub_bab_map[folder_name]
+        return d
+
     resp = jsonify({
         'students': all_students_progress,
-        'lessons': [{'filename': l['filename'], 'title': l['title']} for l in ordered_lessons],
+        'lessons': [_lesson_to_dict(l) for l in ordered_lessons],
+        'sub_bab_list': [
+            {'folder': f, 'title': sub_bab_map[f]}
+            for f in sub_home_folders if f in sub_bab_map
+        ],
     })
     resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
     return resp

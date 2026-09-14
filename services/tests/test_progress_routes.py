@@ -84,6 +84,7 @@ def test_teacher_can_access_report(client):
     # Guru + 2 siswa harus muncul sebagai row
     assert len(data["students"]) == 3
     assert data["lessons"]
+    assert "sub_bab_list" in data
 
 
 def test_teacher_appears_in_progress_report(client):
