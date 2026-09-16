@@ -48,7 +48,7 @@
 		title: string;
 		lessons: LessonNode[];
 		totalLessons: number;
-		totalCompletions: number;
+		uniqueStudentsCount: number;
 	}
 
 	// Parse `_diag_unmastered` JSON string
@@ -202,7 +202,7 @@
 			if (group.lessons.length === 0) continue;
 
 			const lessonNodes: LessonNode[] = [];
-			let totalCompletions = 0;
+			const uniqueStudentIds = new Set<string>();
 
 			for (const lesson of group.lessons) {
 				const key = lesson.filename.replace('.md', '');
@@ -225,10 +225,12 @@
 							diag_score: String(s[key + '_diag'] ?? ''),
 							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered'])
 						});
+
+						if (s.role === 'student') {
+							uniqueStudentIds.add(s.id);
+						}
 					}
 				}
-
-				totalCompletions += completedStudents.length;
 
 				// Filter pencarian jika ada
 				const matchesQuery = !query ||
@@ -253,7 +255,7 @@
 					title: group.title,
 					lessons: lessonNodes,
 					totalLessons: group.lessons.length,
-					totalCompletions
+					uniqueStudentsCount: uniqueStudentIds.size
 				});
 			}
 		}
@@ -261,7 +263,7 @@
 		// Kelompok materi tanpa sub-bab
 		if (uncategorizedLessons.length > 0) {
 			const lessonNodes: LessonNode[] = [];
-			let totalCompletions = 0;
+			const uniqueStudentIds = new Set<string>();
 
 			for (const lesson of uncategorizedLessons) {
 				const key = lesson.filename.replace('.md', '');
@@ -284,10 +286,12 @@
 							diag_score: String(s[key + '_diag'] ?? ''),
 							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered'])
 						});
+
+						if (s.role === 'student') {
+							uniqueStudentIds.add(s.id);
+						}
 					}
 				}
-
-				totalCompletions += completedStudents.length;
 
 				const matchesQuery = !query ||
 					lesson.title.toLowerCase().includes(query) ||
@@ -309,7 +313,7 @@
 					title: 'Lainnya (Materi Umum)',
 					lessons: lessonNodes,
 					totalLessons: uncategorizedLessons.length,
-					totalCompletions
+					uniqueStudentsCount: uniqueStudentIds.size
 				});
 			}
 		}
@@ -415,7 +419,7 @@
 
 						<div class="sub-bab-meta">
 							<span class="badge badge-subtle">{group.lessons.length} materi</span>
-							<span class="badge badge-accent">{group.totalCompletions} penyelesaian</span>
+							<span class="badge badge-accent">{group.uniqueStudentsCount} siswa selesai</span>
 						</div>
 					</button>
 
@@ -424,7 +428,8 @@
 						<div class="lessons-container">
 							{#each group.lessons as item (item.key)}
 								{@const isLessonOpen = openLessons[item.key] ?? (searchQuery !== '' && item.completedStudents.length > 0)}
-								{@const studentCount = item.completedStudents.length}
+								{@const studentCount = item.completedStudents.filter((s) => s.role === 'student').length}
+								{@const teacherCount = item.completedStudents.filter((s) => s.role === 'teacher').length}
 								<div class="lesson-item" class:is-lesson-open={isLessonOpen}>
 									<button
 										type="button"
@@ -446,13 +451,19 @@
 											{:else}
 												<span class="badge badge-muted">0 siswa selesai</span>
 											{/if}
+
+											{#if teacherCount > 0}
+												<span class="badge badge-teacher-test" title="{teacherCount} pengajar/guru telah mencoba materi ini">
+													+{teacherCount} guru
+												</span>
+											{/if}
 										</div>
 									</button>
 
 									<!-- Level 3: Siswa yang Pernah Menyelesaikan Materi -->
 									{#if isLessonOpen}
 										<div class="students-container">
-											{#if studentCount === 0}
+											{#if item.completedStudents.length === 0}
 												<div class="student-empty-row">
 													<span class="tree-subbranch-line"></span>
 													<span class="empty-student-text">Belum ada siswa yang menyelesaikan materi ini.</span>
@@ -462,8 +473,8 @@
 													{@const isTeacher = student.role === 'teacher'}
 													<div class="student-row">
 														<span class="tree-subbranch-line"></span>
-														<div class="student-main">
-															<span class="user-icon">👤</span>
+														<div class="student-main" class:is-teacher={isTeacher}>
+															<span class="user-icon">{#if isTeacher}👨‍🏫{:else}👤{/if}</span>
 															<span class="student-name">
 																{student.nama_siswa}
 																{#if isTeacher}
@@ -989,12 +1000,23 @@
 		color: #c62828;
 		border: 1px solid #ffcdd2;
 	}
+	.badge-teacher-test {
+		background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+		border: 1px dashed color-mix(in srgb, var(--color-primary) 35%, var(--color-bg));
+		color: var(--color-primary);
+		font-size: 0.68rem;
+		font-weight: 600;
+	}
 	.teacher-badge {
 		background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
 		border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-bg));
 		color: var(--color-primary);
 		font-size: 0.65rem;
 		margin-left: 0.25rem;
+	}
+	.student-main.is-teacher {
+		background: color-mix(in srgb, var(--color-primary) 3%, var(--color-bg));
+		border-style: dashed;
 	}
 
 	.btn-reset {
