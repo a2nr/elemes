@@ -2,6 +2,8 @@ import type { PageLoad } from './$types';
 import type { Lesson } from '$types/lesson';
 import { error } from '@sveltejs/kit';
 
+export const ssr = false;
+
 export const load: PageLoad = async ({ params, fetch }) => {
 	const token = typeof window !== 'undefined'
 		? localStorage.getItem('student_token') ?? ''

@@ -32,9 +32,9 @@ export class SyncManager {
 
 	/**
 	 * Save progress in local IndexedDB mirror immediately,
-	 * then opportunistically sync to server.
+	 * then opportunistically sync to server if authenticated payload is provided.
 	 */
-	async recordProgress(lessonSlug: string, completed: boolean, payload: any): Promise<void> {
+	async recordProgress(lessonSlug: string, completed: boolean, payload?: any): Promise<void> {
 		if (!db) return;
 
 		const progress: MyProgress = {
@@ -45,13 +45,37 @@ export class SyncManager {
 		};
 		await db.myProgress.put(progress);
 
-		await this.enqueueAndTrySync('/progress', payload);
+		if (payload && payload.token) {
+			await this.enqueueAndTrySync('/lesson-progress', payload);
+		}
+	}
+
+	/**
+	 * Get progress for a specific lesson from local IndexedDB mirror.
+	 */
+	async getProgress(lessonSlug: string): Promise<MyProgress | null> {
+		if (!db) return null;
+		const record = await db.myProgress.get(lessonSlug);
+		return record ?? null;
+	}
+
+	/**
+	 * Get all recorded completed lesson slugs from local IndexedDB mirror.
+	 */
+	async getAllProgress(): Promise<Record<string, boolean>> {
+		if (!db) return {};
+		const all = await db.myProgress.toArray();
+		const map: Record<string, boolean> = {};
+		for (const item of all) {
+			map[item.lessonSlug] = item.completed;
+		}
+		return map;
 	}
 
 	/**
 	 * Record a completed quiz attempt locally, then sync.
 	 */
-	async recordQuizAttempt(attempt: Omit<MyQuizAttempt, 'id' | 'synced'>, syncPayload: any): Promise<void> {
+	async recordQuizAttempt(attempt: Omit<MyQuizAttempt, 'id' | 'synced'>, syncPayload?: any): Promise<void> {
 		if (!db) return;
 
 		await db.myQuizAttempts.add({
@@ -59,7 +83,9 @@ export class SyncManager {
 			synced: false
 		});
 
-		await this.enqueueAndTrySync('/progress', syncPayload);
+		if (syncPayload && syncPayload.token) {
+			await this.enqueueAndTrySync('/lesson-progress', syncPayload);
+		}
 	}
 
 	/**
@@ -134,6 +160,9 @@ export class SyncManager {
 					if (res.ok) {
 						if (entry.id) {
 							await db.outbox.delete(entry.id);
+						}
+						if (entry.payload?.lesson_name) {
+							await db.myProgress.update(entry.payload.lesson_name, { synced: true }).catch(() => {});
 						}
 					} else if (entry.retries < 5 && entry.id) {
 						await db.outbox.update(entry.id, { retries: entry.retries + 1 });

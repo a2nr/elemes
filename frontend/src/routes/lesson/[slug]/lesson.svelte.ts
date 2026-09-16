@@ -196,20 +196,60 @@ export class LessonManager {
 		});
 	}
 
+	reset() {
+		this.data = null;
+		this.lessonCompleted = false;
+		this.isQuizMode = false;
+		this.quizSession = null;
+		this.quizCurrentIndex = 0;
+		this.quizCurrentQuestion = null;
+		this.quizResult = null;
+		this.quizAttemptId = null;
+		this.quizStartedAt = null;
+		this.quizFinalized = false;
+		this.quizTerminationReason = null;
+		this.visibilityEventCount = 0;
+
+		this.currentCode = '';
+		this.currentLanguage = 'c';
+		this.cCode = '';
+		this.pythonCode = '';
+
+		this.cOut = this.freshOutput();
+		this.pyOut = this.freshOutput();
+		this.circuitOut = this.freshOutput();
+		this.velxioOut = this.freshOutput();
+		this.flowchartOut = this.freshOutput();
+
+		this.cPassed = false;
+		this.pythonPassed = false;
+		this.circuitPassed = false;
+		this.flowchartPassed = false;
+
+		this.showSolution = false;
+		this.showCelebration = false;
+		this.velxioSaving = false;
+		this.velxioReady = false;
+		this.velxioError = false;
+
+		if (this.velxioCleanup) { this.velxioCleanup(); this.velxioCleanup = null; }
+		if (this.velxioBridge) { this.velxioBridge.destroy(); this.velxioBridge = null; }
+
+		this.deployState = 'idle';
+		this.mobileMode = 'hidden';
+
+		this.editor = null;
+		this.circuitEditor = null;
+		this.flowchartTab = null;
+		this.velxioIframe = null;
+	}
+
 	init(lesson: LessonContent) {
 		untrack(() => {
+			this.reset();
+
 			this.data = lesson;
-			this.lessonCompleted = lesson.lesson_completed;
-			this.isQuizMode = false;
-			this.quizSession = null;
-			this.quizCurrentIndex = 0;
-			this.quizCurrentQuestion = null;
-			this.quizResult = null;
-			this.quizAttemptId = null;
-			this.quizStartedAt = null;
-			this.quizFinalized = false;
-			this.quizTerminationReason = null;
-			this.visibilityEventCount = 0;
+			this.lessonCompleted = Boolean(lesson.lesson_completed);
 
 			this.cCode = lesson.initial_code_c || '';
 			this.pythonCode = lesson.initial_python || '';
@@ -220,40 +260,61 @@ export class LessonManager {
 			this.currentLanguage = initLang;
 			this.currentCode = initLang === 'python' ? this.pythonCode : (this.cCode || lesson.initial_code || '');
 
-			this.cOut = this.freshOutput();
-			this.pyOut = this.freshOutput();
-			this.circuitOut = this.freshOutput();
-			this.velxioOut = this.freshOutput();
-			this.cPassed = false;
-			this.pythonPassed = false;
-			this.circuitPassed = false;
-			this.showSolution = false;
-
-			if (this.velxioCleanup) { this.velxioCleanup(); this.velxioCleanup = null; }
-			if (this.velxioBridge) { this.velxioBridge.destroy(); this.velxioBridge = null; }
-			this.velxioReady = false;
-			this.velxioError = false;
-
 			this.activeTab = pickDefaultTab(lesson);
-
-			this.deployState = 'idle';
-			
-			this.mobileMode = 'hidden';
 
 			lessonContext.set({
 				title: lesson.lesson_title,
-				completed: lesson.lesson_completed,
+				completed: this.lessonCompleted,
 				prevLesson: lesson.prev_lesson,
 				nextLesson: lesson.next_lesson
 			});
+
+			if (typeof window !== 'undefined') {
+				const lessonSlug = this.slug.replace('.md', '');
+				syncManager.getProgress(lessonSlug).then((localProg) => {
+					if (localProg && localProg.completed && !this.lessonCompleted) {
+						this.lessonCompleted = true;
+						lessonContext.update((ctx) => (ctx ? { ...ctx, completed: true } : ctx));
+						if (this.data?.ordered_lessons) {
+							const current = this.data.ordered_lessons.find(
+								(l) => l.filename === this.slug || l.filename.replace('.md', '') === this.slug.replace('.md', '')
+							);
+							if (current) current.completed = true;
+						}
+					}
+				}).catch(() => {});
+
+				syncManager.getAllProgress().then((allProg) => {
+					if (this.data?.ordered_lessons) {
+						let updated = false;
+						for (const item of this.data.ordered_lessons) {
+							const s = item.filename.replace('.md', '');
+							if (allProg[s] && !item.completed) {
+								item.completed = true;
+								updated = true;
+							}
+						}
+						if (updated && this.slug) {
+							const curr = this.data.ordered_lessons.find(
+								(l) => l.filename === this.slug || l.filename.replace('.md', '') === this.slug.replace('.md', '')
+							);
+							if (curr?.completed && !this.lessonCompleted) {
+								this.lessonCompleted = true;
+								lessonContext.update((ctx) => (ctx ? { ...ctx, completed: true } : ctx));
+							}
+						}
+					}
+				}).catch(() => {});
+			}
 		});
 	}
 
 	async completeLesson(status = 'completed') {
 		if (this.lessonCompleted && status === 'completed') return;
 
+		const lessonName = this.slug.replace('.md', '');
+
 		if (get(authLoggedIn)) {
-			const lessonName = this.slug.replace('.md', '');
 			let isDone = true;
 			try {
 				const res = await submitLessonProgress({ token: auth.token, lesson_name: lessonName, type: 'exercise' });
@@ -277,6 +338,7 @@ export class LessonManager {
 		} else {
 			this.showCelebration = true;
 			this.lessonCompleted = true;
+			await syncManager.recordProgress(lessonName, true, null);
 			lessonContext.update(ctx => ctx ? { ...ctx, completed: true } : ctx);
 			if (this.data?.ordered_lessons) {
 				const current = this.data.ordered_lessons.find(
@@ -480,6 +542,15 @@ export class LessonManager {
 		this.lessonCompleted = passed;
 		this.showCelebration = passed;
 		lessonContext.update((ctx) => (ctx ? { ...ctx, completed: passed } : ctx));
+		const lessonName = this.slug.replace('.md', '');
+		if (passed) {
+			const token = get(authToken) || (typeof window !== 'undefined' ? localStorage.getItem('student_token') : '') || '';
+			syncManager.recordProgress(
+				lessonName,
+				true,
+				token ? { token, lesson_name: lessonName, type: 'quiz' } : null
+			).catch(() => {});
+		}
 		if (this.data?.ordered_lessons) {
 			const current = this.data.ordered_lessons.find(
 				(l) => l.filename === this.slug || l.filename.replace('.md', '') === this.slug.replace('.md', '')

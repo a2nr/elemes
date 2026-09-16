@@ -200,6 +200,10 @@ import QuizQuestionView from './QuizQuestionView.svelte';
 			mgr.velxioBridge.destroy();
 			mgr.velxioBridge = null;
 		}
+
+		if (nav.type !== 'leave') {
+			mgr.reset();
+		}
 	});
 
 	onMount(() => {

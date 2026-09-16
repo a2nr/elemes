@@ -19,3 +19,20 @@ declare module '*?url' {
 	export default url;
 }
 
+declare namespace svelteHTML {
+	interface IframeHTMLAttributes {
+		credentialless?: boolean | string;
+	}
+	interface HTMLAttributes<T> {
+		credentialless?: boolean | string;
+	}
+}
+
+declare module 'svelte/elements' {
+	export interface HTMLAttributes<T> {
+		credentialless?: boolean | string;
+	}
+}
+
+
+
