@@ -9,7 +9,7 @@
 	import LessonContentView from '$components/LessonContentView.svelte';
 	import QuizPreviewReadonly from '$components/QuizPreviewReadonly.svelte';
 	import { ContentEditorManager } from '$services/contentEditor.svelte';
-	import { getTree, createFolder, createFile, renameEntry, deleteEntry, uploadAsset } from '$services/contentEditor';
+	import { getTree, createFolder, createFile, renameEntry, deleteEntry, uploadAsset, exportBundle, extractBundle, importBundle } from '$services/contentEditor';
 	import type { TreeNode } from '$services/contentEditor';
 	import { upsertSection } from '$services/markdown';
 
@@ -603,6 +603,113 @@
 	let activeFileName = $derived(mgr.activePath?.split('/').pop() ?? '');
 	let isAssetFile = $derived(mgr.treeRoot === 'assets' && mgr.activePath !== null && !mgr.activePath.endsWith('/'));
 	let isImageFile = $derived(isAssetFile && /\.(png|jpe?g|gif|webp|svg|bmp|ico)$/i.test(mgr.activePath ?? ''));
+
+	// ── Export / Import bundle ──────────────────────────────────────
+	let importExportBusy = $state(false);
+	let importProgress = $state<{ done: number; total: number; current: string } | null>(null);
+
+	function flattenTreePaths(nodes: TreeNode[]): string[] {
+		const out: string[] = [];
+		const walk = (list: TreeNode[]) => {
+			for (const n of list) {
+				if (n.type === 'file') out.push(n.path);
+				if (n.children) walk(n.children);
+			}
+		};
+		walk(nodes);
+		return out;
+	}
+
+	function showToast(text: string, isError = false) {
+		const toast = document.createElement('div');
+		toast.textContent = text;
+		toast.style.cssText = `position:fixed;bottom:1rem;left:50%;transform:translateX(-50%);background:${isError ? '#b91c1c' : '#15803d'};color:#fff;padding:6px 16px;border-radius:8px;font-size:0.8rem;z-index:10000;max-width:90vw;`;
+		document.body.appendChild(toast);
+		setTimeout(() => toast.remove(), 4000);
+	}
+
+	async function handleExport() {
+		importExportBusy = true;
+		try {
+			const blob = await exportBundle();
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `elemes-bundle-${new Date().toISOString().slice(0, 10)}.zip`;
+			a.click();
+			URL.revokeObjectURL(url);
+			showToast('Export berhasil — file sedang diunduh.');
+		} catch (e) {
+			showToast(`Export gagal: ${e instanceof Error ? e.message : String(e)}`, true);
+		} finally {
+			importExportBusy = false;
+		}
+	}
+
+	async function handleImportFile(file: File) {
+		importExportBusy = true;
+		importProgress = null;
+		try {
+			// 1. Reload tree SEBELUM extract supaya existingPaths fresh
+			await loadTrees();
+			const existing = new Set<string>([
+				...flattenTreePaths(mgr.contentTree),
+				...flattenTreePaths(mgr.assetsTree),
+			]);
+
+			// 2. Extract zip di browser
+			const bundle = await extractBundle(file);
+			if (bundle.invalidEntries.length > 0) {
+				showToast(`${bundle.invalidEntries.length} entry diabaikan: ${bundle.invalidEntries.slice(0, 5).join(', ')}${bundle.invalidEntries.length > 5 ? '…' : ''}`, true);
+			}
+			if (bundle.contentFiles.length + bundle.assetFiles.length === 0) {
+				showToast('Bundle kosong — tidak ada yang diimport.', true);
+				return;
+			}
+
+			// 3. Konfirmasi mode: OK = skip, Cancel = overwrite
+			const mode = confirm(
+				`Import ${bundle.contentFiles.length} materi + ${bundle.assetFiles.length} asset?\n\n` +
+				'OK = lewati file yang sudah ada\nCancel = timpa file yang sudah ada',
+			) ? 'skip' : 'overwrite';
+
+			// 4. Kirim per-file
+			const result = await importBundle({
+				contentFiles: bundle.contentFiles,
+				assetFiles: bundle.assetFiles,
+				mode,
+				existingPaths: existing,
+				onProgress: (done, total, current) => {
+					importProgress = { done, total, current };
+				},
+			});
+			showToast(
+				result.success
+					? `Import selesai: ${result.imported} ditulis, ${result.skipped} dilewati.`
+					: `Import gagal di ${result.failedPath}: ${result.message}`,
+				!result.success,
+			);
+
+			// 5. Reload tree UI setelah import
+			await loadTrees();
+		} catch (e) {
+			showToast(`Import gagal: ${e instanceof Error ? e.message : String(e)}`, true);
+		} finally {
+			importExportBusy = false;
+			importProgress = null;
+		}
+	}
+
+	function handleImportClick() {
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.zip,application/zip';
+		input.onchange = () => {
+			const file = input.files?.[0];
+			if (file) handleImportFile(file);
+		};
+		input.click();
+	}
 </script>
 
 <svelte:head>
@@ -675,6 +782,11 @@
 		>
 			<!-- Save / Publish actions (shared across all header modes) -->
 		{#snippet saveActions()}
+			<button class="panel-btn" onclick={handleExport} disabled={importExportBusy} title="Export semua materi & assets (zip)">📤</button>
+			<button class="panel-btn" onclick={handleImportClick} disabled={importExportBusy} title="Import materi & assets dari zip (extract di browser, kirim per-file)">📥</button>
+			{#if importProgress}
+				<span class="ie-progress" role="status">Impor {importProgress.done}/{importProgress.total}</span>
+			{/if}
 			{#if mgr.activePath && !isAssetFile}
 				<button class="panel-btn toolbar-toggle" class:active={featureSidebarOpen} onclick={() => featureSidebarOpen = !featureSidebarOpen} title="Tampilkan/sembunyikan panel Fitur">🧩</button>
 				<button class="panel-btn save-btn" onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
@@ -1090,6 +1202,12 @@
 	.panel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 	.panel-btn.save-btn { color: var(--color-text-muted); }
 	.panel-btn.publish-btn { color: var(--color-primary, #339af0); font-weight: 600; }
+	.ie-progress {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		padding: 0.15rem 0.5rem;
+		white-space: nowrap;
+	}
 
 	/* Editor main: tab panels (left) + feature sidebar (right) */
 	.editor-main {
