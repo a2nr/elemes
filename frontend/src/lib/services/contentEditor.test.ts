@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { deleteEntry, renameEntry } from './contentEditor';
+import { zipSync, strToU8 } from 'fflate';
 
 // FileReader tidak tersedia di environment 'node' vitest; uploadAsset
 // menggunakannya via fileToBase64. Polyfill minimal agar test jalan.
@@ -231,5 +232,27 @@ describe('importBundle — orkestrasi per-file', () => {
 
 		expect(result.success).toBe(false);
 		expect(result.failedPath).toBe('lesson/a.md');
+	});
+});
+
+describe('extractBundle', () => {
+	it('memisahkan content .md dan asset biner, menandai entry tidak valid', async () => {
+		const { extractBundle } = await import('./contentEditor');
+		const zipBytes = zipSync({
+			'content/lesson/a.md': strToU8('# A\n'),
+			'assets/img/diag.png': new Uint8Array([1, 2, 3]),
+			'evil.sh': strToU8('#!/bin/sh\n'),
+			'content/bad.txt': strToU8('x'),
+			'content/../../evil.md': strToU8('# evil\n'),
+		});
+		const result = await extractBundle(new File([zipBytes], 'b.zip'));
+		expect(result.contentFiles.map((f) => f.path)).toEqual(['lesson/a.md']);
+		expect(result.assetFiles.map((f) => f.path)).toEqual(['img/diag.png']);
+		expect(result.invalidEntries.sort()).toEqual(['content/../../evil.md', 'content/bad.txt', 'evil.sh']);
+	});
+
+	it('menolak bytes zip yang tidak valid', async () => {
+		const { extractBundle } = await import('./contentEditor');
+		await expect(extractBundle(new File([new Uint8Array([1, 2, 3])], 'b.zip'))).rejects.toThrow();
 	});
 });

@@ -1,3 +1,5 @@
+import { unzip, strFromU8 } from 'fflate';
+
 export interface TreeNode {
 	type: 'file' | 'folder';
 	name: string;
@@ -250,4 +252,48 @@ export async function importBundle(options: ImportOptions): Promise<ImportSummar
 		}
 	}
 	return { success: true, imported, skipped };
+}
+
+export interface ExtractedBundle {
+	contentFiles: ImportFileSpec[];
+	assetFiles: ImportFileSpec[];
+	invalidEntries: string[]; // entry di luar content/|assets/ | bukan .md di content/ | path mencurigakan
+}
+
+/** Extract zip di browser (pola zip = output /content/export:
+ *  top-level `content/**.md` dan `assets/**`). Entry tidak valid
+ *  dikumpulkan di invalidEntries — tidak diimport, dilaporkan ke user. */
+export async function extractBundle(file: File): Promise<ExtractedBundle> {
+	const buf = new Uint8Array(await file.arrayBuffer());
+	const entries = await new Promise<Record<string, Uint8Array>>((resolve, reject) =>
+		unzip(buf, (err, data) => (err ? reject(new Error('File bukan zip yang valid')) : resolve(data))),
+	);
+
+	const contentFiles: ImportFileSpec[] = [];
+	const assetFiles: ImportFileSpec[] = [];
+	const invalidEntries: string[] = [];
+
+	for (const [name, bytes] of Object.entries(entries)) {
+		if (name.endsWith('/')) continue; // directory entry
+		const parts = name.split('/');
+		if ((parts[0] !== 'content' && parts[0] !== 'assets') || parts.length < 2) {
+			invalidEntries.push(name);
+			continue;
+		}
+		const rel = parts.slice(1).join('/');
+		if (!rel || rel.startsWith('/') || rel.split('/').includes('..') || rel.split('/').includes('')) {
+			invalidEntries.push(name);
+			continue;
+		}
+		if (parts[0] === 'content') {
+			if (!rel.endsWith('.md')) {
+				invalidEntries.push(name);
+				continue;
+			}
+			contentFiles.push({ path: rel, body: strFromU8(bytes) });
+		} else {
+			assetFiles.push({ path: rel, bytes });
+		}
+	}
+	return { contentFiles, assetFiles, invalidEntries };
 }
