@@ -143,3 +143,111 @@ export async function uploadAsset(file: File, folder = '') {
 	});
 	return res.json();
 }
+
+// ── Bundle import/export (client-side zip, per-file transfer) ─────
+
+export async function exportBundle(scope: 'all' | 'content' | 'assets' = 'all'): Promise<Blob> {
+	const url = scope === 'all' ? '/api/content/export' : `/api/content/export?scope=${scope}`;
+	const res = await fetch(url, { credentials: 'include' });
+	if (!res.ok) {
+		throw new Error(`Export gagal (${res.status})`);
+	}
+	return res.blob();
+}
+
+export interface ImportFileSpec {
+	path: string;                 // relatif root (tanpa prefix content/ | assets/)
+	body?: string;                // untuk .md (teks hasil decode)
+	bytes?: Uint8Array;           // untuk asset biner
+}
+
+export interface ImportOptions {
+	contentFiles: ImportFileSpec[];
+	assetFiles: ImportFileSpec[];
+	mode: 'skip' | 'overwrite';
+	existingPaths?: Set<string>;  // path (relatif root) yang sudah ada di server
+	onProgress?: (done: number, total: number, currentPath: string) => void;
+}
+
+export interface ImportSummary {
+	success: boolean;
+	imported: number;
+	skipped: number;
+	failedPath?: string;
+	message?: string;
+}
+
+/** Pastikan semua folder parent dari relPath ada di server.
+ *  POST /content/tree/folder; 409 "Folder sudah ada" dianggap sukses. */
+async function ensureFolders(root: 'content' | 'assets', relPath: string): Promise<void> {
+	const parts = relPath.split('/').slice(0, -1); // buang filename
+	let cur = '';
+	for (const part of parts) {
+		cur = cur ? `${cur}/${part}` : part;
+		const res = await createFolder(root, cur);
+		if (!res.success && res.message !== 'Folder sudah ada') {
+			throw new Error(`Gagal membuat folder ${cur}: ${res.message ?? 'unknown'}`);
+		}
+	}
+}
+
+export async function importBundle(options: ImportOptions): Promise<ImportSummary> {
+	const { contentFiles, assetFiles, mode, existingPaths, onProgress } = options;
+	const total = contentFiles.length + assetFiles.length;
+	let done = 0;
+	let imported = 0;
+	let skipped = 0;
+
+	const files: Array<{ root: 'content' | 'assets'; spec: ImportFileSpec }> = [
+		...contentFiles.map((spec) => ({ root: 'content' as const, spec })),
+		...assetFiles.map((spec) => ({ root: 'assets' as const, spec })),
+	];
+
+	for (const { root, spec } of files) {
+		if (mode === 'skip' && existingPaths?.has(spec.path)) {
+			skipped++;
+			onProgress?.(++done, total, spec.path);
+			continue;
+		}
+		try {
+			await ensureFolders(root, spec.path);
+			if (root === 'content') {
+				if (existingPaths?.has(spec.path)) {
+					// file sudah ada → jalur overwrite: draft + publish (base_mtime null = tanpa conflict check)
+					const draft = await saveDraft(spec.path, spec.body ?? '', null);
+					if (!draft.success) {
+						return { success: false, imported, skipped, failedPath: spec.path, message: draft.message };
+					}
+					const pub = await publishDraft(draft.draft_id!);
+					if (!pub.success) {
+						return { success: false, imported, skipped, failedPath: spec.path, message: pub.message };
+					}
+				} else {
+					// file baru → tree/file dengan body sebagai template
+					const res = await createFile(spec.path, spec.body);
+					if (!res.success) {
+						return { success: false, imported, skipped, failedPath: spec.path, message: res.message };
+					}
+				}
+			} else {
+				// asset → assets/upload (nama file = basename, folder = parent relatif)
+				const bytes = spec.bytes ?? new Uint8Array();
+				const res = await uploadAsset(
+					new File([bytes.slice().buffer as ArrayBuffer], spec.path.split('/').pop() ?? 'file'),
+					spec.path.includes('/') ? spec.path.slice(0, spec.path.lastIndexOf('/')) : '',
+				);
+				if (!res.success) {
+					return { success: false, imported, skipped, failedPath: spec.path, message: res.message };
+				}
+			}
+			imported++;
+			onProgress?.(++done, total, spec.path);
+		} catch (e) {
+			return {
+				success: false, imported, skipped, failedPath: spec.path,
+				message: e instanceof Error ? e.message : String(e),
+			};
+		}
+	}
+	return { success: true, imported, skipped };
+}
