@@ -25,8 +25,9 @@ import io
 import os
 import re as _re
 import shutil
+import zipfile
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from config import ASSETS_DIR, CONTENT_DIR
 from services import repositories
@@ -520,5 +521,54 @@ def upload_asset():
             return jsonify({"success": False, "message": "Permission denied — tidak bisa menulis file"}), 403
 
         return jsonify({"success": True, "path": rel_path, "url": f"/assets/{rel_path}"})
+    finally:
+        db.close()
+
+
+# ── Bundle export (import dilakukan client-side per-file) ────────
+
+def _add_dir_to_zip(zf: zipfile.ZipFile, dir_abs: str, prefix: str) -> int:
+    """Tambahkan semua file di dir_abs ke zip dengan prefix folder.
+    Ditulis per-file (zf.write) — tidak ada batasan ukuran total."""
+    count = 0
+    for base, _dirs, files in os.walk(dir_abs):
+        for fname in sorted(files):
+            abs_path = os.path.join(base, fname)
+            rel_inside = os.path.relpath(abs_path, dir_abs)
+            zf.write(abs_path, arcname=f"{prefix}/{rel_inside}")
+            count += 1
+    return count
+
+
+@content_editor_bp.route("/export", methods=["GET"])
+def export_bundle():
+    db = SessionLocal()
+    try:
+        user, err = _require_teacher(db)
+        if err:
+            return err
+        scope = request.args.get("scope", "all")
+        if scope not in ("all", "content", "assets"):
+            return jsonify({"success": False, "message": "scope tidak valid (all|content|assets)"}), 400
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            file_count = 0
+            if scope in ("all", "content"):
+                file_count += _add_dir_to_zip(zf, _CONTENT_DIR_ABS, "content")
+            if scope in ("all", "assets"):
+                file_count += _add_dir_to_zip(zf, _ASSETS_DIR_ABS, "assets")
+        if file_count == 0:
+            return jsonify({"success": False, "message": "Tidak ada file untuk diekspor"}), 404
+
+        from datetime import datetime
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        buf.seek(0)
+        return send_file(
+            buf,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=f"elemes-bundle-{scope}-{stamp}.zip",
+        )
     finally:
         db.close()

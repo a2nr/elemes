@@ -10,10 +10,12 @@ Mengunci kontrak:
 - regression: _render_markdown_string() == render_markdown_content() untuk file yang sama;
 """
 
+import io
 import os
 import pathlib
 import shutil
 import time
+import zipfile
 
 import pytest
 
@@ -634,3 +636,37 @@ def test_save_draft_stores_correct_author_id(client):
         assert draft.author_id == teacher.id
     finally:
         db.close()
+
+
+# ── Export bundle ──────────────────────────────────────────────────
+
+def test_export_requires_teacher(client):
+    _seed_and_setup()
+    resp = client.get("/content/export")
+    assert resp.status_code == 401
+
+
+def test_export_returns_zip_with_content_and_assets(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    (TEST_ASSETS / "diag.png").write_bytes(b"fake-png")
+    resp = client.get("/content/export")
+    assert resp.status_code == 200
+    assert "application/zip" in resp.headers["Content-Type"]
+    assert resp.headers["Content-Disposition"].startswith("attachment; filename=")
+    zf = zipfile.ZipFile(io.BytesIO(resp.data))
+    names = set(zf.namelist())
+    assert "content/test_editor/hello.md" in names
+    assert "content/home.md" in names
+    assert "assets/diag.png" in names
+
+
+def test_export_scope_content_excludes_assets(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    (TEST_ASSETS / "diag.png").write_bytes(b"fake-png")
+    resp = client.get("/content/export?scope=content")
+    assert resp.status_code == 200
+    names = zipfile.ZipFile(io.BytesIO(resp.data)).namelist()
+    assert any(n.startswith("content/") for n in names)
+    assert not any(n.startswith("assets/") for n in names)
