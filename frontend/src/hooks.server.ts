@@ -77,9 +77,28 @@ export const handle: Handle = async ({ event, resolve }) => {
 				status: res.status,
 				headers: resHeaders,
 			});
-		} catch (err) {
+		} catch (err: any) {
+			// adapter-node melempar SvelteKitError saat body POST melebihi
+			// BODY_SIZE_LIMIT — bukan berarti backend mati. Laporkan sebagai 413
+			// dengan pesan yang jelas, jangan 502 "Backend tidak tersedia".
+			const isBodyTooLarge =
+				err?.status === 413 || /exceeds limit/i.test(String(err?.message ?? ''));
+			if (isBodyTooLarge) {
+				console.warn(`[hooks] Body too large for ${event.request.method} ${event.url.pathname}`);
+				return new Response(
+					JSON.stringify({
+						success: false,
+						error: 'Payload too large',
+						message: 'Ukuran file terlalu besar (maksimum 5 MiB per asset)'
+					}),
+					{
+						status: 413,
+						headers: { 'content-type': 'application/json' }
+					}
+				);
+			}
 			console.error(`API proxy error (${backendUrl}):`, err);
-			return new Response(JSON.stringify({ error: 'Backend unavailable' }), {
+			return new Response(JSON.stringify({ success: false, error: 'Backend unavailable', message: 'Backend tidak tersedia' }), {
 				status: 502,
 				headers: { 'content-type': 'application/json' },
 			});

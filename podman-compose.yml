@@ -83,6 +83,9 @@ services:
     environment:
       - ORIGIN=${ORIGIN:-http://localhost:3000}
       - API_BACKEND=http://127.0.0.1:5000
+      # Backend menerima asset ≤ 5 MiB (JSON base64 ≈ 7 MiB di wire).
+      # Default adapter-node 512K menolak upload gambar sebelum sampai backend.
+      - BODY_SIZE_LIMIT=8M
       - PUBLIC_APP_BAR_TITLE=${APP_BAR_TITLE}
       - PUBLIC_COPYRIGHT_TEXT=${COPYRIGHT_TEXT}
       - PUBLIC_PAGE_TITLE_SUFFIX=${PAGE_TITLE_SUFFIX}

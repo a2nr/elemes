@@ -57,6 +57,39 @@ describe('hooks.server handle', () => {
 		expect(response.headers.get('Cross-Origin-Resource-Policy')).toBe('cross-origin');
 	});
 
+	it('should return 413 with size message when body exceeds adapter limit', async () => {
+		// SvelteKitError dari adapter-node saat body POST melebihi BODY_SIZE_LIMIT.
+		// Proxy harus balas 413 dengan pesan ukuran — bukan 502 "Backend tidak tersedia".
+		const arrayBufferMock = vi.fn().mockRejectedValue(
+			Object.assign(new Error('Content-length of 947488 exceeds limit of 524288 bytes.'), { status: 413 })
+		);
+		const mockEvent: any = {
+			request: {
+				method: 'POST',
+				headers: new Headers({ 'content-type': 'application/json' }),
+				arrayBuffer: arrayBufferMock
+			},
+			url: new URL('https://sinau-c-dev.manakin-gentoo.ts.net/api/content/assets/upload')
+		};
+
+		const origFetch = global.fetch;
+		global.fetch = vi.fn() as any;
+
+		try {
+			const resolve = vi.fn();
+			const response = await handle({ event: mockEvent, resolve });
+
+			expect(response.status).toBe(413);
+			const body = await response.json();
+			expect(body.success).toBe(false);
+			expect(body.message).toMatch(/terlalu besar/i);
+			// Tidak boleh dikirim ke backend sama sekali
+			expect(global.fetch).not.toHaveBeenCalled();
+		} finally {
+			global.fetch = origFetch;
+		}
+	});
+
 	it('should read body as arrayBuffer when proxying POST requests', async () => {
 		const arrayBufferMock = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
 		const mockEvent: any = {
