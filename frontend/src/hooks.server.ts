@@ -73,6 +73,16 @@ export const handle: Handle = async ({ event, resolve }) => {
 			const setCookie = res.headers.get('set-cookie');
 			if (setCookie) resHeaders['set-cookie'] = setCookie;
 
+			// Mitigasi stored-XSS: SVG asset bisa memuat <script>. Route
+			// /assets/* publik (same-origin) — kalau SVG dibuka langsung di
+			// tab browser, script-nya bisa membaca localStorage (token
+			// siswa/guru). Backend juga mengirim CSP ini (routes/lessons.py
+			// send_assets), tapi proxy hanya meneruskan content-type/
+			// set-cookie — jadi beri ulang di sini.
+			if (isAsset && event.url.pathname.toLowerCase().endsWith('.svg')) {
+				resHeaders['content-security-policy'] = "default-src 'none'; sandbox";
+			}
+
 			return new Response(body, {
 				status: res.status,
 				headers: resHeaders,
@@ -89,6 +99,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 					JSON.stringify({
 						success: false,
 						error: 'Payload too large',
+						// Nilai sumber: _MAX_ASSET_BYTES di routes/content_editor.py (backend).
 						message: 'Ukuran file terlalu besar (maksimum 5 MiB per asset)'
 					}),
 					{

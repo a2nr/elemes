@@ -670,3 +670,67 @@ def test_export_scope_content_excludes_assets(client):
     names = zipfile.ZipFile(io.BytesIO(resp.data)).namelist()
     assert any(n.startswith("content/") for n in names)
     assert not any(n.startswith("assets/") for n in names)
+# ── Boundary 5 MiB (cabang len(raw) — bukan pre-check len(b64)) ──────
+# SVG dipakai karena dikecualikan dari validasi gambar PIL (Pillow tidak
+# parse SVG), sehingga ukuran murni yang diuji, bukan validasi isi.
+# Blok ini self-contained (helper sendiri) agar tidak bergantung helper
+# lain di file ini.
+
+import base64 as _b64_mod  # noqa: E402  (import lokal — blok ini standalone)
+
+_SVG_HDR = b'<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
+
+
+def _svg_of(raw_size: int) -> bytes:
+    return _SVG_HDR + b" " * (raw_size - len(_SVG_HDR))
+
+
+def _post_upload_plain(client, filename, raw):
+    """POST upload tanpa flag overwrite (blok ini standalone — tidak
+    memakai helper _upload di atas agar commit-nya bisa berdiri sendiri)."""
+    return client.post("/content/assets/upload", json={
+        "filename": filename,
+        "folder": "",
+        "content_base64": _b64_mod.b64encode(raw).decode(),
+    })
+
+
+def test_upload_exactly_5mib_accepted(client):
+    """File TEPAT _MAX_ASSET_BYTES (5 MiB) harus lolos — bukan ditolak."""
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = _post_upload_plain(client, "exact5mib.svg", _svg_of(5 * 1024 * 1024))
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["success"] is True
+
+
+def test_upload_5mib_plus_1_rejected(client):
+    """5 MiB + 1 byte harus ditolak cabang len(raw) dengan pesan ukuran."""
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = _post_upload_plain(client, "over5mib.svg", _svg_of(5 * 1024 * 1024 + 1))
+    assert resp.status_code == 400
+    assert "mib" in resp.get_json()["message"].lower()
+
+
+# ── CSP saat serve SVG (mitigasi stored-XSS via SVG ber-script) ──────
+
+
+def test_serve_svg_has_restrictive_csp(client):
+    """SVG diserve dengan CSP ketat — <script> di dalamnya tak bisa jalan
+    saat SVG dibuka langsung di tab browser (same-origin)."""
+    (TEST_ASSETS / "malware.svg").write_bytes(
+        b'<svg xmlns="http://www.w3.org/2000/svg"><script>fetch("/api/login")</script></svg>'
+    )
+    resp = client.get("/assets/malware.svg")
+    assert resp.status_code == 200
+    assert resp.headers.get("Content-Security-Policy") == "default-src 'none'; sandbox"
+
+
+def test_serve_raster_image_no_csp(client):
+    """Gambar raster (PNG) tidak diberi CSP — hanya SVG yang berisiko."""
+    (TEST_ASSETS / "normal.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    resp = client.get("/assets/normal.png")
+    assert resp.status_code == 200
+    assert "Content-Security-Policy" not in resp.headers
+

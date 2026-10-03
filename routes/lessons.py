@@ -294,4 +294,11 @@ def get_key_text(filename):
 @lessons_bp.route('/assets/<path:path>')
 def send_assets(path):
     """Serve asset files (images, etc.) from ASSETS_DIR."""
-    return send_from_directory(ASSETS_DIR, path)
+    response = send_from_directory(ASSETS_DIR, path)
+    # Mitigasi stored-XSS: SVG bisa memuat <script>. Route ini publik
+    # (same-origin) — kalau SVG dibuka langsung di tab browser, script-nya
+    # bisa membaca localStorage (token siswa/guru). CSP ketat mematikan
+    # semua eksekusi di dokumen tersebut; sandbox melarang navigasi/form.
+    if path.lower().endswith(".svg"):
+        response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    return response

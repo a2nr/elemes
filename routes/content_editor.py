@@ -40,7 +40,11 @@ content_editor_bp = Blueprint("content_editor", __name__, url_prefix="/content")
 _CONTENT_DIR_ABS = os.path.abspath(CONTENT_DIR)
 _ASSETS_DIR_ABS = os.path.abspath(ASSETS_DIR)
 _ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
-_MAX_ASSET_BYTES = 5 * 1024 * 1024
+_MAX_ASSET_BYTES = 5 * 1024 * 1024  # 5 MiB — batas upload per asset.
+# SINKRONISASI: frontend hook (frontend/src/hooks.server.ts) mengembalikan
+# pesan 413 "maksimum 5 MiB per asset", dan podman-compose.yml menetapkan
+# BODY_SIZE_LIMIT=8M (5 MiB × 4/3 base64 + envelope). Ubah nilai di sini →
+# perbarui keduanya.
 _PROTECTED_BASENAMES = {"home.md", "sub-home.md"}
 
 

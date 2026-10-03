@@ -90,6 +90,114 @@ describe('hooks.server handle', () => {
 		}
 	});
 
+	it('should still return 502 for ordinary network errors (not 413)', async () => {
+		// Regression guard: error jaringan biasa (fetch failed) TIDAK Boleh
+		// diklasifikasikan 413 — harus tetap 502 "Backend tidak tersedia".
+		const arrayBufferMock = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+		const mockEvent: any = {
+			request: {
+				method: 'POST',
+				headers: new Headers({ 'content-type': 'application/json' }),
+				arrayBuffer: arrayBufferMock
+			},
+			url: new URL('https://sinau-c-dev.manakin-gentoo.ts.net/api/content/assets/upload')
+		};
+
+		const origFetch = global.fetch;
+		global.fetch = vi.fn() as any;
+
+		try {
+			const resolve = vi.fn();
+			const response = await handle({ event: mockEvent, resolve });
+
+			expect(response.status).toBe(502);
+			const body = await response.json();
+			expect(body.success).toBe(false);
+			expect(body.message).toBe('Backend tidak tersedia');
+			expect(global.fetch).not.toHaveBeenCalled();
+		} finally {
+			global.fetch = origFetch;
+		}
+	});
+
+	it('should return 413 when error has status 413 even without "exceeds limit" message', async () => {
+		// Deteksi via err.status === 413 harus bekerja tanpa regex pesan
+		// (pesan library bisa berubah; status code adalah kontrak).
+		const arrayBufferMock = vi.fn().mockRejectedValue(
+			Object.assign(new Error('request body too large'), { status: 413 })
+		);
+		const mockEvent: any = {
+			request: {
+				method: 'POST',
+				headers: new Headers({ 'content-type': 'application/json' }),
+				arrayBuffer: arrayBufferMock
+			},
+			url: new URL('https://sinau-c-dev.manakin-gentoo.ts.net/api/content/assets/upload')
+		};
+
+		const origFetch = global.fetch;
+		global.fetch = vi.fn() as any;
+
+		try {
+			const resolve = vi.fn();
+			const response = await handle({ event: mockEvent, resolve });
+
+			expect(response.status).toBe(413);
+			const body = await response.json();
+			expect(body.success).toBe(false);
+			expect(body.message).toMatch(/terlalu besar/i);
+		} finally {
+			global.fetch = origFetch;
+		}
+	});
+
+	it('should add restrictive CSP when proxying SVG assets (stored-XSS mitigasi)', async () => {
+		// SVG bisa memuat <script>. Saat SVG dibuka langsung di tab browser,
+		// script-nya jalan same-origin → bisa baca localStorage (token).
+		// Proxy HARUS memberi CSP ketat — backend juga mengirim header ini,
+		// tapi proxy sebelumnya hanya meneruskan content-type/set-cookie.
+		const mockEvent: any = {
+			request: { method: 'GET', headers: new Headers() },
+			url: new URL('https://sinau-c-dev.manakin-gentoo.ts.net/assets/malware.svg')
+		};
+		const origFetch = global.fetch;
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response('<svg><script>alert(1)</script></svg>', {
+				status: 200,
+				headers: { 'content-type': 'image/svg+xml' }
+			})
+		) as any;
+
+		try {
+			const resolve = vi.fn();
+			const response = await handle({ event: mockEvent, resolve });
+			expect(response.status).toBe(200);
+			expect(response.headers.get('content-security-policy')).toBe("default-src 'none'; sandbox");
+		} finally {
+			global.fetch = origFetch;
+		}
+	});
+
+	it('should NOT add CSP for non-SVG assets', async () => {
+		const mockEvent: any = {
+			request: { method: 'GET', headers: new Headers() },
+			url: new URL('https://sinau-c-dev.manakin-gentoo.ts/assets/diagram.png')
+		};
+		const origFetch = global.fetch;
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response('binary', { status: 200, headers: { 'content-type': 'image/png' } })
+		) as any;
+
+		try {
+			const resolve = vi.fn();
+			const response = await handle({ event: mockEvent, resolve });
+			expect(response.status).toBe(200);
+			expect(response.headers.get('content-security-policy')).toBeNull();
+		} finally {
+			global.fetch = origFetch;
+		}
+	});
+
 	it('should read body as arrayBuffer when proxying POST requests', async () => {
 		const arrayBufferMock = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
 		const mockEvent: any = {
