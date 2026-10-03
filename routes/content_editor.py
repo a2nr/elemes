@@ -27,7 +27,7 @@ import re as _re
 import shutil
 import zipfile
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from config import ASSETS_DIR, CONTENT_DIR
 from services import repositories
@@ -459,6 +459,30 @@ def delete_entry():
         db.close()
 
 
+def _sniff_image_format(raw: bytes) -> str:
+    """Deteksi format aktual dari magic bytes — dipakai untuk pesan error
+    diagnostik saat PIL menolak file (PIL tidak menyebut format aslinya;
+    kasus nyata: halaman 404 HTML tersamar sebagai .png di bundle zip)."""
+    if raw.startswith(b"\x89PNG"):
+        return "PNG"
+    if raw.startswith(b"\xff\xd8\xff"):
+        return "JPEG"
+    if raw.startswith((b"GIF87a", b"GIF89a")):
+        return "GIF"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "WebP"
+    if raw[4:8] == b"ftyp" and raw[8:12] in (b"avif", b"avis"):
+        return "AVIF"
+    head = raw[:512].lstrip().lower()
+    if head.startswith((b"<html", b"<!doctype", b"<?xml", b"<svg")):
+        return "HTML/XML"
+    try:
+        raw[:64].decode("utf-8")
+        return "teks"
+    except UnicodeDecodeError:
+        return "tidak dikenal"
+
+
 @content_editor_bp.route("/assets/upload", methods=["POST"])
 def upload_asset():
     """Body JSON (bukan multipart — lihat catatan proxy di hooks.server.ts):
@@ -508,13 +532,23 @@ def upload_asset():
                 im.load()  # raises jika bukan gambar yang bisa di-decode
             except ImportError:
                 pass  # Pillow tidak terinstal — skip validasi gambar
-            except (UnidentifiedImageError, OSError, SyntaxError):
-                return jsonify({"success": False, "message": "File bukan gambar yang valid"}), 400
+            except (UnidentifiedImageError, OSError, SyntaxError) as e:
+                fmt = _sniff_image_format(raw)
+                hint = " — konversi ke PNG/JPEG dulu" if fmt == "AVIF" else ""
+                current_app.logger.warning(
+                    "upload_asset: PIL menolak %s (terdeteksi: %s): %r", filename, fmt, e)
+                return jsonify({
+                    "success": False,
+                    "message": f"File bukan gambar yang valid (terdeteksi: {fmt}){hint}",
+                }), 400
 
         safe_name = _re.sub(r"[^a-zA-Z0-9_.-]", "_", os.path.basename(filename))
         rel_path = f"{folder_rel}/{safe_name}" if folder_rel else safe_name
         abs_path = os.path.join(_ASSETS_DIR_ABS, rel_path)
-        if os.path.exists(abs_path):
+        # overwrite=True hanya dikirim eksplisit (jalur import bundle mode
+        # "timpa"). Upload manual UI tidak mengirim flag → tetap 409, jadi
+        # file lama tidak pernah tertimpa tanpa niat.
+        if os.path.exists(abs_path) and not data.get("overwrite"):
             return jsonify({"success": False, "message": "Nama file sudah ada, ganti nama dulu"}), 409
 
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)

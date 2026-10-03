@@ -135,14 +135,21 @@ function fileToBase64(file: File): Promise<string> {
 	});
 }
 
-export async function uploadAsset(file: File, folder = '') {
+export async function uploadAsset(file: File, folder = '', overwrite = false) {
 	const content_base64 = await fileToBase64(file);
 	const res = await fetch('/api/content/assets/upload', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		credentials: 'include',
-		body: JSON.stringify({ filename: file.name, folder, content_base64 }),
+		body: JSON.stringify({ filename: file.name, folder, content_base64, overwrite }),
 	});
+	if (!res.ok) {
+		// Respons error bisa berupa JSON {message, ...}, JSON lain (mis. 502
+		// proxy {"error": ...}), atau HTML (Flask default 404/500). Pastikan
+		// selalu menghasilkan string — jangan pernah 'undefined'.
+		const data = await res.json().catch(() => null);
+		return { success: false, message: data?.message ?? `HTTP ${res.status}` };
+	}
 	return res.json();
 }
 
@@ -237,9 +244,10 @@ export async function importBundle(options: ImportOptions): Promise<ImportSummar
 				const res = await uploadAsset(
 					new File([bytes.slice().buffer as ArrayBuffer], spec.path.split('/').pop() ?? 'file'),
 					spec.path.includes('/') ? spec.path.slice(0, spec.path.lastIndexOf('/')) : '',
+					mode === 'overwrite',
 				);
 				if (!res.success) {
-					return { success: false, imported, skipped, failedPath: spec.path, message: res.message };
+					return { success: false, imported, skipped, failedPath: spec.path, message: res.message ?? 'Gagal mengunggah asset' };
 				}
 			}
 			imported++;

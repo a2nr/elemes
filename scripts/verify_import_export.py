@@ -11,6 +11,7 @@ Langkah:
 
 Menulis zip probe sendiri (content/imported/probe.md + assets/imported/probe.png).
 """
+import base64
 import io
 import sys
 import zipfile
@@ -23,13 +24,20 @@ TEACHER_TOKEN = "141214"
 PROBE_ZIP = Path("/tmp/elemes-probe-bundle.zip")
 DOWNLOAD_DIR = Path("/tmp/elemes-e2e-downloads")
 
+# PNG 1x1 valid — backend memvalidasi isi gambar via Pillow (bukan cuma
+# ekstensi), jadi probe harus gambar yang benar-benar bisa di-decode.
+PNG_1PX = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+    "AAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+)
+
 
 def make_probe_zip() -> Path:
     if PROBE_ZIP.exists():
         return PROBE_ZIP
     with zipfile.ZipFile(PROBE_ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("content/imported/probe.md", "# Probe Import\n\nMateri test.\n")
-        zf.writestr("assets/imported/probe.png", b"\x89PNG\r\n\x1a\nfake-png")
+        zf.writestr("assets/imported/probe.png", PNG_1PX)
     return PROBE_ZIP
 
 

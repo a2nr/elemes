@@ -10,6 +10,7 @@ Mengunci kontrak:
 - regression: _render_markdown_string() == render_markdown_content() untuk file yang sama;
 """
 
+import base64
 import io
 import os
 import pathlib
@@ -670,6 +671,97 @@ def test_export_scope_content_excludes_assets(client):
     names = zipfile.ZipFile(io.BytesIO(resp.data)).namelist()
     assert any(n.startswith("content/") for n in names)
     assert not any(n.startswith("assets/") for n in names)
+
+
+# ── Upload asset: GIF diterima, overwrite eksplisit, kontrak pesan error ──
+
+# GIF89a 1x1 hitam — GIF valid minimal
+GIF_1PX = base64.b64decode(
+    "R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==")
+
+
+def _upload(client, filename, raw, folder="", overwrite=None):
+    payload = {
+        "filename": filename,
+        "folder": folder,
+        "content_base64": base64.b64encode(raw).decode(),
+    }
+    if overwrite is not None:
+        payload["overwrite"] = overwrite
+    return client.post("/content/assets/upload", json=payload)
+
+
+def test_upload_gif_accepted(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = _upload(client, "anim.gif", GIF_1PX)
+    assert resp.status_code == 200, resp.get_json()
+    body = resp.get_json()
+    assert body["success"] is True
+    assert body["url"] == "/assets/anim.gif"
+    assert (TEST_ASSETS / "anim.gif").read_bytes() == GIF_1PX
+
+
+def test_upload_existing_name_rejected_without_overwrite(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    _upload(client, "dup.gif", GIF_1PX)
+    resp = _upload(client, "dup.gif", GIF_1PX)
+    assert resp.status_code == 409
+    assert resp.get_json()["message"]  # pesan tidak boleh kosong
+
+
+def test_upload_existing_name_overwritten_with_flag(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    _upload(client, "dup.gif", GIF_1PX)
+    resp = _upload(client, "dup.gif", GIF_1PX, overwrite=True)
+    assert resp.status_code == 200, resp.get_json()
+    assert resp.get_json()["success"] is True
+
+
+def test_upload_corrupt_gif_rejected_with_message(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = _upload(client, "bad.gif", b"GIF89a\x00garbage")
+    assert resp.status_code == 400
+    assert resp.get_json()["message"]  # "File bukan gambar yang valid"
+
+
+def test_upload_oversize_rejected_with_message(client):
+    _seed_and_setup()
+    _login_teacher(client)
+    big = GIF_1PX + b"\x00" * (5 * 1024 * 1024)
+    resp = _upload(client, "big.gif", big)
+    assert resp.status_code == 400
+    assert "mib" in resp.get_json()["message"].lower()
+
+
+def test_upload_invalid_image_message_includes_detected_format(client):
+    """Pesan penolakan PIL harus menyebut format terdeteksi — file 404 HTML
+    tersamar .png (bug nyata: electron_flow_sparkfun.png 153 byte) harus
+    terbaca penyebabnya langsung dari toast."""
+    _seed_and_setup()
+    _login_teacher(client)
+    resp = _upload(client, "fake.png", b"<html>\r\n<head><title>404 Not Found</title></head></html>\r\n")
+    assert resp.status_code == 400
+    msg = resp.get_json()["message"]
+    assert "File bukan gambar yang valid" in msg
+    assert "HTML" in msg  # format terdeteksi disebut eksplisit
+
+
+def test_upload_avif_reports_avif(client):
+    """AVIF dinamai .png ditolak dengan format terdeteksi + hint konversi."""
+    _seed_and_setup()
+    _login_teacher(client)
+    avif = b"\x00\x00\x00\x1cftypavif" + b"\x00" * 16
+    resp = _upload(client, "photo.png", avif)
+    assert resp.status_code == 400
+    msg = resp.get_json()["message"]
+    assert "AVIF" in msg
+    assert "PNG/JPEG" in msg  # hint konversi ikut disertakan
+
+
 # ── Boundary 5 MiB (cabang len(raw) — bukan pre-check len(b64)) ──────
 # SVG dipakai karena dikecualikan dari validasi gambar PIL (Pillow tidak
 # parse SVG), sehingga ukuran murni yang diuji, bukan validasi isi.

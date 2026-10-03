@@ -256,3 +256,74 @@ describe('extractBundle', () => {
 		await expect(extractBundle(new File([new Uint8Array([1, 2, 3])], 'b.zip'))).rejects.toThrow();
 	});
 });
+
+describe('importBundle — overwrite asset & pesan fallback', () => {
+	it('mode overwrite mengirim overwrite:true untuk asset', async () => {
+		const { importBundle } = await import('./contentEditor');
+		const bodies: any[] = [];
+		global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+			if (url.includes('/api/content/tree/folder')) {
+				return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+			}
+			if (url.includes('/api/content/assets/upload')) {
+				bodies.push(JSON.parse(String(init?.body)));
+				return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+			}
+			return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+		});
+		const result = await importBundle({
+			contentFiles: [],
+			assetFiles: [{ path: 'ovw.png', bytes: new Uint8Array([1]) }],
+			mode: 'overwrite',
+		});
+		expect(bodies[0].overwrite).toBe(true);
+		expect(result.success).toBe(true);
+	});
+
+	it('mode skip mengirim overwrite:false untuk asset', async () => {
+		const { importBundle } = await import('./contentEditor');
+		const bodies: any[] = [];
+		global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+			if (url.includes('/api/content/assets/upload')) {
+				bodies.push(JSON.parse(String(init?.body)));
+				return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+			}
+			return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+		});
+		await importBundle({
+			contentFiles: [],
+			assetFiles: [{ path: 's.png', bytes: new Uint8Array([1]) }],
+			mode: 'skip',
+			existingPaths: new Set<string>(),
+		});
+		expect(bodies[0].overwrite).toBe(false);
+	});
+
+	it('respons tanpa message → fallback "HTTP <status>", bukan undefined', async () => {
+		const { importBundle } = await import('./contentEditor');
+		global.fetch = vi.fn().mockImplementation((url: string) => {
+			if (url.includes('/api/content/assets/upload')) {
+				return Promise.resolve(new Response(JSON.stringify({ error: 'Backend unavailable' }), { status: 502 }));
+			}
+			return Promise.resolve(new Response(JSON.stringify({ success: true }), { status: 200 }));
+		});
+		const result = await importBundle({
+			contentFiles: [],
+			assetFiles: [{ path: 'x.png', bytes: new Uint8Array([1]) }],
+			mode: 'overwrite',
+		});
+		expect(result.success).toBe(false);
+		expect(result.message).toContain('502');
+		expect(result.message).not.toContain('undefined');
+	});
+
+	it('uploadAsset merespons JSON sukses apa adanya (res.ok true)', async () => {
+		const { uploadAsset } = await import('./contentEditor');
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ success: true, url: '/assets/x.png' }), { status: 200 }),
+		);
+		const res = await uploadAsset(new File(['x'], 'x.png'), '');
+		expect(res.success).toBe(true);
+		expect(res.url).toBe('/assets/x.png');
+	});
+});
