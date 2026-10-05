@@ -2,11 +2,13 @@
 	import { onMount } from 'svelte';
 	import { authIsTeacher } from '$stores/auth';
 	import { createFloatingPanel } from '$actions/floatingPanel.svelte';
+	import { preserveFocus } from '$actions/preserveFocus';
 	import CodeEditor from '$components/CodeEditor.svelte';
 	import CircuitEditor from '$components/CircuitEditor.svelte';
 	import TeacherVelxioEditor from '$components/TeacherVelxioEditor.svelte';
 	import ContentFileTree from '$components/ContentFileTree.svelte';
-	import LessonContentView from '$components/LessonContentView.svelte';
+	import LessonContentView, { type ClickTextDetail } from '$components/LessonContentView.svelte';
+	import ContentInlineEditor from '$components/ContentInlineEditor.svelte';
 	import QuizPreviewReadonly from '$components/QuizPreviewReadonly.svelte';
 	import { ContentEditorManager } from '$services/contentEditor.svelte';
 	import { getTree, createFolder, createFile, renameEntry, deleteEntry, uploadAsset, exportBundle, extractBundle, importBundle } from '$services/contentEditor';
@@ -16,24 +18,45 @@
 	const mgr = new ContentEditorManager();
 	const float = createFloatingPanel();
 
-	let editorRef = $state<any>(null);
+	let inlineEditorRef = $state<any>(null);
 	let circuitEditorRef = $state<any>(null);
 	let velxioEditorRef = $state<any>(null);
 
-	// Mobile: show tree or editor
-	let mobileShowTree = $state(true);
+	// Content view mode: 'preview' (default rendered view) or 'edit' (inline editor)
+	let contentViewMode = $state<'preview' | 'edit'>('preview');
+	let editCursorPos = $state<number | undefined>(undefined);
+	let editLineNumber = $state<number | undefined>(undefined);
 
-	// Load trees on mount
-	onMount(async () => {
-		await loadTrees();
+	// Mobile: show tree or editor
+
+	// Load trees on mount & setup global shortcut
+	onMount(() => {
+		loadTrees();
+
+		const handleGlobalKey = (e: KeyboardEvent) => {
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
+				if (mgr.activePath && !isAssetFile) {
+					e.preventDefault();
+					contentViewMode = contentViewMode === 'preview' ? 'edit' : 'preview';
+				}
+			}
+		};
+		window.addEventListener('keydown', handleGlobalKey);
+		return () => {
+			window.removeEventListener('keydown', handleGlobalKey);
+		};
+	});
+
+	// Reset content view mode to preview when active path changes
+	$effect(() => {
+		if (mgr.activePath) {
+			contentViewMode = 'preview';
+			editCursorPos = undefined;
+			editLineNumber = undefined;
+		}
 	});
 
 	// When mobile & no file selected, default to tree view
-	$effect(() => {
-		if (mgr.isMobile && !mgr.activePath) {
-			mobileShowTree = true;
-		}
-	});
 
 	// Mobile behavior for floating panel
 	$effect(() => {
@@ -90,16 +113,16 @@
 
 	// Tab label map for chrome tabs
 	let allTabs = $derived([
-		{ id: 'editor', label: 'Editor' },
+		{ id: 'features', label: 'Fitur & Aksi' },
 		...dynamicTabs,
 		{ id: 'exercise', label: 'Exercise', show: hasExercise },
 		{ id: 'quiz', label: 'Quiz', show: hasQuiz },
 	].filter((t) => t.show !== false));
 
-	// Auto-switch to editor tab when switching files
+	// Auto-switch to features tab when switching files
 	$effect(() => {
 		if (mgr.activePath) {
-			mgr.activeTab = 'editor';
+			mgr.activeTab = 'features';
 		}
 	});
 
@@ -107,7 +130,7 @@
 	$effect(() => {
 		const validIds = allTabs.map((t) => t.id);
 		if (!validIds.includes(mgr.activeTab)) {
-			mgr.activeTab = 'editor';
+			mgr.activeTab = 'features';
 		}
 	});
 
@@ -145,31 +168,73 @@
 			mgr.previewSlides = [];
 			mgr.previewActiveTabs = [];
 			mgr.previewError = null;
-			mgr.activeTab = 'editor';
+			mgr.activeTab = 'features';
 		} else {
 			mgr.loadDraft(path);
 		}
 		if (mgr.isMobile) {
-			mobileShowTree = false;
-			mgr.mobileMode = 'h50';
+			mgr.mobileMode = mgr.treeRoot === 'assets' ? 'h50' : 'peek';
 		}
-	}
-
-	function handleMobileBackToTree() {
-		if (mgr.dirty && !window.confirm('Ada perubahan yang belum disimpan. Kembali ke tree?')) {
-			return;
-		}
-		mobileShowTree = true;
 	}
 
 	function handleEditorChange(value: string) {
 		mgr.onBodyChange(value);
 	}
 
-	function handleEditorMount() {
-		if (editorRef && mgr.body) {
-			editorRef.setCode(mgr.body);
+	function handleContentTextClick(detail: ClickTextDetail) {
+		if (!mgr.activePath || isAssetFile) return;
+
+		let targetPos: number | undefined = undefined;
+		let targetLine: number | undefined = undefined;
+
+		const bodyText = mgr.body;
+
+		// 1. Try finding context snippet in bodyText
+		if (detail.snippet && detail.snippet.length >= 8) {
+			const idx = bodyText.indexOf(detail.snippet);
+			if (idx !== -1) {
+				if (detail.word) {
+					const wordRel = detail.snippet.indexOf(detail.word);
+					targetPos = wordRel !== -1 ? idx + wordRel : idx;
+				} else {
+					targetPos = idx;
+				}
+			}
 		}
+
+		// 2. If snippet wasn't found (e.g. markdown formatting), try the clicked word
+		if (targetPos === undefined && detail.word && detail.word.length >= 3) {
+			const idx = bodyText.indexOf(detail.word);
+			if (idx !== -1) {
+				targetPos = idx;
+			}
+		}
+
+		// 3. If word not found, try block text preview (first 25 chars)
+		if (targetPos === undefined && detail.blockText) {
+			const lead = detail.blockText.slice(0, 25).trim();
+			if (lead.length >= 6) {
+				const idx = bodyText.indexOf(lead);
+				if (idx !== -1) {
+					targetPos = idx;
+				}
+			}
+		}
+
+		// 4. Calculate line number from targetPos or estimate from block ratio
+		if (targetPos !== undefined) {
+			targetLine = bodyText.slice(0, targetPos).split('\n').length;
+		} else if (detail.blockIndex >= 0 && detail.totalBlocks > 0) {
+			const lines = bodyText.split('\n');
+			const estimatedLine = Math.max(1, Math.round((detail.blockIndex / detail.totalBlocks) * lines.length));
+			targetLine = estimatedLine;
+		} else {
+			targetLine = 1;
+		}
+
+		editCursorPos = targetPos;
+		editLineNumber = targetLine;
+		contentViewMode = 'edit';
 	}
 
 	function syncVelxioToMarkdown(): boolean {
@@ -203,8 +268,8 @@
 
 		if (currentBody !== mgr.body) {
 			mgr.onBodyChange(currentBody);
-			if (editorRef) {
-				editorRef.setCode(currentBody);
+			if (inlineEditorRef) {
+				inlineEditorRef.setCode(currentBody);
 			}
 		}
 	}
@@ -237,18 +302,16 @@
 		}
 	}
 
-	// ── Feature template sidebar ──────────────────────────────────────
-	// Insert a feature section template at the editor cursor. Works in all
-	// layout modes (desktop docked, floating, mobile). Shown in a hide-able
-	// right sidebar grouped into "Konten" and "Penilaian".
+	// Step the mobile workspace height up/down through the available modes
+	const MOBILE_STEPS = ['hidden', 'peek', 'h30', 'h50', 'h70', 'full'] as const;
+	function stepMobileMode(dir: 1 | -1) {
+		const idx = MOBILE_STEPS.indexOf(mgr.mobileMode as (typeof MOBILE_STEPS)[number]);
+		const next = MOBILE_STEPS[Math.min(MOBILE_STEPS.length - 1, Math.max(0, idx + dir))];
+		mgr.mobileMode = next as typeof mgr.mobileMode;
+	}
+
+	// ── Feature templates ──────────────────────────────────────
 	type FeatureTemplate = { id: string; label: string; group: 'layout' | 'set_soal' | 'inline'; snippet: string };
-
-	let featureSidebarOpen = $state(true);
-
-	// Desktop: panel fitur terbuka by default. Mobile: default tersembunyi (drawer).
-	$effect(() => {
-		if (mgr.isMobile) featureSidebarOpen = false;
-	});
 
 	const FEATURE_TEMPLATES: FeatureTemplate[] = [
 		// ── Layout ──
@@ -461,11 +524,38 @@
 		}
 	];
 
+	function getTemplateDesc(id: string): string {
+		switch (id) {
+			case 'info': return 'Tujuan pembelajaran & prasyarat materi';
+			case 'quiz': return 'Pilihan ganda interaktif & pembahasan';
+			case 'exercise': return 'Blok instruksi tantangan latihan mandiri';
+			case 'slide': return 'Presentasi carousel slide atau embed Canva';
+			case 'set-c': return 'Bundle C: initial, expected, solution, key';
+			case 'set-python': return 'Bundle Python dengan verifikasi output';
+			case 'set-circuit': return 'Rangkaian analog & evaluasi tegangan node';
+			case 'set-arduino': return 'Simulasi Arduino Uno & evaluasi wiring';
+			case 'expected-wiring': return 'Evaluasi sambungan pin hardware Arduino';
+			case 'set-flowchart': return 'Diagram alur algoritma dengan verifikasi';
+			case 'circuit-inline': return 'Embed simulasi rangkaian analog inline';
+			case 'flowchart-inline': return 'Embed canvas diagram alur interaktif inline';
+			case 'embed': return 'Embed iframe responsif (Canva, video, dll)';
+			default: return 'Sisipkan template ke materi';
+		}
+	}
+
 	function insertTemplate(tpl: FeatureTemplate) {
 		if (!mgr.activePath || isAssetFile) return;
-		editorRef?.insertAtCursor(tpl.snippet);
-		// Ensure editor tab is visible so the user sees the insertion
-		mgr.activeTab = 'editor';
+
+		if (contentViewMode === 'edit' && inlineEditorRef) {
+			inlineEditorRef.insertAtCursor(tpl.snippet);
+		} else {
+			// Mode preview: tambahkan template ke akhir body dan alihkan ke mode edit
+			const current = mgr.body.trimEnd();
+			const newBody = current ? `${current}\n\n${tpl.snippet.trim()}\n` : `${tpl.snippet.trim()}\n`;
+			mgr.onBodyChange(newBody);
+			contentViewMode = 'edit';
+		}
+		showToast(`Template "${tpl.label}" disisipkan`);
 	}
 
 
@@ -490,9 +580,6 @@
 		if (res.success) {
 			await loadTrees();
 			await mgr.loadDraft(path);
-			if (mgr.isMobile) {
-				mobileShowTree = false;
-			}
 		} else {
 			alert(res.message || 'Gagal membuat file');
 		}
@@ -545,7 +632,6 @@
 				mgr.draftId = null;
 				mgr.previewSlides = [];
 				mgr.previewActiveTabs = [];
-				if (mgr.isMobile) mobileShowTree = true;
 			}
 		} else if (res.needs_force) {
 			if (window.confirm(`Folder "${name}" tidak kosong. Hapus semua isi?`)) {
@@ -556,7 +642,6 @@
 						mgr.activePath = null;
 						mgr.body = '';
 						mgr.draftId = null;
-						if (mgr.isMobile) mobileShowTree = true;
 					}
 				} else {
 					alert(forceRes.message || 'Gagal menghapus');
@@ -726,31 +811,55 @@
 		class:single-col={float.floating || mgr.isMobile}
 		class:has-floating={float.floating && !mgr.isMobile}
 	>
-		<!-- Preview Panel (always behind editor) -->
+		<!-- Preview Panel (content view or inline editor) -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="preview-panel"
 			class:full-width={float.floating || mgr.isMobile}
-			onselectstart={(e) => e.preventDefault()}
-			oncopy={(e) => e.preventDefault()}
-			oncut={(e) => e.preventDefault()}
-			oncontextmenu={(e) => e.preventDefault()}
+			class:in-edit-mode={contentViewMode === 'edit'}
+			onselectstart={(e) => { if (contentViewMode !== 'edit') e.preventDefault(); }}
+			oncopy={(e) => { if (contentViewMode !== 'edit') e.preventDefault(); }}
+			oncut={(e) => { if (contentViewMode !== 'edit') e.preventDefault(); }}
+			oncontextmenu={(e) => { if (contentViewMode !== 'edit') e.preventDefault(); }}
 		>
-			{#if mgr.previewLoading}
+			{#if mgr.previewLoading && contentViewMode !== 'edit'}
 				<div class="preview-loading">Memuat preview...</div>
-			{:else if mgr.previewError}
+			{:else if mgr.previewError && contentViewMode !== 'edit'}
 				<div class="preview-error">{mgr.previewError}</div>
 			{:else if isImageFile && mgr.activePath}
 				<div class="preview-asset">
 					<img src="/assets/{mgr.activePath}" alt={activeFileName} style="max-width:100%;border-radius:var(--radius);" loading="lazy" />
 					<p class="preview-asset-meta">/assets/{mgr.activePath}</p>
 				</div>
+			{:else if contentViewMode === 'edit' && mgr.activePath && !isAssetFile}
+				<ContentInlineEditor
+					bind:this={inlineEditorRef}
+					code={mgr.body}
+					fileName={activeFileName}
+					initialCursorPos={editCursorPos}
+					initialLine={editLineNumber}
+					onchange={handleEditorChange}
+					onclose={() => contentViewMode = 'preview'}
+				/>
 			{:else if mgr.previewHtml}
+				<div class="preview-edit-bar">
+					<span class="preview-edit-hint">👆 Klik teks untuk edit langsung</span>
+					<button
+						type="button"
+						class="btn-quick-edit"
+						onclick={() => { editCursorPos = undefined; editLineNumber = 1; contentViewMode = 'edit'; }}
+						title="Buka editor teks (Ctrl+E)"
+					>
+						✏️ Edit Teks (Ctrl+E)
+					</button>
+				</div>
 				<LessonContentView
 					lessonHtml={mgr.previewHtml}
 					exerciseHtml={mgr.previewExerciseHtml}
 					quizData={mgr.previewQuizData as any}
 					slides={mgr.previewSlides}
 					activeTabs={mgr.previewActiveTabs}
+					clickable={true}
+					onclicktext={handleContentTextClick}
 				/>
 				{#if mgr.previewQuizData.length > 0}
 					<QuizPreviewReadonly quizData={mgr.previewQuizData as any} />
@@ -774,6 +883,7 @@
 			class:floating-hidden={float.floating && float.minimized && !mgr.isMobile}
 			class:mobile-sheet={mgr.isMobile}
 			class:mobile-hidden={mgr.isMobile && mgr.mobileMode === 'hidden'}
+			class:mobile-peek={mgr.isMobile && mgr.mobileMode === 'peek'}
 			class:mobile-h30={mgr.isMobile && mgr.mobileMode === 'h30'}
 			class:mobile-h50={mgr.isMobile && mgr.mobileMode === 'h50'}
 			class:mobile-h70={mgr.isMobile && mgr.mobileMode === 'h70'}
@@ -782,20 +892,27 @@
 		>
 			<!-- Save / Publish actions (shared across all header modes) -->
 		{#snippet saveActions()}
-			<button class="panel-btn" onclick={handleExport} disabled={importExportBusy} title="Export semua materi & assets (zip)">📤</button>
-			<button class="panel-btn" onclick={handleImportClick} disabled={importExportBusy} title="Import materi & assets dari zip (extract di browser, kirim per-file)">📥</button>
-			{#if importProgress}
-				<span class="ie-progress" role="status">Impor {importProgress.done}/{importProgress.total}</span>
-			{/if}
 			{#if mgr.activePath && !isAssetFile}
-				<button class="panel-btn toolbar-toggle" class:active={featureSidebarOpen} onclick={() => featureSidebarOpen = !featureSidebarOpen} title="Tampilkan/sembunyikan panel Fitur">🧩</button>
-				<button class="panel-btn save-btn" onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
+				<button class="panel-btn save-btn" use:preserveFocus onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
 					{mgr.saving ? '⏳' : '💾'}
 				</button>
-				<button class="panel-btn publish-btn" onclick={() => handlePublishAction()} disabled={mgr.publishing || mgr.saving} title="Publish">
+				<button class="panel-btn publish-btn" use:preserveFocus onclick={() => handlePublishAction()} disabled={mgr.publishing || mgr.saving} title="Publish">
 					{mgr.publishing ? '⏳' : '🚀'}
 				</button>
 			{/if}
+		{/snippet}
+
+		<!-- File management actions (tree header, right side) -->
+		{#snippet treeActions()}
+			{#if mgr.treeRoot === 'content'}
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFile('')} title="Buat file baru (.md)">📄</button>
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFolder('')} title="Buat folder baru">📁</button>
+			{:else}
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleUpload} title="Upload asset gambar">⬆️</button>
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFolder('')} title="Buat folder asset">📁</button>
+			{/if}
+			<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleExport} disabled={importExportBusy} title="Export semua materi & assets (zip)">📤</button>
+			<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleImportClick} disabled={importExportBusy} title="Import materi & assets dari zip">📥</button>
 		{/snippet}
 
 		<!-- Panel Header (floating drag handle) -->
@@ -805,7 +922,7 @@
 					<span class="resize-handle" onmousedown={(e) => { e.stopPropagation(); float.onResizeStart(e); }} ontouchstart={float.onTouchResizeStart}>&#x25F3;</span>
 					<div class="chrome-tabs">
 						{#each allTabs as tab}
-							<button class="chrome-tab" class:active={mgr.activeTab === tab.id} onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
+							<button class="chrome-tab" class:active={mgr.activeTab === tab.id} use:preserveFocus onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
 						{/each}
 					</div>
 					<div class="panel-actions">
@@ -815,37 +932,22 @@
 					</div>
 				</div>
 			{:else if mgr.isMobile}
-				<!-- Mobile: panel header with tabs + swipe -->
+				<!-- Mobile: panel header (tree view only) -->
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div class="panel-header" ontouchstart={(e) => { /* future swipe support */ }}>
-					{#if !mobileShowTree && mgr.activePath}
-						<button class="panel-btn mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">◀</button>
-					{/if}
-					<div class="chrome-tabs">
-						{#if !mobileShowTree}
-							{#each allTabs as tab}
-								<button class="chrome-tab" class:active={mgr.activeTab === tab.id} onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
-							{/each}
-						{:else}
-							<span class="chrome-tab active">File Tree</span>
-						{/if}
-					</div>
+				<div class="panel-header">
+					<span class="chrome-tab active">{mgr.activePath ? activeFileName : 'File Tree'}</span>
 					<div class="panel-actions">
-						{@render saveActions()}
-						<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'hidden') mgr.mobileMode = mgr.mobileMode === 'full' ? 'h50' : 'hidden'; else mgr.mobileMode = 'h50'; }} title="Minimize" disabled={mgr.mobileMode === 'hidden'}>▽</button>
-						<button class="panel-btn" onclick={() => { if (mgr.mobileMode !== 'full') mgr.mobileMode = mgr.mobileMode === 'hidden' ? 'h50' : 'full'; else mgr.mobileMode = 'h50'; }} title="Maximize" disabled={mgr.mobileMode === 'full'}>△</button>
+						<button class="panel-btn" use:preserveFocus onclick={() => stepMobileMode(-1)} title="Minimize" disabled={mgr.mobileMode === 'hidden'}>▽</button>
+						<button class="panel-btn" use:preserveFocus onclick={() => stepMobileMode(1)} title="Maximize" disabled={mgr.mobileMode === 'full'}>△</button>
 					</div>
 				</div>
 			{:else}
 				<!-- Desktop: panel header with tabs + actions -->
 				<div class="panel-header">
-					{#if mgr.activePath && !isAssetFile}
-						<button class="panel-btn mobile-back-btn" onclick={handleMobileBackToTree} title="Kembali ke tree">◀</button>
-					{/if}
 					<div class="chrome-tabs">
 						{#if mgr.activePath}
 							{#each allTabs as tab}
-								<button class="chrome-tab" class:active={mgr.activeTab === tab.id} onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
+								<button class="chrome-tab" class:active={mgr.activeTab === tab.id} use:preserveFocus onclick={() => handleTabClick(tab.id)}>{tab.label}</button>
 							{/each}
 						{/if}
 					</div>
@@ -858,10 +960,67 @@
 				</div>
 				{/if}
 
+				<!-- Quick tools rail: mobile only -->
+				{#if mgr.isMobile && mgr.activePath && !isAssetFile}
+					<div class="quick-tools-rail" data-preserve-editor-focus>
+						<!-- Pinned quick actions (tidak ikut scroll horizontal) -->
+						<div class="qt-pinned">
+							<button type="button" class="qt-chip qt-action-edit" use:preserveFocus onclick={() => { contentViewMode = contentViewMode === 'edit' ? 'preview' : 'edit'; }} title="Toggle editor teks (Ctrl+E)">
+								{contentViewMode === 'edit' ? '👁️' : '✏️'}
+							</button>
+							<button type="button" class="qt-chip" use:preserveFocus onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
+								{mgr.saving ? '⏳' : '💾'}
+							</button>
+							<button type="button" class="qt-chip" use:preserveFocus onclick={() => handlePublishAction()} disabled={mgr.publishing || mgr.saving} title="Publish">
+								{mgr.publishing ? '⏳' : '🚀'}
+							</button>
+						</div>
+
+						<!-- Scrollable templates -->
+						<div class="qt-scroll">
+							<div class="qt-divider" aria-hidden="true"></div>
+
+							<!-- Layout templates -->
+							<div class="qt-group">
+								<span class="qt-label">📐 Layout</span>
+								{#each FEATURE_TEMPLATES.filter(t => t.group === 'layout') as tpl}
+									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
+										{tpl.label}
+									</button>
+								{/each}
+							</div>
+
+							<div class="qt-divider" aria-hidden="true"></div>
+
+							<!-- Set soal templates -->
+							<div class="qt-group">
+								<span class="qt-label">🎯 Set Soal</span>
+								{#each FEATURE_TEMPLATES.filter(t => t.group === 'set_soal') as tpl}
+									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
+										{tpl.label}
+									</button>
+								{/each}
+							</div>
+
+							<div class="qt-divider" aria-hidden="true"></div>
+
+							<!-- Inline templates -->
+							<div class="qt-group">
+								<span class="qt-label">⚡ Inline</span>
+								{#each FEATURE_TEMPLATES.filter(t => t.group === 'inline') as tpl}
+									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
+										{tpl.label}
+									</button>
+								{/each}
+							</div>
+						</div>
+					</div>
+				{/if}
+
 				<!-- Editor main: tab panels + feature sidebar -->
 			<div class="editor-main">
 			<div class="editor-body">
-				{#if mgr.isMobile && mobileShowTree}
+				{#if mgr.isMobile}
 					<!-- MOBILE: Show full-width tree -->
 					<div class="tree-panel mobile-tree-full">
 						<div class="tree-header">
@@ -869,14 +1028,8 @@
 								<button class="tree-tab" class:active={mgr.treeRoot === 'content'} onclick={() => mgr.treeRoot = 'content'}>Materi</button>
 								<button class="tree-tab" class:active={mgr.treeRoot === 'assets'} onclick={() => mgr.treeRoot = 'assets'}>Assets</button>
 							</div>
-							<div class="tree-actions-header">
-								{#if mgr.treeRoot === 'content'}
-									<button class="action-btn-sm" title="Buat file baru" onclick={() => handleCreateFile('')}>📄+</button>
-								{/if}
-								<button class="action-btn-sm" title="Buat folder baru" onclick={() => handleCreateFolder('')}>📁+</button>
-								{#if mgr.treeRoot === 'assets'}
-									<button class="action-btn-sm" title="Upload gambar" onclick={handleUpload}>⬆️</button>
-								{/if}
+							<div class="tree-actions">
+								{@render treeActions()}
 							</div>
 						</div>
 						<div class="tree-content">
@@ -896,22 +1049,16 @@
 						</div>
 					</div>
 				{:else}
-					<!-- DESKTOP or MOBILE: Tree + Tab panels side by side -->
+					<!-- DESKTOP: Tree + Tab panels side by side -->
 					<!-- File Tree -->
-					<div class="tree-panel" class:mobile-tree-hidden={mgr.isMobile}>
+					<div class="tree-panel">
 						<div class="tree-header">
 							<div class="tree-tabs">
 								<button class="tree-tab" class:active={mgr.treeRoot === 'content'} onclick={() => mgr.treeRoot = 'content'}>Materi</button>
 								<button class="tree-tab" class:active={mgr.treeRoot === 'assets'} onclick={() => mgr.treeRoot = 'assets'}>Assets</button>
 							</div>
-							<div class="tree-actions-header">
-								{#if mgr.treeRoot === 'content'}
-									<button class="action-btn-sm" title="Buat file baru" onclick={() => handleCreateFile('')}>📄+</button>
-								{/if}
-								<button class="action-btn-sm" title="Buat folder baru" onclick={() => handleCreateFolder('')}>📁+</button>
-								{#if mgr.treeRoot === 'assets'}
-									<button class="action-btn-sm" title="Upload gambar" onclick={handleUpload}>⬆️</button>
-								{/if}
+							<div class="tree-actions">
+								{@render treeActions()}
 							</div>
 						</div>
 						<div class="tree-content">
@@ -933,37 +1080,97 @@
 
 					<!-- Tab Panels -->
 					<div class="tab-panels">
-						<!-- Editor Tab -->
-						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'editor'}>
-							{#if mgr.activePath}
-								{#if isImageFile}
-									<div class="asset-preview">
-										<div class="asset-preview-image">
-											<img src="/assets/{mgr.activePath}" alt={activeFileName} loading="lazy" />
-										</div>
-										<div class="asset-preview-info">
-											<span class="asset-name">{activeFileName}</span>
-											<span class="asset-path">/assets/{mgr.activePath}</span>
-											<div class="asset-actions">
-												<button class="panel-btn" onclick={handleCopyAssetPath}>📋 Salin Path</button>
+						<!-- Features & Actions Tab (Toolbox) -->
+						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'features'}>
+							<div class="toolbox-container">
+								{#if mgr.activePath}
+									{#if isImageFile}
+										<!-- Asset Preview -->
+										<div class="toolbox-card">
+											<div class="card-header">
+												<span class="card-title">🖼️ Pratinjau Asset</span>
+											</div>
+											<div class="asset-preview">
+												<div class="asset-preview-image">
+													<img src="/assets/{mgr.activePath}" alt={activeFileName} loading="lazy" />
+												</div>
+												<div class="asset-preview-info">
+													<span class="asset-name">{activeFileName}</span>
+													<span class="asset-path">/assets/{mgr.activePath}</span>
+													<div class="asset-actions">
+														<button class="panel-btn" onclick={handleCopyAssetPath}>📋 Salin Path</button>
+													</div>
+												</div>
 											</div>
 										</div>
-									</div>
+									{:else}
+										<!-- 2. Active File Status & Document Actions -->
+										<div class="toolbox-card active-file-card">
+											<div class="active-file-header">
+												<span class="file-name">📄 {activeFileName}</span>
+												<span class="file-status-badge" class:dirty={mgr.dirty}>
+													{mgr.dirty ? '● Perubahan Belum Disimpan' : '✓ Tersimpan'}
+												</span>
+											</div>
+											<div class="btn-row">
+													<button type="button" class="btn-primary" onclick={handleSaveAction} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')}>
+														{mgr.saving ? '⏳ Menyimpan...' : '💾 Simpan Draft'}
+													</button>
+													<button type="button" class="btn-success" onclick={handlePublishAction} disabled={mgr.publishing || mgr.saving}>
+														{mgr.publishing ? '⏳ Memproses...' : '🚀 Publish Materi'}
+													</button>
+													<button type="button" class="btn-secondary" onclick={() => { contentViewMode = 'edit'; }}>
+														✏️ Edit Teks di Content View (Ctrl+E)
+													</button>
+												</div>
+											</div>
+
+										<!-- 3. Layout Templates -->
+										<div class="toolbox-section">
+											<h4 class="section-title">📐 Template Layout & Konten</h4>
+											<div class="template-grid">
+												{#each FEATURE_TEMPLATES.filter(t => t.group === 'layout') as tpl}
+													<button type="button" class="template-card-btn" onclick={() => insertTemplate(tpl)}>
+														<span class="tpl-label">{tpl.label}</span>
+														<span class="tpl-desc">{getTemplateDesc(tpl.id)}</span>
+													</button>
+												{/each}
+											</div>
+										</div>
+
+										<!-- 4. Set Soal & Penilaian -->
+										<div class="toolbox-section">
+											<h4 class="section-title">🎯 Set Soal & Penilaian</h4>
+											<div class="template-grid">
+												{#each FEATURE_TEMPLATES.filter(t => t.group === 'set_soal') as tpl}
+													<button type="button" class="template-card-btn" onclick={() => insertTemplate(tpl)}>
+														<span class="tpl-label">{tpl.label}</span>
+														<span class="tpl-desc">{getTemplateDesc(tpl.id)}</span>
+													</button>
+												{/each}
+											</div>
+										</div>
+
+										<!-- 5. Komponen Interaktif Inline -->
+										<div class="toolbox-section">
+											<h4 class="section-title">⚡ Komponen Interaktif Inline</h4>
+											<div class="template-grid">
+												{#each FEATURE_TEMPLATES.filter(t => t.group === 'inline') as tpl}
+													<button type="button" class="template-card-btn" onclick={() => insertTemplate(tpl)}>
+														<span class="tpl-label">{tpl.label}</span>
+														<span class="tpl-desc">{getTemplateDesc(tpl.id)}</span>
+													</button>
+												{/each}
+											</div>
+										</div>
+									{/if}
 								{:else}
-									<div class="code-tab-content">
-										<CodeEditor
-											bind:this={editorRef}
-											code={mgr.body}
-											language="markdown"
-											onchange={handleEditorChange}
-										/>
+									<!-- Zero state -->
+									<div class="toolbox-zero-state">
+										<p>👈 Pilih materi di daftar berkas untuk melihat template & aksi dokumen aktif.</p>
 									</div>
 								{/if}
-							{:else}
-								<div class="tab-empty">
-									<p>Pilih file dari tree untuk mulai mengedit.</p>
-								</div>
-							{/if}
+							</div>
 						</div>
 
 						<!-- Exercise Tab -->
@@ -1043,36 +1250,6 @@
 				{/if}
 			</div>
 
-			<!-- Feature sidebar (right, hide-able) -->
-			{#if featureSidebarOpen && mgr.activePath && !isAssetFile}
-				<aside class="feature-sidebar" class:mobile-drawer={mgr.isMobile}>
-					<div class="feature-sidebar-header">
-						<span>Fitur</span>
-					</div>
-										<div class="feature-sidebar-body">
-						<div class="feature-group-label">Layout</div>
-						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'layout') as tpl}
-							<button class="feature-btn" title={"Sisipkan template " + tpl.label} onclick={() => insertTemplate(tpl)}>
-								{tpl.label}
-							</button>
-						{/each}
-						
-						<div class="feature-group-label">Set Soal</div>
-						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'set_soal') as tpl}
-							<button class="feature-btn" title={"Sisipkan bundle " + tpl.label} onclick={() => insertTemplate(tpl)}>
-								{tpl.label}
-							</button>
-						{/each}
-						
-						<div class="feature-group-label">Inline</div>
-						{#each FEATURE_TEMPLATES.filter((t) => t.group === 'inline') as tpl}
-							<button class="feature-btn" title={"Sisipkan template " + tpl.label} onclick={() => insertTemplate(tpl)}>
-								{tpl.label}
-							</button>
-						{/each}
-					</div>
-				</aside>
-			{/if}
 			</div>
 
 			<!-- Status bar -->
@@ -1126,6 +1303,48 @@
 	}
 	.preview-panel.full-width {
 		max-height: none;
+	}
+	.preview-panel.in-edit-mode {
+		padding: 0.5rem;
+		display: flex;
+		flex-direction: column;
+	}
+	.preview-panel.in-edit-mode :global(.inline-editor-container) {
+		flex: 1;
+		min-height: 75vh;
+	}
+	.preview-edit-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+		padding: 0.35rem 0.6rem;
+		background: var(--color-bg-secondary);
+		border: 1px dashed var(--color-border);
+		border-radius: var(--radius);
+		font-size: 0.78rem;
+		color: var(--color-text-muted);
+	}
+	.preview-edit-hint {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.btn-quick-edit {
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 0.2rem 0.55rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--color-primary, #339af0);
+		cursor: pointer;
+		transition: all 0.15s;
+		white-space: nowrap;
+	}
+	.btn-quick-edit:hover {
+		background: var(--color-border);
 	}
 	.preview-loading, .preview-empty {
 		display: flex;
@@ -1187,6 +1406,7 @@
 		display: flex;
 		gap: 0.25rem;
 		align-self: center;
+		margin-left: auto;
 	}
 	.panel-btn {
 		background: none;
@@ -1216,85 +1436,181 @@
 		min-height: 0;
 		overflow: hidden;
 	}
-	.feature-btn {
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		padding: 0.35rem 0.6rem;
-		cursor: pointer;
-		font-size: 0.78rem;
-		color: var(--color-text);
-		line-height: 1;
-		white-space: nowrap;
-		width: 100%;
-		text-align: left;
-	}
-	.feature-btn:hover:not(:disabled) { background: var(--color-border); }
-	.feature-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-	/* Right feature sidebar */
-	.feature-sidebar {
-		width: 20%;
-		min-width: 150px;
-		max-width: 300px;
-		flex-shrink: 0;
-		background: var(--color-bg-secondary);
-		border-left: 1px solid var(--color-border);
+	/* ── Toolbox (Fitur & Aksi) ── */
+	.toolbox-container {
+		flex: 1;
+		overflow-y: auto;
+		padding: 1rem;
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
+		gap: 1rem;
 	}
-	.feature-sidebar-header {
+	.toolbox-card {
+		background: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius);
+		padding: 0.75rem;
+	}
+	.card-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 6px 8px;
-		font-size: 0.78rem;
-		font-weight: 600;
-		color: var(--color-text-muted);
-		border-bottom: 1px solid var(--color-border);
-		flex-shrink: 0;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
 	}
-	.feature-sidebar-body {
-		padding: 8px;
+	.card-title {
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: var(--color-text);
+	}
+	.btn-row {
 		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
-		overflow-y: auto;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 	}
-	.feature-group-label {
-		font-size: 0.7rem;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
+	.btn-action {
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		padding: 0.45rem 0.75rem;
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: var(--color-text);
+		cursor: pointer;
+		transition: all 0.15s;
+		white-space: nowrap;
+	}
+	.btn-action:hover:not(:disabled) {
+		background: var(--color-border);
+		border-color: var(--color-text-muted);
+	}
+	.btn-action:disabled {
+	 opacity: 0.45;
+		cursor: not-allowed;
+	}
+	.btn-primary {
+		background: var(--color-primary, #339af0);
+		border-color: var(--color-primary, #339af0);
+		color: #fff;
+		font-weight: 600;
+	}
+	.btn-primary:hover:not(:disabled) {
+		background: #228be6;
+		border-color: #228be6;
+	}
+	.btn-success {
+		background: #2b8a3e;
+		border-color: #2b8a3e;
+		color: #fff;
+		font-weight: 600;
+	}
+	.btn-success:hover:not(:disabled) {
+		background: #237032;
+		border-color: #237032;
+	}
+	.btn-secondary {
+		background: var(--color-bg);
+		border: 1px dashed var(--color-border);
 		color: var(--color-text-muted);
-		margin-top: 0.5rem;
-		margin-bottom: 0.1rem;
 	}
-	.feature-group-label:first-child { margin-top: 0; }
-
-	/* Toolbar Fitur toggle (icon, highlighted when sidebar open) */
-	.toolbar-toggle {
-		font-size: 0.95rem;
-		line-height: 1;
-		padding: 0.2rem 0.5rem;
-	}
-	.toolbar-toggle.active {
+	.btn-secondary:hover:not(:disabled) {
 		background: var(--color-border);
 		color: var(--color-text);
 	}
+	.active-file-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+		flex-wrap: wrap;
+	}
+	.file-name {
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--color-text);
+		word-break: break-all;
+	}
+	.file-status-badge {
+		font-size: 0.72rem;
+		padding: 0.2rem 0.5rem;
+		border-radius: 4px;
+		background: #ebfbee;
+		color: #2b8a3e;
+		white-space: nowrap;
+	}
+	.file-status-badge.dirty {
+		background: #fff3bf;
+		color: #e67700;
+	}
+	.toolbox-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.section-title {
+		font-size: 0.78rem;
+		font-weight: 700;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+	}
+	.template-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+		gap: 0.5rem;
+	}
+	.template-card-btn {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.2rem;
+		padding: 0.6rem 0.75rem;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		cursor: pointer;
+		text-align: left;
+		transition: all 0.15s;
+	}
+	.template-card-btn:hover {
+		background: var(--color-border);
+		border-color: var(--color-text-muted);
+	}
+	.tpl-label {
+		font-size: 0.8rem;
+		font-weight: 600;
+		color: var(--color-text);
+	}
+	.tpl-desc {
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+		line-height: 1.3;
+	}
+	.toolbox-zero-state {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem 1rem;
+		color: var(--color-text-muted);
+		text-align: center;
+		font-size: 0.85rem;
+	}
 
-	/* Mobile: same 20% inline sidebar as desktop (no drawer overlay) */
 	@media (max-width: 768px) {
-		.feature-sidebar.mobile-drawer {
-			position: static;
-			top: auto;
-			right: auto;
-			bottom: auto;
-			width: 30%;
-			min-width: 70px;
-			max-width: 200px;
-			z-index: auto;
-			box-shadow: none;
+		.toolbox-container {
+			padding: 0.75rem;
+			gap: 0.75rem;
+		}
+		.template-grid {
+			grid-template-columns: repeat(2, 1fr);
+		}
+		.btn-row {
+			flex-direction: column;
+		}
+		.btn-action, .btn-primary, .btn-success, .btn-secondary {
+			width: 100%;
+			text-align: center;
 		}
 	}
 
@@ -1358,7 +1674,7 @@
 
 	/* Tab Panels */
 	.tab-panels {
-		flex: 1;
+		flex: 0 0 35%;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -1413,12 +1729,16 @@
 
 	/* Tree Panel */
 	.tree-panel {
-		width: 220px;
-		min-width: 180px;
+		flex: 0 0 65%;
+		min-width: 0;
 		border-right: 1px solid var(--color-border);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+	.tree-panel.mobile-tree-full {
+		flex: 0 0 100%;
+		border-right: none;
 	}
 	.tree-header {
 		display: flex;
@@ -1453,21 +1773,35 @@
 		color: white;
 		border-color: var(--color-primary, #339af0);
 	}
-	.tree-actions-header {
+	.tree-actions {
 		display: flex;
 		gap: 2px;
 	}
-	.action-btn-sm {
-		background: none;
-		border: none;
-		cursor: pointer;
-		padding: 2px 4px;
-		font-size: 0.75rem;
+	.tree-action-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
 		border-radius: 4px;
-		transition: background 0.15s;
+		font-size: 0.85rem;
+		cursor: pointer;
+		transition: background 0.15s, border-color 0.15s;
 	}
-	.action-btn-sm:hover {
-		background: var(--color-border, #ddd);
+	.tree-action-btn:hover:not(:disabled) {
+		background: var(--color-border);
+		border-color: var(--color-text-muted);
+	}
+	.tree-action-btn:disabled {
+	 opacity: 0.45;
+		cursor: not-allowed;
+	}
+	.tree-actions-header {
+		display: flex;
+		gap: 2px;
 	}
 	.tree-content {
 		flex: 1;
@@ -1643,17 +1977,92 @@
 		transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.2s ease;
 	}
 	.editor-area.mobile-hidden { height: 52px; }
+	.editor-area.mobile-peek { height: 84px; }
 	.editor-area.mobile-h30 { height: 30vh; }
 	.editor-area.mobile-h50 { height: 50vh; }
 	.editor-area.mobile-h70 { height: 70vh; }
 	.editor-area.mobile-full { height: 100dvh; border-radius: 0; max-height: none; }
 
-	/* Mobile tree full-width */
-	.tree-panel.mobile-tree-full {
-		width: 100%;
-		min-width: 0;
-		border-right: none;
+	/* ── Quick tools rail ── */
+	.quick-tools-rail {
+		display: flex;
+		align-items: stretch;
+		background: var(--color-bg-secondary);
+		border-bottom: 1px solid var(--color-border);
+		flex-shrink: 0;
+	}
+	.qt-pinned {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		padding: 0.4rem 0.6rem;
+		background: var(--color-bg-secondary);
+		border-right: 1px solid var(--color-border);
+		flex-shrink: 0;
+	}
+	.qt-scroll {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.4rem 0.6rem;
+		overflow-x: auto;
+		overflow-y: hidden;
+		white-space: nowrap;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
 		flex: 1;
+		min-width: 0;
+	}
+	.qt-scroll::-webkit-scrollbar { display: none; }
+
+	.qt-group {
+		display: flex;
+		align-items: center;
+		gap: 0.35rem;
+		flex-shrink: 0;
+	}
+	.qt-label {
+		font-size: 0.68rem;
+		font-weight: 700;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		white-space: nowrap;
+	}
+	.qt-divider {
+		width: 1px;
+		height: 22px;
+		background: var(--color-border);
+		flex-shrink: 0;
+	}
+	.qt-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.4rem 0.7rem;
+		min-height: 36px;
+		background: var(--color-bg);
+		border: 1px solid var(--color-border);
+		border-radius: 6px;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--color-text);
+		cursor: pointer;
+		white-space: nowrap;
+		flex-shrink: 0;
+		transition: background 0.15s, border-color 0.15s;
+	}
+	.qt-chip:hover:not(:disabled) {
+		background: var(--color-border);
+		border-color: var(--color-text-muted);
+	}
+	.qt-chip:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+	.qt-action-edit {
+		color: var(--color-primary, #339af0);
+		font-weight: 600;
 	}
 	.tree-panel.mobile-tree-hidden {
 		display: none;

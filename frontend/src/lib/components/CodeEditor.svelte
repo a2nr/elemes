@@ -8,10 +8,21 @@
 		readonly?: boolean;
 		noPaste?: boolean;
 		storageKey?: string;
+		initialCursorPos?: number;
+		initialLine?: number;
 		onchange?: (value: string) => void;
 	}
 
-	let { code = '', language = 'c', readonly = false, noPaste = false, storageKey, onchange }: Props = $props();
+	let {
+		code = '',
+		language = 'c',
+		readonly = false,
+		noPaste = false,
+		storageKey,
+		initialCursorPos,
+		initialLine,
+		onchange
+	}: Props = $props();
 
 	let container: HTMLDivElement;
 	let view: any;
@@ -205,6 +216,12 @@
 			}),
 			parent: container,
 		});
+
+		if (initialCursorPos !== undefined) {
+			setCursorPos(initialCursorPos);
+		} else if (initialLine !== undefined) {
+			scrollToLine(initialLine);
+		}
 	}
 
 	function setupNoPasteListeners() {
@@ -316,6 +333,40 @@
 	/** Return current editor content. */
 	export function getCode(): string {
 		return view?.state.doc.toString() ?? code;
+	}
+
+	/** Set cursor to an exact character position and scroll it into view. */
+	export function setCursorPos(pos: number) {
+		if (!view || !CM) return;
+		const docLen = view.state.doc.length;
+		const safePos = Math.max(0, Math.min(pos, docLen));
+		view.dispatch({
+			selection: { anchor: safePos, head: safePos },
+			effects: CM.EditorView.scrollIntoView(safePos, { y: 'center' }),
+		});
+		view.focus();
+	}
+
+	/** Scroll editor to a specific 1-indexed line and position cursor there. */
+	export function scrollToLine(lineNumber: number) {
+		if (!view || !CM) return;
+		try {
+			const totalLines = view.state.doc.lines;
+			const targetLine = Math.max(1, Math.min(lineNumber, totalLines));
+			const line = view.state.doc.line(targetLine);
+			view.dispatch({
+				selection: { anchor: line.from, head: line.from },
+				effects: CM.EditorView.scrollIntoView(line.from, { y: 'center' }),
+			});
+			view.focus();
+		} catch (e) {
+			// line out of range — ignore
+		}
+	}
+
+	/** Focus the editor */
+	export function focus() {
+		view?.focus();
 	}
 </script>
 <div class="editor-wrapper" class:no-paste={noPaste} bind:this={container}>

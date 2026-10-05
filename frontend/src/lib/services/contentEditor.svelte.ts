@@ -22,7 +22,7 @@ export class ContentEditorManager {
 	previewLoading = $state(false);
 
 	// Mobile mode (replicated from LessonManager pattern)
-	mobileMode = $state<'hidden' | 'h30' | 'h50' | 'h70' | 'full'>('hidden');
+	mobileMode = $state<'hidden' | 'peek' | 'h30' | 'h50' | 'h70' | 'full'>('hidden');
 	isMobile = $state(false);
 
 	// Tab state — 'editor' | 'preview' | 'exercise' | 'quiz' | dynamic tabs from active_tabs ('c', 'python', 'circuit', 'velxio', 'flowchart')
