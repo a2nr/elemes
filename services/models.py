@@ -105,6 +105,9 @@ class QuizAttempt(Base):
     - `status`: submitted (selesai normal) atau terminated (exit dini/penalti).
     - `termination_reason` hanya untuk terminated: focus_lost, spa_navigation,
       page_unload, user_exit, completed (reserved).
+    - `resumed_at`: izin guru melanjutkan attempt terminated (NULL = gate
+      one-attempt aktif; terisi = siswa boleh melanjutkan dari jawaban
+      tersimpan, di-clear saat finalisasi ulang).
     - unique (user_id, lesson_id) = one-attempt policy.
     """
 
@@ -149,6 +152,11 @@ class QuizAttempt(Base):
     # Digunakan frontend untuk render review-after-refresh + breakdown kategori;
     # tidak memengaruui skor resmi (evaluasi saja, lihat quiz-session.ts).
     answers_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Izin guru melanjutkan attempt terminated (kendala tak terduga). NULL =
+    # one-attempt gate aktif; terisi = siswa boleh melanjutkan dari jawaban
+    # tersimpan. Di-clear saat attempt difinalisasi ulang (sekali).
+    resumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="quiz_attempts")
     lesson: Mapped["Lesson"] = relationship(back_populates="quiz_attempts")

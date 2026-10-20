@@ -11,6 +11,7 @@ from flask import Blueprint, request, jsonify, Response
 from services.token_service import (
     validate_token,
     reset_student_progress,
+    resume_quiz_attempt,
     get_all_students_progress,
 )
 from services.lesson_service import (
@@ -64,6 +65,46 @@ def reset_progress():
     except Exception as e:
         logging.error(f"Error in reset-progress: {e}")
         return jsonify({'success': False, 'message': f'Error resetting progress: {e}'})
+
+
+@progress_bp.route('/resume-quiz-attempt', methods=['POST'])
+def resume_quiz_attempt_route():
+    """Beri izin siswa melanjutkan kuis yang terminated (Teacher only).
+
+    Dipakai saat kendala tak terduga (mis. false-positive focus loss,
+    browser crash) — siswa melanjutkan dari jawaban tersimpan alih-alih
+    mengulang dari nol (reset). Kontrak keamanan sama dengan reset-progress:
+    teacher TIDAK perlu (dan tidak boleh) memegang token siswa — cukup id
+    anonim dari payload report.
+    """
+    try:
+        data = request.get_json()
+        teacher_token = data.get('teacher_token', '').strip()
+        student_id = data.get('student_id', '').strip()
+        lesson_name = data.get('lesson_name', '').strip()
+
+        if not teacher_token or not student_id or not lesson_name:
+            return jsonify({'success': False, 'message': 'All fields are required'}), 400
+
+        # Validasi teacher token
+        teacher_info = validate_token(teacher_token)
+        if not teacher_info or not teacher_info.get('is_teacher'):
+            return jsonify({'success': False, 'message': 'Unauthorized (Teacher only)'}), 401
+
+        # Beri izin resume (attempt terminated → resumed_at di-set)
+        resumed = resume_quiz_attempt(student_id, lesson_name)
+        if resumed:
+            logging.info(
+                "Quiz attempt di-resume oleh teacher=%s untuk student_id=%s, lesson=%s",
+                teacher_info.get('student_name'), _masked(student_id), lesson_name,
+            )
+            return jsonify({'success': True, 'message': 'Quiz attempt resumed successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'No terminated quiz attempt found for this student and lesson'})
+
+    except Exception as e:
+        logging.error(f"Error in resume-quiz-attempt: {e}")
+        return jsonify({'success': False, 'message': f'Error resuming quiz attempt: {e}'})
 
 
 @progress_bp.route('/progress-report.json')

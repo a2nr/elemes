@@ -4,7 +4,7 @@ import { pickDefaultTab } from '$services/lesson-tabs';
 import { tick, untrack } from 'svelte';
 import { auth, authLoggedIn, authToken, authIsTeacher } from '$stores/auth';
 import { lessonContext } from '$stores/lessonContext';
-import { compileCode, submitLessonProgress, lessonProgressBeacon, type LessonProgressPayload } from '$services/api';
+import { compileCode, submitLessonProgress, lessonProgressBeacon, type LessonProgressPayload, type LessonProgressFetchResponse } from '$services/api';
 import { clientRunner } from '$services/code-runner/client-runner';
 import { syncManager } from '$services/offline-db/sync-manager';
 import { createAttemptId, type QuizTerminationReason } from '$services/quiz-integrity';
@@ -20,6 +20,8 @@ import type { DeployState } from '$types/deployer';
 import type { QuizQuestion, QuizAnswer } from '$types/quiz';
 import {
 	createQuizSession,
+	restoreQuizSession,
+	firstUnansweredIndex,
 	answerQuestion,
 	acknowledgeFlashcard,
 	calculateQuizResult,
@@ -52,6 +54,8 @@ export class LessonManager {
 	quizFinalized = $state(false);
 	quizTerminationReason = $state<QuizTerminationReason | null>(null);
 	visibilityEventCount = $state(0);
+	/** True bila sesi aktif adalah lanjutan attempt yang di-resume guru. */
+	quizResumed = $state(false);
 	currentCode = $state('');
 	currentLanguage = $state<string>('c');
 
@@ -209,6 +213,7 @@ export class LessonManager {
 		this.quizFinalized = false;
 		this.quizTerminationReason = null;
 		this.visibilityEventCount = 0;
+		this.quizResumed = false;
 
 		this.currentCode = '';
 		this.currentLanguage = 'c';
@@ -402,11 +407,43 @@ export class LessonManager {
 		this.quizFinalized = false;
 		this.quizTerminationReason = null;
 		this.visibilityEventCount = 0;
+		this.quizResumed = false;
 		this.isQuizMode = true;
 		this.activeTab = 'quiz';
 		// On mobile the tab panel is a bottom sheet — open it so the answer
 		// sheet is visible while the question stays in the content area above.
 		if (this.isMobile) this.mobileMode = 'h50';
+	}
+
+	/**
+	 * Lanjutkan kuis dari jawaban tersimpan (attempt di-resume guru).
+	 *
+	 * Dipanggil siswa setelah guru mengizinkan resume (kendala tak terduga,
+	 * mis. false-positive focus loss). Reuse `attempt_id` lama dari attempt
+	 * terminated — satu-satunya cara aman terhadap unique constraint
+	 * one-attempt (user_id, lesson_id): backend menimpa row sekali saat
+	 * finalisasi ulang, lalu `resumed_at` di-clear.
+	 *
+	 * `started_at` asli dipertahankan untuk audit. Policy anti-cheat strict
+	 * tetap berlaku penuh selama sesi lanjutan.
+	 */
+	resumeQuiz(stored: LessonProgressFetchResponse): boolean {
+		const source = this.data?.quiz_data;
+		if (!source?.length || !stored.attempt_id) return false;
+		this.quizSession = restoreQuizSession(source, stored.answers ?? []);
+		this.quizAttemptId = stored.attempt_id;
+		this.quizStartedAt = stored.attempt_started_at ?? new Date().toISOString();
+		this.quizCurrentIndex = firstUnansweredIndex(this.quizSession);
+		this._syncCurrentQuestion();
+		this.quizResult = null;
+		this.quizFinalized = false;
+		this.quizTerminationReason = null;
+		this.visibilityEventCount = 0;
+		this.quizResumed = true;
+		this.isQuizMode = true;
+		this.activeTab = 'quiz';
+		if (this.isMobile) this.mobileMode = 'h50';
+		return true;
 	}
 
 	selectQuizOption(optionId: string) {
@@ -506,7 +543,10 @@ export class LessonManager {
 			if (!ok && typeof document !== 'undefined' && document.visibilityState === 'visible') {
 				try {
 					const res = await submitLessonProgress(payload);
-					if (this.data) this.data.has_quiz_attempt = true;
+					if (this.data) {
+						this.data.has_quiz_attempt = true;
+						this.data.quiz_resumable = false;
+					}
 					if (res && res.success && typeof res.is_done === 'boolean') {
 						this.markQuizCompletedLocally(res.is_done);
 					}
@@ -519,7 +559,10 @@ export class LessonManager {
 
 		try {
 			const res = await submitLessonProgress(payload);
-			if (this.data) this.data.has_quiz_attempt = true;
+			if (this.data) {
+				this.data.has_quiz_attempt = true;
+				this.data.quiz_resumable = false;
+			}
 			if (res && res.success && typeof res.is_done === 'boolean') {
 				this.markQuizCompletedLocally(res.is_done);
 			}

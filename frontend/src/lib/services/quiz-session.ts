@@ -142,3 +142,58 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 		diagUnmastered,
 	};
 }
+
+/** Ringkasan jawaban tersimpan dari attempt sebelumnya (payload backend). */
+export interface StoredQuizAnswer {
+	question_id: string;
+	selected_option_id: string | null;
+	is_correct?: boolean;
+	category?: 'evaluasi' | 'diagnostik';
+	type?: 'mcq' | 'flashcard';
+}
+
+/**
+ * Rekonstruksi sesi kuis dari jawaban tersimpan (resume attempt oleh guru).
+ *
+ * Berbeda dari createQuizSession: jawaban siswa dari attempt sebelumnya
+ * di-seed by question_id. `is_correct` dihitung ulang dari source (bukan
+ * percaya nilai tersimpan) sebagai guard bila konten soal berubah antara
+ * attempt dan resume — option_id yang tidak dikenal dianggap belum dijawab.
+ *
+ * Catatan: status `acknowledged` flashcard tidak tersimpan di payload
+ * attempt — siswa perlu acknowledge ulang saat resume.
+ */
+export function restoreQuizSession(
+	source: QuizQuestion[],
+	savedAnswers: StoredQuizAnswer[],
+	rng: () => number = Math.random
+): QuizSession {
+	const session = createQuizSession(source, rng);
+	const byId = new Map(savedAnswers.map((a) => [a.question_id, a]));
+	for (const q of session.questions) {
+		const saved = byId.get(q.id);
+		if (!saved) continue;
+		const answer = session.answers[q.id];
+		if (q.type === 'mcq' && saved.selected_option_id) {
+			const opt = q.options?.find((o) => o.id === saved.selected_option_id);
+			if (opt) {
+				answer.selectedOptionId = opt.id;
+				answer.isCorrect = opt.is_correct;
+			}
+		}
+	}
+	return session;
+}
+
+/**
+ * Index soal pertama yang belum dijawab — posisi mulai saat resume.
+ * Return 0 bila semua sudah terjawab (mis. attempt di-resume setelah
+ * semua soal sempat dijawab).
+ */
+export function firstUnansweredIndex(session: QuizSession): number {
+	const idx = session.questions.findIndex((q) => {
+		const a = session.answers[q.id];
+		return a.selectedOptionId === null && !a.acknowledged;
+	});
+	return idx === -1 ? 0 : idx;
+}

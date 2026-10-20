@@ -314,6 +314,7 @@ def get_lesson_progress(lesson_name: str):
                 "attempt_score": attempt_score,
                 "attempt_started_at": attempt.started_at.isoformat() if attempt and attempt.started_at else None,
                 "attempt_finished_at": attempt.finished_at.isoformat() if attempt and attempt.finished_at else None,
+                "attempt_resumed_at": attempt.resumed_at.isoformat() if attempt and attempt.resumed_at else None,
                 "answers": answers,
             }
         )

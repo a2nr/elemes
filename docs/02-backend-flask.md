@@ -45,6 +45,10 @@ The backend is built with Flask, providing API endpoints for the SvelteKit front
 ### Progress Tracking (`routes/progress.py`)
 - `def track_progress():` (POST `/track-progress`)
   Accepts `lesson_name` and `status`. Persists progress to PostgreSQL via `token_service.update_student_progress()`.
+- `def reset_progress():` (POST `/reset-progress`)
+  Resets a student's progress and deletes the quiz attempt (one-attempt) by anonymous `student_id`. Requires a teacher token.
+- `def resume_quiz_attempt_route():` (POST `/resume-quiz-attempt`)
+  Grants a student permission to resume a `terminated` quiz attempt from saved answers, by anonymous `student_id`. The attempt row is kept (audit) and marked `resumed_at`; the one-attempt gate opens until the student finishes again. Requires a teacher token. Returns `success: false` when there is no terminated attempt.
 - `def api_progress_report():` (GET `/progress-report.json`)
   Returns a matrix of all student progress. Requires a teacher token.
 - `def export_progress_csv():` (GET `/progress-report/export-csv`)
@@ -62,6 +66,8 @@ Facade over the single active storage backend — PostgreSQL, via
 - `def update_student_progress(token, lesson_name, status="completed"):` Persists progress to PostgreSQL.
 - `def get_teacher_token():` Returns the active teacher token (implemented in `postgres_backend`).
 - `def reset_student_progress(student_id, lesson_name):` Resets progress by anonymous `student_id` (never the raw token).
+- `def resume_quiz_attempt(student_id, lesson_name):` Grants a student permission to resume a `terminated` quiz attempt from saved answers (teacher-only; never the raw token). Opens the one-attempt gate (`resumed_at` set) without deleting the audit row.
+- `def is_quiz_attempt_resumable(token, lesson_name):` Returns `True` when the student's attempt has been resumed by a teacher — surfaced to the lesson payload as `quiz_resumable`.
 
 Student tokens are stored **only as an HMAC-SHA256 digest** in the
 `access_tokens` table (peppered with `TOKEN_PEPPER` from `.env`) — raw tokens

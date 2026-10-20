@@ -24,6 +24,7 @@ Baca juga: [07. Quiz Authoring](./07-quiz-authoring.md) untuk format soal.
 | Window desktop kehilangan fokus (`blur`) | 1 attempt `terminated/focus_lost` — **pelanggaran** |
 | Reload / tutup tab | 1 attempt `terminated/page_unload` via `sendBeacon` |
 | Kembali fokus setelah terminated | Tidak ada efek — kuis tidak kembali aktif |
+| Guru memberi izin **resume** | Attempt `terminated` boleh dilanjutkan dari jawaban tersimpan (lihat ["Resume oleh guru"](#resume-oleh-guru)); satu-attempt gate terbuka |
 
 Event yang memicu termination hanya dipasang **saat kuis aktif** dan dibersihkan
 saat kuis selesai/unmount. Event ganda (mis. `visibilitychange` lalu `blur`,
@@ -35,6 +36,58 @@ pada ringkasan (skor tetap tampil; lihat `shouldShowQuizReview` di
 `frontend/src/lib/services/quiz-integrity.ts`). Alasan lain
 (`user_exit`, `spa_navigation`, `page_unload`, `completed`) tetap
 menampilkan pembahasan.
+
+## Resume oleh guru
+
+Kebijakan termination tetap strict, tetapi guru memegang override untuk
+kendala tak terduga (mis. **false positive** `blur` dari dialog OS/permission
+prompt, browser crash, atau refresh tak sengaja). Alih-alih hanya me-reset
+(siswa mengulang dari nol), guru kini bisa memberi izin **resume**: siswa
+melanjutkan kuis dari jawaban yang sudah tersimpan.
+
+- **Endpoint**: `POST /resume-quiz-attempt` (teacher-only) — body
+  `{teacher_token, student_id, lesson_name}`, kontrak keamanan sama dengan
+  `/reset-progress` (guru tidak memegang token siswa, cukup `id` anonim dari
+  report).
+- **Syarat**: hanya attempt ber-status `terminated` yang bisa di-resume.
+  Attempt `submitted` ditolak (selesai normal — tidak perlu dilanjutkan).
+- **Efek**: kolom `quiz_attempts.resumed_at` di-set. Row audit **tidak**
+  dihapus dan skor penalti lama **tetap** tersimpan (siswa tetap terlihat di
+  laporan guru; skor akan tertimpa saat menyelesaikan ulang).
+- **Gate**: `has_quiz_attempt` mengembalikan `False` selama `resumed_at`
+  terisi, dan data lesson membawa `quiz_resumable: true` agar UI siswa
+  menampilkan tombol **▶ Lanjutkan Kuis** (bukan summary akhir).
+- **Lanjutan siswa**: frontend membangun ulang sesi via
+  `restoreQuizSession()` (`frontend/src/lib/services/quiz-session.ts`),
+  menyalin jawaban tersimpan by `question_id` dan **menghitung ulang
+  `is_correct` dari konten soal** (guard bila konten berubah). Soal/opsi yang
+  sudah tidak dikenal dianggap belum dijawab. Siswa mulai di soal
+  belum-dijawab pertama.
+- **Finalisasi ulang**: siswa mengirim attempt dengan `attempt_id` **yang
+  sama** (aman terhadap unique one-attempt). `finalize_quiz_attempt()`
+  menimpa row sekali (status/skor/answers baru) lalu **meng-clear
+  `resumed_at`** — retry berikutnya kembali ke jalur idempotent normal.
+- **Tanpa batas**: guru boleh resume berkali-kali (mis. siswa kehilangan fokus
+  lagi di sesi lanjutan). Setiap pemberian izin terakhir tercatat di
+  `resumed_at`.
+- **Catatan**: listener anti-cheat strict tetap aktif penuh selama sesi
+  lanjutan — resume tidak melonggarkan penalti, hanya memberi kesempatan
+  melanjutkan.
+- **UI sekali-pakai**: saat siswa menekan "Lanjutkan Kuis", klien **re-fetch**
+  attempt segar dulu; bila izin sudah tidak berlaku (kuis sudah diselesaikan /
+  di-reset guru) sesi tidak dimulai dan siswa diberi pesan — mencegah jawaban
+  baru terbuang karena submit kedua bersifat idempotent. Setelah siswa
+  menyelesaikan kuis lanjutan, panel "Lanjutkan" tidak muncul lagi (prioritas
+  view: hasil sesi terbaru > panel resume); banner mode lanjutan hanya muncul
+  sekali sebagai snackbar.
+
+### Keterbatasan resume
+
+- Status `acknowledged` flashcard tidak ikut tersimpan di payload attempt —
+  siswa perlu menandai ulang flashcard saat resume.
+- Skor yang dikirim saat finalisasi ulang dihitung **client-side** (sama
+  seperti alur normal); hardening high-stakes tetap di luar scope (lihat
+  bawah).
 
 ## Arsitektur
 
@@ -102,15 +155,21 @@ tanpa mengubah kontrak status lama:
   "quiz_test_attempt_status": "terminated",
   "quiz_test_termination_reason": "focus_lost",
   "quiz_test_has_violation": true,
-  "quiz_test_attempt_finished_at": "2026-08-09T14:04:44+00:00"
+  "quiz_test_attempt_finished_at": "2026-08-09T14:04:44+00:00",
+  "quiz_test_resumed_at": "2026-08-09T14:10:00+00:00"
 }
 ```
 
 - Badge **⚠ Pelanggaran** muncul di cell kuis; tooltip memuat reason dan waktu
   termination (bukan token).
+- Badge **↻ Dilanjutkan** muncul saat `resumed_at` terisi (guru telah memberi
+  izin resume; siswa melanjutkan dari jawaban tersimpan).
+- Tombol **▶ Lanjutkan** tampil untuk attempt `terminated` — memberi izin
+  resume (lihat ["Resume oleh guru"](#resume-oleh-guru)).
 - Tombol reset guru menghapus progress **dan** attempt (one-attempt) sehingga
-  siswa dapat mengulang setelah reset.
-- Export CSV laporan ikut menyertakan kolom audit di atas.
+  siswa dapat mengulang dari nol setelah reset.
+- Export CSV laporan ikut menyertakan kolom audit di atas (tanpa kolom resume
+  internal — lihat filter export).
 
 ## Fallback & kegagalan
 

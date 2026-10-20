@@ -210,6 +210,8 @@ export interface LessonProgressFetchResponse {
 	attempt_score?: string | null;
 	attempt_started_at?: string | null;
 	attempt_finished_at?: string | null;
+	/** Terisi bila guru mengizinkan siswa melanjutkan attempt terminated (resume). */
+	attempt_resumed_at?: string | null;
 	answers?: Array<LessonProgressAnswer>;
 }
 

@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { authLoggedIn, authToken } from '$stores/auth';
 	import { get } from 'svelte/store';
-	import { onMount, tick } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { autoRenderMath } from '$lib/actions/renderMath';
 	import { shouldShowQuizReview, type QuizTerminationReason } from '$services/quiz-integrity';
+	import { resolveQuizTabView, terminationReasonLabel } from '$services/quiz-view';
 	import type { LessonManager } from './lesson.svelte';
 	import type { QuizQuestion, QuizAnswer } from '$types/quiz';
 	import { fetchLessonProgress } from '$services/api';
@@ -22,6 +23,30 @@
 	let reviewQuestions: QuizQuestion[] = $state([]);
 	let reviewAnswers: Record<string, QuizAnswer> = $state({});
 
+	// Snackbar "mode lanjutan" — muncul SEKALI saat siswa menekan Lanjutkan,
+	// auto-hide beberapa detik (bukan banner persisten).
+	let showResumeSnackbar = $state(false);
+	let snackbarTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function hideResumeSnackbar() {
+		showResumeSnackbar = false;
+		if (snackbarTimer) {
+			clearTimeout(snackbarTimer);
+			snackbarTimer = null;
+		}
+	}
+
+	function showResumeSnackbarOnce() {
+		showResumeSnackbar = true;
+		if (snackbarTimer) clearTimeout(snackbarTimer);
+		snackbarTimer = setTimeout(() => {
+			showResumeSnackbar = false;
+			snackbarTimer = null;
+		}, 6000);
+	}
+
+	onDestroy(hideResumeSnackbar);
+
 	// Gate 2: Quiz already completed (one-attempt enforcement)
 	const quizAlreadyCompleted = $derived(
 		(!!mgr.data?.lesson_progress_status &&
@@ -31,6 +56,14 @@
 		!!storedAttempt
 	);
 
+	// --- Resume attempt (izin guru untuk melanjutkan kuis terminated) ---
+	// Sinyal dari data lesson (quiz_resumable) atau attempt audit yang baru
+	// di-fetch. Siswa melihat tombol "Lanjutkan Kuis" alih-alih summary.
+	const quizResumable = $derived(
+		!!mgr.data?.quiz_resumable ||
+			!!(storedAttempt as LessonProgressFetchResponse | null)?.attempt_resumed_at
+	);
+
 	const currentQuestion = $derived(mgr.currentQuizQuestion);
 	const currentAnswer = $derived(mgr.currentQuizAnswer);
 	const questions = $derived(mgr.quizSession?.questions ?? []);
@@ -38,6 +71,20 @@
 	// Strict policy: kuis yang dihentikan karena focus_lost tidak menampilkan
 	// pembahasan (siswa yang kehilangan fokus tidak mendapat bocoran jawaban).
 	const showReview = $derived(shouldShowQuizReview(mgr.quizTerminationReason));
+
+	// Keputusan view dipusatkan di fungsi murni (quiz-view.ts) agar transisi
+	// "resume → lembar jawaban aktif" bisa diuji Vitest dan tidak bergantung
+	// pada urutan cabang template.
+	const view = $derived(
+		resolveQuizTabView({
+			isQuizMode: mgr.isQuizMode,
+			hasResult: !!result,
+			quizAlreadyCompleted,
+			quizResumable,
+			hasStoredAttempt: !!storedAttempt,
+			questionCount: questions.length
+		})
+	);
 
 	async function loadStoredAttempt() {
 		const token = get(authToken) || localStorage.getItem('student_token') || '';
@@ -71,10 +118,16 @@
 		}
 	}
 
-	// Fetch attempt bila sudah selesai tapi session hilang (refresh/page-open)
+	// Fetch attempt bila sudah selesai tapi session hilang (refresh/page-open).
+	// Termasuk attempt yang di-resume guru (quiz_resumable) agar tombol
+	// "Lanjutkan Kuis" mendapat jawaban tersimpan.
 	onMount(() => {
 		const r = result;
-		if (!r && (quizAlreadyCompleted || mgr.data?.has_quiz_attempt) && !mgr.quizSession) {
+		if (
+			!r &&
+			(quizAlreadyCompleted || mgr.data?.has_quiz_attempt || mgr.data?.quiz_resumable) &&
+			!mgr.quizSession
+		) {
 			loadStoredAttempt();
 		}
 	});
@@ -99,16 +152,87 @@
 		if (unanswered > 0) {
 			confirmMsg += ` ${unanswered} soal belum dijawab dan akan dianggap salah.`;
 		}
-		confirmMsg += ' Skor akan disimpan dan tidak bisa diulang.';
+		confirmMsg += mgr.quizResumed
+			? ' Skor akan disimpan. Guru dapat mengizinkan Anda melanjutkan kembali.'
+			: ' Skor akan disimpan dan tidak bisa diulang.';
 
 		if (window.confirm(confirmMsg)) {
 			mgr.submitQuiz();
 		}
 	}
+
+	async function handleResume() {
+		if (!storedAttempt) return;
+		const token = get(authToken) || localStorage.getItem('student_token') || '';
+		if (!token) {
+			alert('Sesi login tidak ditemukan. Silakan login ulang.');
+			return;
+		}
+		try {
+			// Re-fetch attempt SEGAR sebelum mulai — hindari memulai sesi dari
+			// data basi (mis. panel "Lanjutkan" masih tampil padahal kuis sudah
+			// diselesaikan / izin sudah dicabut guru). Tanpa ini, jawaban baru
+			// bisa terbuang diam-diam karena submit kedua bersifat idempotent.
+			const fresh = await fetchLessonProgress(mgr.slug.replace('.md', ''), token);
+			if (fresh.success) {
+				storedAttempt = fresh;
+				if (mgr.data) mgr.data.quiz_resumable = !!fresh.attempt_resumed_at;
+			}
+			if (!fresh.success || !fresh.attempt_resumed_at) {
+				alert(
+					'Izin melanjutkan sudah tidak berlaku (kuis mungkin sudah diselesaikan atau di-reset guru). Silakan muat ulang halaman.'
+				);
+				return;
+			}
+			if (!mgr.resumeQuiz(fresh)) {
+				alert(
+					'Tidak dapat melanjutkan kuis: data kuis tidak tersedia. Silakan muat ulang halaman.'
+				);
+				return;
+			}
+			showResumeSnackbarOnce();
+		} catch (err) {
+			alert(
+				'Gagal melanjutkan kuis: ' +
+					(err instanceof Error ? err.message : String(err))
+			);
+		}
+	}
 </script>
 
 <div class="quiz-container" bind:this={quizEl}>
-	{#if result || quizAlreadyCompleted}
+	{#if showResumeSnackbar}
+		<div class="quiz-snackbar" role="status" aria-live="polite">
+			<span
+				>▶ Mode lanjutan — jawaban tersimpan dari sesi sebelumnya. Selesaikan semua soal untuk
+				menyimpan skor baru.</span
+			>
+			<button
+				type="button"
+				class="snackbar-close"
+				aria-label="Tutup notifikasi"
+				onclick={hideResumeSnackbar}
+			>
+				✕
+			</button>
+		</div>
+	{/if}
+	{#if view === 'resume'}
+		<div class="quiz-resume-view">
+			<div class="quiz-icon">▶️</div>
+			<h2>Lanjutkan Kuis</h2>
+			<p>
+				Kuis Anda sebelumnya dihentikan
+				{#if storedAttempt?.termination_reason}
+					(karena <strong>{terminationReasonLabel(storedAttempt?.termination_reason)}</strong>)
+				{/if}
+				. Guru mengizinkan Anda melanjutkan dari jawaban yang tersimpan.
+			</p>
+			<button class="btn btn-primary btn-lg" onclick={handleResume}>
+				▶ Lanjutkan Kuis
+			</button>
+		</div>
+	{:else if view === 'summary'}
 		<div class="summary-view">
 			<div class="summary-header">
 				<div class="summary-icon">🏁</div>
@@ -286,7 +410,7 @@
 				{/if}
 			</div>
 		</div>
-	{:else if !mgr.isQuizMode}
+	{:else if view === 'start'}
 		<div class="quiz-start-view">
 			<div class="quiz-icon">📝</div>
 			<h2>Kuis Interaktif</h2>
@@ -308,7 +432,7 @@
 				</button>
 			{/if}
 		</div>
-	{:else if questions.length > 0}
+	{:else if view === 'active'}
 		<div class="quiz-active-view">
 			<div class="answer-sheet">
 				{#if currentQuestion?.type === 'mcq'}
@@ -384,6 +508,45 @@
 
 	.quiz-active-view { flex: 1; display: flex; flex-direction: column; gap: 1.25rem; }
 	.quiz-start-view { text-align: center; max-width: 400px; margin: auto; display: flex; flex-direction: column; gap: 1rem; }
+	.quiz-resume-view { text-align: center; max-width: 400px; margin: auto; display: flex; flex-direction: column; gap: 1rem; }
+
+	/* Snackbar mode lanjutan — sekali muncul, fixed di bawah layar. */
+	.quiz-snackbar {
+		position: fixed;
+		left: 50%;
+		bottom: 1.5rem;
+		transform: translateX(-50%);
+		z-index: 1000;
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		max-width: min(90vw, 560px);
+		padding: 0.75rem 1rem;
+		background: #212529;
+		color: #fff;
+		border-radius: 10px;
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+		font-size: 0.9rem;
+		line-height: 1.4;
+		text-align: left;
+		animation: snackbar-in 0.2s ease-out;
+	}
+	.snackbar-close {
+		background: none;
+		border: none;
+		color: #fff;
+		opacity: 0.7;
+		cursor: pointer;
+		font-size: 1rem;
+		line-height: 1;
+		padding: 0;
+		flex-shrink: 0;
+	}
+	.snackbar-close:hover { opacity: 1; }
+	@keyframes snackbar-in {
+		from { opacity: 0; transform: translate(-50%, 8px); }
+		to { opacity: 1; transform: translate(-50%, 0); }
+	}
 	.quiz-icon { font-size: 4rem; margin-bottom: 0.5rem; }
 
 	.alert { padding: 1rem; border-radius: 8px; font-size: 0.9rem; line-height: 1.4; text-align: left; }

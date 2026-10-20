@@ -29,9 +29,11 @@
 		composite: number | null;
 		exercise_passed: boolean;
 		quiz_score: string;
+		attempt_status: string;
 		has_violation: boolean;
 		violation_reason: string;
 		violation_time: string;
+		resumed_at: string;
 		eval_score: string;
 		diag_score: string;
 		diag_unmastered: string[];
@@ -134,6 +136,32 @@
 		}
 	}
 
+	async function handleResume(studentId: string, lessonName: string, studentName: string) {
+		if (!window.confirm(`Izinkan siswa "${studentName}" melanjutkan kuis "${lessonName}" dari jawaban yang tersimpan?`)) {
+			return;
+		}
+
+		try {
+			const res = await fetch('/api/resume-quiz-attempt', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					teacher_token: $authToken,
+					student_id: studentId,
+					lesson_name: lessonName
+				})
+			});
+			const data = await res.json();
+			if (data.success) {
+				await loadData();
+			} else {
+				alert('Gagal melanjutkan kuis: ' + data.message);
+			}
+		} catch {
+			alert('Terjadi kesalahan saat menghubungi server.');
+		}
+	}
+
 	function toggleSubBab(folder: string) {
 		openSubBabs[folder] = !openSubBabs[folder];
 	}
@@ -218,9 +246,11 @@
 							composite: typeof s[key + '_composite'] === 'number' ? (s[key + '_composite'] as number) : null,
 							exercise_passed: Boolean(s[key + '_exercise_passed']),
 							quiz_score: String(s[key + '_quiz_score'] ?? ''),
+							attempt_status: String(s[key + '_attempt_status'] ?? ''),
 							has_violation: Boolean(s[key + '_has_violation']),
 							violation_reason: String(s[key + '_termination_reason'] ?? ''),
 							violation_time: String(s[key + '_attempt_finished_at'] ?? ''),
+							resumed_at: String(s[key + '_resumed_at'] ?? ''),
 							eval_score: String(s[key + '_eval'] ?? ''),
 							diag_score: String(s[key + '_diag'] ?? ''),
 							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered'])
@@ -279,9 +309,11 @@
 							composite: typeof s[key + '_composite'] === 'number' ? (s[key + '_composite'] as number) : null,
 							exercise_passed: Boolean(s[key + '_exercise_passed']),
 							quiz_score: String(s[key + '_quiz_score'] ?? ''),
+							attempt_status: String(s[key + '_attempt_status'] ?? ''),
 							has_violation: Boolean(s[key + '_has_violation']),
 							violation_reason: String(s[key + '_termination_reason'] ?? ''),
 							violation_time: String(s[key + '_attempt_finished_at'] ?? ''),
+							resumed_at: String(s[key + '_resumed_at'] ?? ''),
 							eval_score: String(s[key + '_eval'] ?? ''),
 							diag_score: String(s[key + '_diag'] ?? ''),
 							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered'])
@@ -506,6 +538,15 @@
 																	</span>
 																{/if}
 
+																{#if student.resumed_at}
+																	<span
+																		class="badge badge-resumed"
+																		title="Kuis di-resume guru pada {student.resumed_at} — siswa dapat melanjutkan dari jawaban tersimpan"
+																	>
+																		&#8635; Dilanjutkan
+																	</span>
+																{/if}
+
 																{#if student.eval_score}
 																	<span class="badge badge-detail" title="Skor Soal Evaluasi">Eval: {student.eval_score}</span>
 																{/if}
@@ -520,6 +561,15 @@
 																{/if}
 															</div>
 
+															{#if student.attempt_status === 'terminated'}
+																<button
+																	class="btn-resume"
+																	onclick={() => handleResume(student.id, item.key, student.nama_siswa)}
+																	title="Izinkan siswa melanjutkan kuis dari jawaban tersimpan"
+																>
+																	&#9654; Lanjutkan
+																</button>
+															{/if}
 															<button
 																class="btn-reset"
 																onclick={() => handleReset(student.id, item.key, student.nama_siswa)}
@@ -1034,5 +1084,25 @@
 		border-color: #fa5252;
 		color: #fa5252;
 		background: #fff5f5;
+	}
+	.btn-resume {
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		font-size: 0.72rem;
+		padding: 0.15rem 0.45rem;
+		transition: all 0.15s;
+	}
+	.btn-resume:hover {
+		border-color: #40c057;
+		color: #40c057;
+		background: #ebfbee;
+	}
+	.badge-resumed {
+		background: #ebfbee;
+		color: #2b8a3e;
+		border: 1px solid #b2f2bb;
 	}
 </style>

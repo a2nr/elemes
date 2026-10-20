@@ -32,9 +32,19 @@ def has_quiz_attempt(token, lesson_name):
     return _backend().has_quiz_attempt(token, lesson_name)
 
 
+def is_quiz_attempt_resumable(token, lesson_name):
+    """True bila attempt terminated siswa di-resume guru (bisa dilanjutkan)."""
+    return _backend().is_quiz_attempt_resumable(token, lesson_name)
+
+
 def reset_student_progress(student_id, lesson_name):
     """Reset progress siswa by student_id (id anonim dari report — bukan token)."""
     return _backend().reset_progress(student_id, lesson_name)
+
+
+def resume_quiz_attempt(student_id, lesson_name):
+    """Beri izin guru melanjutkan attempt terminated siswa (via student_id)."""
+    return _backend().resume_quiz_attempt(student_id, lesson_name)
 
 
 def get_all_students_progress(all_lessons_func):

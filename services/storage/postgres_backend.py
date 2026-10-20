@@ -100,7 +100,11 @@ def get_student_progress(token):
 
 
 def has_quiz_attempt(token, lesson_name):
-    """Cek apakah siswa sudah memiliki rekaman attempt kuis untuk lesson ini."""
+    """Cek apakah siswa sudah memiliki rekaman attempt kuis untuk lesson ini.
+
+    Attempt yang di-resume guru (`resumed_at` terisi) TIDAK memblokir —
+    siswa boleh melanjutkan kuis dari jawaban tersimpan.
+    """
     if not token or SessionLocal is None:
         return False
     db = SessionLocal()
@@ -114,7 +118,62 @@ def has_quiz_attempt(token, lesson_name):
         attempt = repo.get_quiz_attempt_for_user_lesson(
             db, user_id=user.id, lesson_id=lesson.id
         )
-        return attempt is not None
+        if attempt is None:
+            return False
+        return attempt.resumed_at is None
+    finally:
+        db.close()
+
+
+def is_quiz_attempt_resumable(token, lesson_name):
+    """True bila attempt terminated siswa di-resume guru (bisa dilanjutkan).
+
+    Dipakai endpoint data lesson untuk memberi sinyal ke frontend siswa
+    agar menampilkan tombol "Lanjutkan Kuis" alih-alih summary akhir.
+    """
+    if not token or SessionLocal is None:
+        return False
+    db = SessionLocal()
+    try:
+        user = find_user_by_raw_token(db, token)
+        if user is None:
+            return False
+        lesson = get_lesson_by_slug(db, lesson_name)
+        if lesson is None:
+            return False
+        attempt = repo.get_quiz_attempt_for_user_lesson(
+            db, user_id=user.id, lesson_id=lesson.id
+        )
+        return bool(attempt and attempt.resumed_at is not None)
+    finally:
+        db.close()
+
+
+def resume_quiz_attempt(student_id, lesson_name):
+    """Beri izin guru melanjutkan attempt terminated siswa (resume).
+
+    Mirror `reset_progress`: via student_id (bukan token) — teacher tidak
+    perlu token siswa. Return True bila attempt terminated ditemukan dan
+    `resumed_at` di-set.
+    """
+    if SessionLocal is None:
+        return False
+    db = SessionLocal()
+    try:
+        user = repo.get_user_by_id(db, student_id)
+        if user is None:
+            return False
+        lesson = get_lesson_by_slug(db, lesson_name)
+        if lesson is None:
+            return False
+        attempt = repo.grant_quiz_resume(db, user_id=user.id, lesson_id=lesson.id)
+        if attempt is None:
+            return False
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        return False
     finally:
         db.close()
 
@@ -214,6 +273,11 @@ def get_all_students_progress(all_lessons_func):
                 )
                 student[f"{lesson.slug}_attempt_finished_at"] = (
                     attempt.finished_at.isoformat() if attempt and attempt.finished_at else ""
+                )
+                # Izin guru melanjutkan attempt (resume) — untuk badge & state
+                # tombol di laporan guru. Kosong = tidak di-resume.
+                student[f"{lesson.slug}_resumed_at"] = (
+                    attempt.resumed_at.isoformat() if attempt and attempt.resumed_at else ""
                 )
                 # Breakdown kategori (evaluasi / diagnostik) dari answers_json attempt —
                 # untuk report guru. Sama seperti FE calculateQuizResult: breakdown

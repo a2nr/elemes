@@ -48,5 +48,7 @@ export interface LessonContent {
 	quiz_data?: QuizQuestion[];
 	lesson_progress_status?: string;
 	has_quiz_attempt?: boolean;
+	/** True bila attempt terminated siswa di-resume guru — siswa boleh melanjutkan kuis. */
+	quiz_resumable?: boolean;
 	hex_content?: string;
 }

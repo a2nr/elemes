@@ -365,6 +365,24 @@ def delete_quiz_attempts(db: Session, *, user_id: str, lesson_id: str) -> int:
     return len(attempts)
 
 
+def grant_quiz_resume(db: Session, *, user_id: str, lesson_id: str) -> QuizAttempt | None:
+    """Beri izin guru melanjutkan attempt terminated (resume).
+
+    Set `resumed_at` pada attempt terminated — gate one-attempt terbuka dan
+    siswa dapat melanjutkan kuis dari jawaban tersimpan (alih-alih mengulang
+    dari nol via reset). Return None bila tidak ada attempt atau attempt
+    bukan terminated (mis. sudah submitted — tidak perlu di-resume).
+
+    Tidak commit — transaksi dikelola pemanggil.
+    """
+    attempt = get_quiz_attempt_for_user_lesson(db, user_id=user_id, lesson_id=lesson_id)
+    if attempt is None or attempt.status != "terminated":
+        return None
+    attempt.resumed_at = datetime.now(timezone.utc)
+    db.flush()
+    return attempt
+
+
 def finalize_quiz_attempt(
     db: Session,
     *,
@@ -392,6 +410,10 @@ def finalize_quiz_attempt(
     - `attempt_id` baru tetapi (user, lesson) sudah punya attempt (one-attempt
       policy) → IntegrityError dari unique constraint; pemanggil menangani
       sebagai 409. Race dua request attempt_id sama juga dilindungi di sini.
+    - attempt existing dengan `resumed_at` terisi (izin guru) → row ditimpa
+      SEKALI dengan hasil final (status/skor/answers baru), `resumed_at`
+      di-clear, return (attempt, True) agar progress di-update. Retry
+      setelahnya kembali ke path idempotent normal di atas.
 
     Tidak commit — transaksi dikelola pemanggil (route).
     """
@@ -399,6 +421,21 @@ def finalize_quiz_attempt(
     if existing is not None:
         if existing.user_id != user_id or existing.lesson_id != lesson_id:
             raise ValueError("attempt_id sudah dipakai attempt lain")
+        if existing.resumed_at is not None:
+            # Attempt di-resume guru: finalisasi ulang menimpa row sekali,
+            # lalu resumed_at di-clear agar one-attempt normal berlaku lagi.
+            existing.status = status
+            existing.termination_reason = termination_reason
+            existing.score_earned = score_earned
+            existing.score_total = score_total
+            existing.started_at = started_at
+            existing.finished_at = finished_at
+            existing.visibility_event_count = visibility_event_count
+            existing.user_agent = user_agent
+            existing.answers_json = answers_json
+            existing.resumed_at = None
+            db.flush()
+            return existing, True
         return existing, False
 
     attempt = QuizAttempt(
