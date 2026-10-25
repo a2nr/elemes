@@ -11,6 +11,10 @@ RUN apt-get update && \
 # Set working directory
 WORKDIR /app
 
+# Cache varian WebP asset gambar — WAJIB di luar /app/assets supaya tidak
+# ikut ter-zip saat export bundle (lihat config.py CACHE_DIR).
+RUN mkdir -p /app/assets-cache && chown -R app:app /app/assets-cache
+
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

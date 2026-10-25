@@ -14,3 +14,4 @@ velxio-deployer-firmware/managed_components/
 lms-c-precompiled.tar
 .browser-test/
 config/lms-tail.json
+assets-cache/

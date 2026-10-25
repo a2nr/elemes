@@ -4,11 +4,12 @@ Lesson JSON API routes consumed by the SvelteKit frontend.
 
 import os
 
-from flask import Blueprint, request, jsonify, send_from_directory
-from werkzeug.utils import secure_filename
+from flask import Blueprint, Response, abort, request, jsonify, send_from_directory
+from werkzeug.utils import safe_join, secure_filename
 
 from compiler import compiler_factory
-from config import ASSETS_DIR
+from config import ASSET_CACHE_MAX_AGE, ASSETS_DIR
+from services import image_cache
 from services.lesson_service import (
     get_missing_prerequisites,
     get_ordered_lessons_with_learning_objectives,
@@ -22,6 +23,22 @@ from services.lesson_service import (
 from services.token_service import get_student_progress, has_quiz_attempt, is_quiz_attempt_resumable
 
 lessons_bp = Blueprint('lessons', __name__)
+
+
+def _parse_variant_width(raw: str | None) -> int | None:
+    """Parse parameter `?w=` (lebar alternatif, px).
+
+    Nilai tidak valid / di luar rentang aman → None (pakai lebar default).
+    """
+    if not raw:
+        return None
+    try:
+        width = int(raw)
+    except (TypeError, ValueError):
+        return None
+    if width < 1 or width > 4096:
+        return None
+    return width
 
 
 def _prereq_specs(lesson):
@@ -296,7 +313,39 @@ def get_key_text(filename):
 
 @lessons_bp.route('/assets/<path:path>')
 def send_assets(path):
-    """Serve asset files (images, etc.) from ASSETS_DIR."""
+    """Serve asset files (images, etc.) from ASSETS_DIR.
+
+    Gambar raster (png/jpg/jpeg/webp/gif) di-serve sebagai versi ringan:
+    resize (maks dimensi) + WebP, di-generate on-the-fly lalu di-cache di
+    `CACHE_DIR` (di luar ASSETS_DIR — lihat config.py). Original tetap utuh
+    di storage dan bisa diakses lewat `?orig=1`.
+
+    SVG & GIF animasi di-serve apa adanya. File korrupt / Pillow gagal →
+    fallback ke original.
+    """
+    abs_path = safe_join(ASSETS_DIR, path)
+    if abs_path is None or not os.path.isfile(abs_path):
+        abort(404)
+
+    want_original = request.args.get('orig') in ('1', 'true', 'yes')
+    width = _parse_variant_width(request.args.get('w'))
+
+    if not want_original:
+        variant = image_cache.get_variant(abs_path, path, width)
+        if variant is not None:
+            data, etag = variant
+            if request.if_none_match and etag in request.if_none_match:
+                resp = Response(status=304)
+            else:
+                resp = Response(data, mimetype='image/webp')
+                resp.headers['Content-Length'] = str(len(data))
+            resp.headers['ETag'] = f'"{etag}"'
+            resp.headers['Cache-Control'] = f'public, max-age={ASSET_CACHE_MAX_AGE}'
+            resp.headers['X-Asset-Variant'] = 'webp'
+            return resp
+
+    # Pass-through: original apa adanya (SVG, GIF animasi, ?orig=1, raster
+    # yang gagal di-variant-kan).
     response = send_from_directory(ASSETS_DIR, path)
     # Mitigasi stored-XSS: SVG bisa memuat <script>. Route ini publik
     # (same-origin) — kalau SVG dibuka langsung di tab browser, script-nya
@@ -304,4 +353,6 @@ def send_assets(path):
     # semua eksekusi di dokumen tersebut; sandbox melarang navigasi/form.
     if path.lower().endswith(".svg"):
         response.headers["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    response.headers['Cache-Control'] = f'public, max-age={ASSET_CACHE_MAX_AGE}'
+    response.headers['X-Asset-Variant'] = 'original'
     return response

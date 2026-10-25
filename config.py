@@ -13,6 +13,25 @@ CONTENT_DIR = os.environ.get('CONTENT_DIR', 'content')
 #      CONTENT_DIR='/app/content' → ASSETS_DIR='/app/assets'
 ASSETS_DIR = os.path.join(os.path.dirname(CONTENT_DIR.rstrip(os.sep)), 'assets')
 
+# Cache varian ringan (WebP) untuk asset gambar raster.
+#
+# WAJIB di luar ASSETS_DIR — sibling, bukan `assets/.cache/`. Alasan:
+# `export_bundle` (routes/content_editor.py) men-zip SELURUH isi ASSETS_DIR
+# tanpa filter, jadi file cache di dalam ASSETS_DIR akan ikut ter-zip lalu
+# ter-import ulang sebagai asset biasa (menggandakan file & merusak bundel).
+# Dengan cache di luar, export 100% lossless — hanya original yang ikut.
+#
+# E.g. CONTENT_DIR='content'          → CACHE_DIR='assets-cache'
+#      CONTENT_DIR='/app/content'     → CACHE_DIR='/app/assets-cache'
+CACHE_DIR = os.path.join(os.path.dirname(CONTENT_DIR.rstrip(os.sep)), 'assets-cache')
+
+# Dimensi maksimum (sisi terpanjang, px) untuk varian WebP yang di-generate.
+ASSET_VARIANT_MAX_DIM = int(os.environ.get('ASSET_VARIANT_MAX_DIM', '1600'))
+# Kualitas WebP (1-100).
+ASSET_VARIANT_QUALITY = int(os.environ.get('ASSET_VARIANT_QUALITY', '80'))
+# Cache-Control max-age untuk respons asset (detik).
+ASSET_CACHE_MAX_AGE = int(os.environ.get('ASSET_CACHE_MAX_AGE', '3600'))
+
 # ── Evaluation weights & done threshold ───────────────────────────
 # Bobot exercise (0-100) dan quiz (0-100) untuk composite score.
 LESSON_EXERCISE_WEIGHT = float(os.environ.get('LESSON_EXERCISE_WEIGHT', '70'))

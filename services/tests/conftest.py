@@ -80,7 +80,7 @@ def seed_demo_users():
 
 @pytest.fixture(autouse=True)
 def _isolate_filesystem():
-    """Bersihkan CONTENT_DIR/ASSETS_DIR test sebelum tiap test — filesystem
+    """Bersihkan CONTENT_DIR/ASSETS_DIR/CACHE_DIR test sebelum tiap test — filesystem
     harus se-isolated database, supaya suite idempotent lintas run.
 
     Fixture ini autouse dan berjalan untuk SEMUA test (termasuk unit test tanpa
@@ -89,7 +89,8 @@ def _isolate_filesystem():
     """
     content_dir = pathlib.Path(_TEST_CONTENT)
     assets_dir = content_dir.parent / "assets"
-    for d in (content_dir, assets_dir):
+    cache_dir = content_dir.parent / "assets-cache"
+    for d in (content_dir, assets_dir, cache_dir):
         if d.exists():
             shutil.rmtree(d)
         d.mkdir(parents=True, exist_ok=True)
