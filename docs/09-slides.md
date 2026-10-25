@@ -37,6 +37,6 @@ Lihat `examples/content/dasar/rangkaian_dasar.md` untuk contoh slide dengan embe
 
 ## Catatan
 
-- Slide mendukung semua blok markdown kecuali `---QUIZ_FLASHCARD---` dan `---slide-start---` di dalam slide
+- Slide mendukung semua blok markdown kecuali blok quiz (`---QUIZ_MCQ---`, `---QUIZ_WEIGHTED---`, `---FLASHCARD---`) dan `---slide-start---` di dalam slide
 - Embed di dalam slide diproses otomatis oleh backend (`_process_embed_embeds()` di loop slide)
 - Gambar di slide menggunakan path relatif `/assets/` atau URL absolut

@@ -6,11 +6,15 @@
 		id: string;
 		text: string;
 		is_correct: boolean;
+		/** Bobot nilai opsi (>= 0). Legacy/MCQ: benar 1 / salah 0. Weighted: nilai [N]. */
+		weight: number;
 	}
 
 	interface QuizQuestion {
 		id: string;
 		type: 'mcq' | 'flashcard';
+		/** Jenis quiz menurut key asalnya — 'weighted' = soal berbobot. */
+		quiz_type?: 'mcq' | 'weighted' | 'flashcard';
 		question?: string;
 		front?: string;
 		back?: string;
@@ -34,6 +38,19 @@
 			tick().then(() => rootEl && autoRenderMath(rootEl));
 		}
 	});
+
+	/** Poin maksimum soal — bobot tertinggi opsi (weighted). */
+	function maxPoints(q: QuizQuestion): number {
+		return (q.options ?? []).reduce((m, o) => Math.max(m, o.weight ?? 0), 0);
+	}
+
+	/** Badge bobot opsi utk preview guru: kunci ✓ 10, parsial 🟡 7, salah ✗ 0. */
+	function weightBadge(option: QuizOption, q: QuizQuestion): string {
+		if (q.quiz_type !== 'weighted') return option.is_correct ? '✓' : '✗';
+		if (option.is_correct) return `✓ ${option.weight}`;
+		if ((option.weight ?? 0) > 0) return `🟡 ${option.weight}`;
+		return `✗ 0`;
+	}
 </script>
 
 <div class="quiz-preview-readonly" bind:this={rootEl}>
@@ -44,6 +61,9 @@
 		<div class="quiz-preview-card">
 			<div class="quiz-preview-question-header">
 				<span class="quiz-preview-number">Soal {i + 1}</span>
+				{#if question.quiz_type === 'weighted'}
+					<span class="quiz-preview-type weighted">Berbobot (total {maxPoints(question)})</span>
+				{/if}
 				<span class="quiz-preview-type" class:flashcard={question.type === 'flashcard'}>
 					{question.type === 'mcq' ? 'Pilihan Ganda' : 'Flashcard'}
 				</span>
@@ -60,9 +80,13 @@
 			{#if question.type === 'mcq' && question.options}
 				<div class="quiz-preview-options">
 					{#each question.options as option (option.id)}
-						<div class="quiz-preview-option" class:correct={option.is_correct}>
+						<div
+							class="quiz-preview-option"
+							class:correct={option.is_correct}
+							class:partial={question.quiz_type === 'weighted' && !option.is_correct && (option.weight ?? 0) > 0}
+						>
 							<span class="option-marker" class:correct-marker={option.is_correct}>
-								{option.is_correct ? '✓' : '○'}
+								{weightBadge(option, question)}
 							</span>
 							<span class="option-text">{@html option.text}</span>
 						</div>
@@ -131,6 +155,15 @@
 	.quiz-preview-type.flashcard {
 		color: #e67700;
 		border-color: #fcc419;
+	}
+	.quiz-preview-type.weighted {
+		color: #997404;
+		background: #fff9db;
+		border-color: #fcc419;
+	}
+	.quiz-preview-option.partial {
+		border-color: #fcc419;
+		background: #fff9db;
 	}
 	.quiz-preview-image {
 		max-width: 100%;

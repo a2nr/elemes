@@ -362,11 +362,32 @@
 			label: 'Quiz',
 			group: 'layout',
 			snippet:
-				'\n---QUIZ_FLASHCARD---\n' +
+				'\n---QUIZ_MCQ---\n' +
 				'### Pertanyaan contoh?\n' +
 				'- [] Pilihan A\n- [x] Pilihan B\n' +
 				'> Penjelasan: tulis penjelasan di sini.\n' +
-				'---END_QUIZ_FLASHCARD---\n',
+				'---END_QUIZ_MCQ---\n',
+		},
+		{
+			id: 'quiz_weighted',
+			label: 'Quiz Bobot',
+			group: 'set_soal',
+			snippet:
+				'\n---QUIZ_WEIGHTED---\n' +
+				'### Pertanyaan contoh?\n' +
+				'- [10] Jawaban paling tepat\n- [7] Jawaban kurang tepat\n- [ ] Jawaban salah\n' +
+				'> Pembahasan: tulis pembahasan di sini.\n' +
+				'---END_QUIZ_WEIGHTED---\n',
+		},
+		{
+			id: 'flashcard',
+			label: 'Flashcard',
+			group: 'set_soal',
+			snippet:
+				'\n---FLASHCARD---\n' +
+				'### Pertanyaan flashcard?\n' +
+				'Jawaban singkat tanpa opsi pilihan.\n' +
+				'---END_FLASHCARD---\n',
 		},
 		{
 			id: 'details',
@@ -570,6 +591,8 @@
 		switch (id) {
 			case 'info': return 'Tujuan pembelajaran & prasyarat materi';
 			case 'quiz': return 'Pilihan ganda interaktif & pembahasan';
+			case 'quiz_weighted': return 'Pilihan ganda berbobot (bobot tertinggi = kunci)';
+			case 'flashcard': return 'Kartu hafalan tanpa penilaian';
 			case 'exercise': return 'Blok instruksi tantangan latihan mandiri';
 			case 'slide': return 'Presentasi carousel slide atau embed Canva';
 			case 'details': return 'Bagian lipatan (bisa dibuka-tutup)';

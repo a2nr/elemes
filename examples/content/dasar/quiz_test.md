@@ -2,7 +2,9 @@
 
 Pelajaran ini berisi berbagai tipe kuis untuk menguji fitur Pilihan Ganda, Flashcard, dan sistem penguncian pembatalan.
 
----QUIZ_FLASHCARD---
+
+
+---QUIZ_MCQ---
 ### Bahasa C adalah bahasa pemrograman tingkat rendah.
 image: https://upload.wikimedia.org/wikipedia/commons/1/18/C_Programming_Language.svg
 - [] Benar
@@ -54,14 +56,18 @@ Berapakah keluaran program di atas?
 - [x] Logo C
 - [] Logo Python
 - [] Logo Java
+---END_QUIZ_MCQ---
 
+---FLASHCARD---
 ### Bagaimana cara menulis komentar satu baris di bahasa C?
 Cukup gunakan dua garis miring di awal baris, contoh: `// ini komentar`.
 > Penjelasan: Komentar berguna untuk mendokumentasikan kode agar mudah dibaca oleh manusia, dan akan diabaikan oleh compiler.
 
 ### Apa fungsi dari `return 0;` di dalam fungsi `main()`?
 Menandakan bahwa program telah selesai berjalan dengan sukses tanpa ada error.
+---END_FLASHCARD---
 
+---QUIZ_MCQ---
 ### Apa warna langit pada siang hari?
 image: demo_quiz.png
 - [x] Biru
@@ -69,5 +75,5 @@ image: demo_quiz.png
 - [] Merah
 - [] Kuning
 > Penjelasan: Langit terlihat biru karena hamburan Rayleigh — cahaya matahari dihamburkan oleh atmosfer bumi.
+---END_QUIZ_MCQ---
 
----END_QUIZ_FLASHCARD---

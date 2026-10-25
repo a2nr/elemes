@@ -802,14 +802,47 @@ def _process_embed_embeds(text):
     return pattern.sub(_replacer, text)
 
 
+# Regex opsi LEGACY (key ---QUIZ_FLASHCARD--- lama).
+# Hanya mengenali '- [x]' / '- [X]' / '- [ ]' / '- []'.
+# Sengaja TIDAK mengenali '- [10]' supaya konten lama berperilaku persis sama
+# (baris '- [10]' bukan opsi — ia tetap bagian dari body soal).
 _OPTION_LINE_RE = re.compile(r'^\s*-\s*\[([ xX]?)\]\s*(.*)$')
 
+# Regex opsi KEY BARU (---QUIZ_MCQ--- / ---QUIZ_WEIGHTED--- / ---FLASHCARD---).
+# group(1) = mark ('x'/'X'/' '/''), group(2) = bobot angka opsional (weighted).
+_WEIGHTED_OPTION_LINE_RE = re.compile(r'^\s*-\s*\[([ xX]?)(\d*)\]\s*(.*)$')
 
-def _iter_option_lines(body):
-    """Yield (char_index, mark, content) for option lines outside fenced code.
+# Nama marker key quiz + jenis parser-nya (mendukung beberapa blok per key).
+# kind 'legacy'  → inspeksi konten (opsi → mcq, tanpa opsi → flashcard)
+# kind 'mcq'     → MCQ biner, tepat satu [x]
+# kind 'weighted'→ MCQ berbobot, [N] dengan N >= 1
+# kind 'flashcard'→ tanpa opsi sama sekali
+QUIZ_SECTION_SPECS = (
+    ('legacy', '---QUIZ_FLASHCARD---', '---END_QUIZ_FLASHCARD---'),
+    ('mcq', '---QUIZ_MCQ---', '---END_QUIZ_MCQ---'),
+    ('weighted', '---QUIZ_WEIGHTED---', '---END_QUIZ_WEIGHTED---'),
+    ('flashcard', '---FLASHCARD---', '---END_FLASHCARD---'),
+)
+
+# Semua marker yang mengaktifkan tab 'quiz' (legacy tetap dibaca).
+QUIZ_TAB_MARKERS = (
+    '---INITIAL_QUIZ---',
+    '---QUIZ_FLASHCARD---',
+    '---QUIZ_MCQ---',
+    '---QUIZ_WEIGHTED---',
+    '---FLASHCARD---',
+)
+
+
+def _iter_option_lines(body, kind='legacy'):
+    """Yield (char_index, mark, weight_str, content) for option lines outside fenced code.
 
     Lines inside ``` fenced blocks are skipped so code examples containing
     '- [x] ...' are never mistaken for real options.
+
+    `kind='legacy'` memakai regex lama (tanpa bobot angka) supaya konten
+    legacy berperilaku 100% sama seperti sebelumnya. Key baru memakai regex
+    yang juga mengenali bobot angka ('- [10]').
     """
     in_fence = False
     pos = 0
@@ -817,9 +850,14 @@ def _iter_option_lines(body):
         if line.strip().startswith('```'):
             in_fence = not in_fence
         elif not in_fence:
-            m = _OPTION_LINE_RE.match(line)
-            if m:
-                yield pos, m.group(1), m.group(2)
+            if kind == 'legacy':
+                m = _OPTION_LINE_RE.match(line)
+                if m:
+                    yield pos, m.group(1), '', m.group(2)
+            else:
+                m = _WEIGHTED_OPTION_LINE_RE.match(line)
+                if m:
+                    yield pos, m.group(1), m.group(2), m.group(3)
         pos += len(line) + 1
 
 
@@ -879,12 +917,90 @@ def _split_flashcard_parts(text):
     return [p for p in parts if p.strip()]
 
 
-def _parse_flashcards(text):
+def _validate_quiz_options(kind, question_no, marks, weights):
+    """Validasi ketat opsi per jenis key. Return (is_correct_flags, weights).
+
+    `marks`  = list mark mentah ('x'/'X'/' '/'')
+    `weights`= list bobot mentah (int atau None bila option tanpa angka)
+
+    kind:
+      - 'legacy'  : tepat satu [x]; bobot diturunkan (benar=1, salah=0)
+      - 'mcq'     : tepat satu [x]; DILARANG memakai bobot angka ([N])
+      - 'weighted': DILARANG [x]; bobot integer >= 1; minimal satu opsi tanpa
+                    bobot ([ ]); bobot tertinggi harus unik
+      - 'flashcard': opsi jawaban DILARANG
+    """
+    n = len(marks)
+
+    if kind == 'flashcard':
+        raise ValueError(
+            f"Soal kuis ke-{question_no} di FLASHCARD tidak boleh punya opsi jawaban; "
+            f"pindahkan soal pilihan ganda ke key QUIZ_MCQ atau QUIZ_WEIGHTED."
+        )
+
+    if kind in ('legacy', 'mcq'):
+        if kind == 'mcq' and any(w is not None for w in weights):
+            raise ValueError(
+                f"Soal kuis ke-{question_no} di QUIZ_MCQ tidak boleh memakai bobot angka "
+                f"([N]); gunakan [x] untuk jawaban benar."
+            )
+        correct_count = sum(1 for m in marks if m.lower() == 'x')
+        if correct_count != 1:
+            raise ValueError(
+                f"Soal kuis ke-{question_no} wajib punya tepat satu opsi benar "
+                f"(ditemukan {correct_count})."
+            )
+        is_correct = [m.lower() == 'x' for m in marks]
+        final_weights = [1 if ok else 0 for ok in is_correct]
+        return is_correct, final_weights
+
+    # kind == 'weighted'
+    if any(m.lower() == 'x' for m in marks):
+        raise ValueError(
+            f"Soal kuis ke-{question_no} di QUIZ_WEIGHTED tidak boleh memakai penanda "
+            f"[x]; gunakan bobot angka ([N]) atau [ ] untuk jawaban salah."
+        )
+    if any(w is not None and w < 1 for w in weights):
+        raise ValueError(
+            f"Soal kuis ke-{question_no} di QUIZ_WEIGHTED: bobot harus berupa bilangan "
+            f"bulat >= 1."
+        )
+    if not any(w is None for w in weights):
+        raise ValueError(
+            f"Soal kuis ke-{question_no} di QUIZ_WEIGHTED wajib punya minimal satu opsi "
+            f"tanpa bobot ([ ]) sebagai jawaban salah."
+        )
+    numeric = [w for w in weights if w is not None]
+    if numeric:
+        max_weight = max(numeric)
+        top = sum(1 for w in weights if w == max_weight)
+        if top > 1:
+            raise ValueError(
+                f"Soal kuis ke-{question_no} di QUIZ_WEIGHTED: bobot tertinggi harus unik "
+                f"(ditemukan {top} opsi dengan bobot {max_weight})."
+            )
+        is_correct = [w == max_weight for w in weights]
+    else:
+        is_correct = [False] * n
+    final_weights = [0 if w is None else w for w in weights]
+    return is_correct, final_weights
+
+
+def _parse_flashcards(text, kind='legacy', id_offset=0):
     """Parse a string of markdown with headings and options into a list of dicts.
-    
-    Supports two formats:
+
+    `kind` menentukan model evaluasi & validasi per jenis key:
+      - 'legacy'   → key lama ---QUIZ_FLASHCARD---: jenis implisit via
+                     inspeksi konten (ada opsi → MCQ, tanpa opsi → flashcard).
+                     Perilaku 100% sama seperti versi sebelum pemisahan key.
+      - 'mcq'      → key ---QUIZ_MCQ---: wajib opsi, tepat satu [x].
+      - 'weighted' → key ---QUIZ_WEIGHTED---: bobot [N] (N >= 1), minimal satu
+                     opsi [ ], bobot tertinggi unik.
+      - 'flashcard'→ key ---FLASHCARD---: tanpa opsi jawaban.
+
+    Format yang didukung:
     1. Simple Flashcard: '### Question\nAnswer'
-    2. Multiple Choice (MCQ): 
+    2. Multiple Choice (MCQ):
        '### Question
         [optional rich markdown body: paragraphs, fenced code, tables, math]
         - [] option 1
@@ -894,7 +1010,12 @@ def _parse_flashcards(text):
 
     Every question and option receives a stable id based on original parse
     order ('q-0', 'q-0-o-0', ...) — the frontend uses these ids for shuffling
-    and scoring, so they must never depend on display order.
+    and scoring, so they must never depend on display order. `id_offset`
+    dipakai saat beberapa blok key quiz digabung agar id tetap unik & berurutan.
+
+    Setiap soal juga mendapat field `quiz_type` ('mcq' | 'weighted' | 'flashcard')
+    supaya konsumen (sesi kuis, laporan guru) tahu model evaluasinya tanpa
+    perlu menebak dari isi konten.
     """
     if not text.strip():
         return []
@@ -947,7 +1068,7 @@ def _parse_flashcards(text):
             body = re.sub(r'^\s*::diagnostic\s*$', '', body, flags=re.MULTILINE).strip()
 
         # Option lines outside fenced code, in original order
-        option_lines = list(_iter_option_lines(body))
+        option_lines = list(_iter_option_lines(body, kind))
         first_option_idx = option_lines[0][0] if option_lines else len(body)
 
         # Explanation blockquote: after the options for MCQ, anywhere for flashcard
@@ -955,25 +1076,27 @@ def _parse_flashcards(text):
         explanation_match = re.search(r'^\s*(>.*)$', explanation_search_region, re.MULTILINE | re.DOTALL)
         explanation = explanation_match.group(1).strip() if explanation_match else ""
 
-        q_id = f'q-{len(flashcards)}'
+        q_id = f'q-{id_offset + len(flashcards)}'
+        question_no = len(flashcards) + 1
 
         # If MCQ options exist, it's an MCQ.
         if option_lines:
+            marks = [mark for _, mark, _, _ in option_lines]
+            raw_weights = [
+                (int(weight_str) if weight_str else None) for _, _, weight_str, _ in option_lines
+            ]
+            is_correct_flags, final_weights = _validate_quiz_options(
+                kind, question_no, marks, raw_weights
+            )
+
             parsed_options = []
-            for _, mark, content in option_lines:
-                is_correct = mark.lower() == 'x'
+            for idx, (_, _mark, _weight_str, content) in enumerate(option_lines):
                 parsed_options.append({
                     'id': f'{q_id}-o-{len(parsed_options)}',
                     'text': md.markdown(content.strip(), extensions=MD_EXTENSIONS),
-                    'is_correct': is_correct
+                    'is_correct': is_correct_flags[idx],
+                    'weight': final_weights[idx]
                 })
-
-            correct_count = sum(1 for opt in parsed_options if opt['is_correct'])
-            if correct_count != 1:
-                raise ValueError(
-                    f"Soal kuis ke-{len(flashcards) + 1} wajib punya tepat satu opsi benar "
-                    f"(ditemukan {correct_count})."
-                )
 
             # Rich question prompt: heading + everything before the first option
             # line (paragraphs, fenced code, tables, math), through the same
@@ -996,6 +1119,7 @@ def _parse_flashcards(text):
             flashcards.append({
                 'id': q_id,
                 'type': 'mcq',
+                'quiz_type': 'weighted' if kind == 'weighted' else 'mcq',
                 'question': md.markdown(prompt_text, extensions=MD_EXTENSIONS),
                 'options': parsed_options,
                 'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
@@ -1003,6 +1127,18 @@ def _parse_flashcards(text):
                 'category': category
             })
         else:
+            # Tanpa opsi → flashcard. Pada key QUIZ_MCQ / QUIZ_WEIGHTED ini
+            # tidak valid (wajib ada opsi jawaban); pada key FLASHCARD & legacy
+            # justru merupakan bentuk normal.
+            if kind == 'mcq':
+                raise ValueError(
+                    f"Soal kuis ke-{question_no} di QUIZ_MCQ wajib punya opsi jawaban."
+                )
+            if kind == 'weighted':
+                raise ValueError(
+                    f"Soal kuis ke-{question_no} di QUIZ_WEIGHTED wajib punya opsi jawaban."
+                )
+
             # It's a simple Flashcard
             # Remove explanation from body if it's there to keep 'back' clean
             clean_back = body
@@ -1012,6 +1148,7 @@ def _parse_flashcards(text):
             flashcards.append({
                 'id': q_id,
                 'type': 'flashcard',
+                'quiz_type': 'flashcard',
                 'front': md.markdown(question, extensions=MD_EXTENSIONS),
                 'back': md.markdown(clean_back, extensions=MD_EXTENSIONS),
                 'explanation': md.markdown(explanation, extensions=MD_EXTENSIONS) if explanation else "",
@@ -1021,6 +1158,83 @@ def _parse_flashcards(text):
             })
             
     return flashcards
+
+
+def _find_marker_index(content, marker, from_index=0):
+    """Index marker di `content` — utamakan marker yang berdiri sendiri di baris.
+
+    Mirror persis `findMarkerIndex` di frontend (extractSections.ts) supaya
+    ekstraksi section backend & frontend menghasilkan konten yang sama.
+    Fallback ke kemunculan pertama bila marker tidak berdiri sendiri (mis.
+    disebut di dalam prosa).
+    """
+    idx = content.find(marker, from_index)
+    fallback_idx = -1
+    while idx != -1:
+        prev_newline = content.rfind('\n', 0, idx)
+        line_prefix = content[prev_newline + 1:idx]
+        if line_prefix.strip() == '':
+            return idx
+        if fallback_idx == -1:
+            fallback_idx = idx
+        idx = content.find(marker, idx + len(marker))
+    return fallback_idx
+
+
+def _extract_quiz_section(content, start_marker, end_marker):
+    """Ekstrak satu blok key quiz — (extracted, remaining_content).
+
+    Semantik sama dengan `extractSection` frontend: marker end dicari SETELAH
+    marker start, dan marker yang berdiri sendiri di baris diutamakan.
+    """
+    if start_marker not in content or end_marker not in content:
+        return "", content
+
+    start_idx = _find_marker_index(content, start_marker)
+    if start_idx == -1:
+        return "", content
+
+    end_idx = _find_marker_index(content, end_marker, start_idx + len(start_marker))
+    if end_idx == -1 or end_idx <= start_idx:
+        return "", content
+
+    extracted = content[start_idx + len(start_marker):end_idx].strip()
+    remaining = content[:start_idx] + content[end_idx + len(end_marker):]
+    return extracted, remaining
+
+
+def _extract_quiz_sections(content):
+    """Ekstrak seluruh blok key quiz dalam URUT DOKUMEN.
+
+    Mendukung BEBERAPA blok per key (mis. dua blok QUIZ_MCQ). Return
+    (sections, remaining_content) dengan `sections` = list of (kind, raw_text)
+    terurut posisi marker start — supaya id soal (q-0, q-1, ...) deterministik
+    dan identik backend↔frontend.
+    """
+    sections = []
+    while True:
+        best_idx = None
+        best_spec = None
+        for parse_kind, start_marker, end_marker in QUIZ_SECTION_SPECS:
+            idx = _find_marker_index(content, start_marker)
+            if idx != -1 and (best_idx is None or idx < best_idx):
+                best_idx = idx
+                best_spec = (parse_kind, start_marker, end_marker)
+        if best_spec is None:
+            break
+        parse_kind, start_marker, end_marker = best_spec
+        raw, content = _extract_quiz_section(content, start_marker, end_marker)
+        if not raw:
+            # Blok kosong → marker sudah terangkat, cukup lanjut. Blok tidak
+            # valid (marker end hilang) → konten TIDAK berubah; buang marker
+            # start supaya loop selalu maju (tidak memilih marker yang sama
+            # lagi tanpa henti).
+            idx = _find_marker_index(content, start_marker)
+            if idx != -1:
+                content = content[:idx] + content[idx + len(start_marker):]
+            continue
+        sections.append((parse_kind, raw))
+    return sections, content
 
 
 def _extract_section(content, start_marker, end_marker):
@@ -1060,16 +1274,16 @@ def _render_markdown_string(content):
         active_tabs.append('circuit')
     if '---INITIAL_FLOWCHART---' in lesson_content:
         active_tabs.append('flowchart')
-    if '---INITIAL_QUIZ---' in lesson_content:
-        active_tabs.append('quiz')
-    if '---QUIZ_FLASHCARD---' in lesson_content:
+    # Semua key quiz (baru + legacy) mengaktifkan tab 'quiz' — dedupe agar
+    # tab tidak dobel bila beberapa key dipakai dalam satu file.
+    if any(marker in lesson_content for marker in QUIZ_TAB_MARKERS):
         active_tabs.append('quiz')
     # Velxio circuit-only: has VELXIO_CIRCUIT but no INITIAL_CODE_ARDUINO
     if '---VELXIO_CIRCUIT---' in lesson_content and 'velxio' not in active_tabs:
         active_tabs.append('velxio')
 
     # Default to 'c' if nothing specified (for backwards compatibility)
-    if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_FLOWCHART---' not in lesson_content and '---INITIAL_QUIZ---' not in lesson_content and '---QUIZ_FLASHCARD---' not in lesson_content:
+    if not active_tabs and '---INITIAL_CODE---' not in lesson_content and '---INITIAL_PYTHON---' not in lesson_content and '---INITIAL_CIRCUIT---' not in lesson_content and '---INITIAL_FLOWCHART---' not in lesson_content and not any(marker in lesson_content for marker in QUIZ_TAB_MARKERS):
         # If it's a completely plain old file, assume it has a code editor available
         if '---EXERCISE---' in lesson_content:
             active_tabs.append('c')
@@ -1134,9 +1348,15 @@ def _render_markdown_string(content):
     initial_quiz, lesson_content = _extract_section(
         lesson_content, '---INITIAL_QUIZ---', '---END_INITIAL_QUIZ---')
 
-    quiz_flashcard_raw, lesson_content = _extract_section(
-        lesson_content, '---QUIZ_FLASHCARD---', '---END_QUIZ_FLASHCARD---')
-    quiz_data = _parse_flashcards(quiz_flashcard_raw)
+    # Blok kuis (key baru + legacy) diekstrak URUT DOKUMEN lalu digabung
+    # menjadi satu daftar soal datar — sesi/attempt kuis tetap satu untuk
+    # semua jenis (taksonomi key tidak memecah sesi).
+    quiz_sections, lesson_content = _extract_quiz_sections(lesson_content)
+    quiz_data = []
+    for parse_kind, raw_text in quiz_sections:
+        quiz_data.extend(
+            _parse_flashcards(raw_text, kind=parse_kind, id_offset=len(quiz_data))
+        )
 
     # Arduino/Velxio sections
     initial_code_arduino, lesson_content = _extract_section(
@@ -1306,14 +1526,23 @@ def get_lesson_components(lesson_name: str) -> tuple[bool, bool]:
 
 
 def get_lesson_quiz_total(lesson_name: str) -> int | None:
-    """Kembalikan jumlah soal kuis untuk lesson jika ada, atau None."""
+    """Jumlah soal kuis untuk lesson (atau 100 untuk kuis berbobot).
+
+    Kuis yang memuat soal weighted memakai format skor persen "P/100" — jadi
+    totalnya 100, bukan jumlah soal. Tanpa penyesuaian ini format impor/
+    ekspor CSV progress siswa akan tidak cocok dengan skor yang tersimpan.
+    """
     file_path = find_lesson_file(f"{lesson_name}.md")
     if not file_path:
         return None
     try:
         parsed = render_markdown_content(file_path)
         quiz_data = parsed.get("quiz_data") or []
-        return len(quiz_data) if quiz_data else None
+        if not quiz_data:
+            return None
+        if any(q.get("quiz_type") == "weighted" for q in quiz_data):
+            return 100
+        return len(quiz_data)
     except Exception:
         return None
 

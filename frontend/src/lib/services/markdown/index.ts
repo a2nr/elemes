@@ -1,9 +1,22 @@
 import { marked } from 'marked';
-import { extractSection } from './extractSections';
+import { extractSection, findMarkerIndex } from './extractSections';
 import { detectActiveTabs } from './detectActiveTabs';
-import { parseFlashcards, type QuizCard } from './parseFlashcards';
+import { parseFlashcards, type QuizCard, type QuizParseKind } from './parseFlashcards';
 import { parseSlides } from './parseSlides';
 import { processCircuitEmbeds, processFlowchartEmbeds, processEmbedEmbeds } from './processEmbeds';
+
+/**
+ * Blok key quiz (baru + legacy) beserta model evaluasinya.
+ * Ekstraksi memilih marker start PALING AWAL berulang-ulang sampai habis,
+ * supaya soal gabungan (bisa lebih dari satu blok per key) berurutan dokumen
+ * dan id-nya (q-0, q-1, ...) identik dengan backend (parity).
+ */
+const QUIZ_SECTION_SPECS: { start: string; end: string; kind: QuizParseKind }[] = [
+	{ start: '---QUIZ_FLASHCARD---', end: '---END_QUIZ_FLASHCARD---', kind: 'legacy' },
+	{ start: '---QUIZ_MCQ---', end: '---END_QUIZ_MCQ---', kind: 'mcq' },
+	{ start: '---QUIZ_WEIGHTED---', end: '---END_QUIZ_WEIGHTED---', kind: 'weighted' },
+	{ start: '---FLASHCARD---', end: '---END_FLASHCARD---', kind: 'flashcard' }
+];
 
 export interface RenderedPreview {
 	success: boolean;
@@ -75,10 +88,33 @@ export function renderMarkdownPreview(rawMarkdown: string): RenderedPreview {
 		let initial_quiz = '';
 		[initial_quiz, content] = extractSection(content, '---INITIAL_QUIZ---', '---END_INITIAL_QUIZ---');
 
-		let quiz_flashcard_raw = '';
-		[quiz_flashcard_raw, content] = extractSection(content, '---QUIZ_FLASHCARD---', '---END_QUIZ_FLASHCARD---');
-
-		const quiz_data = parseFlashcards(quiz_flashcard_raw);
+		// Blok kuis (key baru + legacy): ambil marker start PALING AWAL berulang-ulang
+		// (mendukung beberapa blok per key), ekstrak urut dokumen, lalu gabungkan
+		// menjadi satu daftar soal datar — sesi/attempt kuis tetap satu.
+		const quiz_data: QuizCard[] = [];
+		for (;;) {
+			let best: { idx: number; spec: (typeof QUIZ_SECTION_SPECS)[number] } | null = null;
+			for (const spec of QUIZ_SECTION_SPECS) {
+				const idx = findMarkerIndex(content, spec.start);
+				if (idx !== -1 && (best === null || idx < best.idx)) {
+					best = { idx, spec };
+				}
+			}
+			if (!best) break;
+			let raw = '';
+			[raw, content] = extractSection(content, best.spec.start, best.spec.end);
+			if (!raw) {
+				// Blok kosong → marker sudah terangkat; blok tidak valid (marker
+				// end hilang) → konten tak berubah. Buang marker start supaya
+				// loop selalu maju (mirror backend _extract_quiz_sections).
+				const idx = findMarkerIndex(content, best.spec.start);
+				if (idx !== -1) {
+					content = content.slice(0, idx) + content.slice(idx + best.spec.start.length);
+				}
+				continue;
+			}
+			quiz_data.push(...parseFlashcards(raw, best.spec.kind, quiz_data.length));
+		}
 
 		let initial_code_arduino = '';
 		[initial_code_arduino, content] = extractSection(content, '---INITIAL_CODE_ARDUINO---', '---END_INITIAL_CODE_ARDUINO---');

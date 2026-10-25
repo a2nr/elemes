@@ -7,7 +7,7 @@ Skenario utama:
 - quiz 0/4 setelah exercise → composite 70 < 75 → state='in_progress'.
 
 Lesson dibuat via marker markdown (---INITIAL_CODE--- untuk tab c, dan
----INITIAL_QUIZ--- untuk tab quiz) supaya _lesson_components() di route
+---QUIZ_MCQ--- untuk tab quiz) supaya _lesson_components() di route
 mendeteksi has_exercise=True dan has_quiz=True.
 
 Integrasi PostgreSQL (butuh DATABASE_URL).
@@ -37,11 +37,11 @@ def lesson_both_content(tmp_path, monkeypatch):
     md.write_text(
         "# Lesson Both\n\n"
         "---INITIAL_CODE---\n```c\nvoid setup(){}\n```\n"
-        "---INITIAL_QUIZ---\n"
-        "# Kuis\n\n"
-        "1. Berapa 1+1?\n"
-        "- [x] 2\n- [ ] 3\n\n"
-        "> Kunci: 2\n",
+        "---QUIZ_MCQ---\n"
+        "### Berapa 1+1?\n"
+        "- [x] 2\n- [] 3\n\n"
+        "> Kunci: 2\n"
+        "---END_QUIZ_MCQ---\n",
         encoding="utf-8",
     )
     monkeypatch.setattr("services.lesson_service.CONTENT_DIR", str(tmp_path))

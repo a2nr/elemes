@@ -1,8 +1,11 @@
 /**
- * Extract content between startMarker and endMarker, returning the extracted content
- * and the remaining content with the markers and extracted block removed.
+ * Find the index of a marker, preferring an occurrence that stands alone on
+ * its own line (only whitespace before it on that line).
+ *
+ * Falls back to the first plain occurrence when the marker is only mentioned
+ * inline in prose. Mirrors the backend helper `_find_marker_index`.
  */
-function findMarkerIndex(content: string, marker: string, fromIndex = 0): number {
+export function findMarkerIndex(content: string, marker: string, fromIndex = 0): number {
 	let idx = content.indexOf(marker, fromIndex);
 	let fallbackIdx = -1;
 	while (idx !== -1) {

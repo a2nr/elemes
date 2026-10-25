@@ -200,8 +200,9 @@ printf
 | `---INITIAL_CODE---` | Kode awal C yang muncul di editor siswa |
 | `---INITIAL_PYTHON---` | Kode awal Python yang muncul di editor siswa |
 | `---INITIAL_CIRCUIT---` | Rangkaian awal Falstad CircuitJS |
-| `---INITIAL_QUIZ---` | Data quiz (format JSON) |
-| `---QUIZ_FLASHCARD---` | Kuis format Markdown (Flashcard & Pilihan Ganda) |
+| `---QUIZ_MCQ---` | Kuis pilihan ganda biner (`[x]` = kunci) |
+| `---QUIZ_WEIGHTED---` | Kuis pilihan ganda berbobot (`[N]` = bobot opsi) |
+| `---FLASHCARD---` | Kartu hafalan tanpa penilaian |
 | `---slide-start---` | Blok slide presentasi interaktif |
 | `---EXPECTED_OUTPUT---` | Output yang diharapkan untuk C (stdout) |
 | `---EXPECTED_OUTPUT_PYTHON---` | Output yang diharapkan untuk Python (stdout) |
@@ -326,36 +327,37 @@ Untuk materi logika pemrograman menggunakan flowchart:
 
 #### Blok Khusus Quiz (Opsional)
 
-LMS mendukung pembuatan kuis interaktif (Flashcard dan Pilihan Ganda) dalam dua format:
+LMS mendukung pembuatan kuis interaktif dengan key per jenis soal:
 
 | Blok | Fungsi |
 |------|--------|
-| `---QUIZ_FLASHCARD---` | Kuis format Markdown (Flashcard & Pilihan Ganda) |
-| `---INITIAL_QUIZ---` | Kuis format JSON |
+| `---QUIZ_MCQ---` | Kuis pilihan ganda biner (tepat satu `[x]`) |
+| `---QUIZ_WEIGHTED---` | Kuis pilihan ganda berbobot (`[N]`, N ≥ 1) |
+| `---FLASHCARD---` | Kartu hafalan tanpa penilaian |
+| `---QUIZ_FLASHCARD---` | *(Legacy, masih dibaca)* kuis format Markdown campuran |
 
-##### Format Markdown (`QUIZ_FLASHCARD`)
+##### Format Markdown (`QUIZ_MCQ`)
 
 Format ini sangat mudah digunakan untuk membuat kuis cepat.
 
 ```markdown
----QUIZ_FLASHCARD---
-### Pertanyaan Flashcard
-Ini adalah jawaban yang akan muncul di balik kartu.
-> Penjelasan: Muncul setelah kartu dibalik.
-
+---QUIZ_MCQ---
 ### Apa output dari printf("%d", 10 + 5)?
 - [] 105
 - [x] 15
 - [] 10
 > Penjelasan: Operasi aritmatika dikerjakan dulu sebelum dicetak.
----END_QUIZ_FLASHCARD---
+---END_QUIZ_MCQ---
 ```
 
 **Aturan Penulisan:**
 1. Pertanyaan harus diawali dengan `###`.
-2. Untuk **Pilihan Ganda**, gunakan `- []` untuk pilihan salah dan `- [x]` untuk pilihan benar.
-3. Untuk **Flashcard**, cukup tulis jawaban langsung di bawah pertanyaan (tanpa `- []`).
-4. Penjelasan opsional bisa ditambahkan di akhir pertanyaan dengan awalan `>`.
+2. Untuk **Pilihan Ganda** (`QUIZ_MCQ`), gunakan `- []` untuk pilihan salah dan `- [x]` untuk pilihan benar (tepat satu).
+3. Untuk **soal berbobot** (`QUIZ_WEIGHTED`), beri bobot `- [10]`, `- [7]`, dan `- [ ]` untuk jawaban salah; bobot tertinggi = kunci.
+4. Untuk **Flashcard** (`FLASHCARD`), cukup tulis jawaban langsung di bawah pertanyaan (tanpa `- []`).
+5. Penjelasan opsional bisa ditambahkan di akhir pertanyaan dengan awalan `>`.
+
+Detail lengkap ketiga jenis kuis + model penilaiannya: `docs/07-quiz-authoring.md`.
 
 ### 5. Keamanan & Akses Anonim
 
@@ -634,7 +636,8 @@ Gunakan fence ```embed dengan raw HTML embed code dari platform:
 Canva wajib URL dengan `?embed`. Lihat `docs/06-embed-content.md` untuk detail.
 
 **Q: Bagaimana membuat kuis?**
-Gunakan blok `---QUIZ_FLASHCARD---` dengan format Flashcard atau Pilihan Ganda.
+Gunakan blok `---QUIZ_MCQ---` (pilihan ganda), `---QUIZ_WEIGHTED---` (berbobot),
+atau `---FLASHCARD---` (kartu hafalan) sesuai jenis soal.
 Lihat `docs/07-quiz-authoring.md` untuk panduan lengkap.
 
 **Q: Bagaimana kebijakan anti-cheat kuis bekerja?**

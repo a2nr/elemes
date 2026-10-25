@@ -154,6 +154,12 @@ export interface QuizProgressPayload {
 		is_correct: boolean;
 		category: 'evaluasi' | 'diagnostik';
 		type: 'mcq' | 'flashcard';
+		/** Jenis quiz menurut key asalnya (mcq / weighted / flashcard). */
+		quiz_type: 'mcq' | 'weighted' | 'flashcard';
+		/** Poin yang diperoleh (weighted) — 0 utk jawaban salah / kosong. */
+		earned_points: number;
+		/** Poin maksimum soal (bobot tertinggi opsi weighted; 1 utk MCQ). */
+		question_max_points: number;
 	}>;
 }
 
@@ -166,6 +172,9 @@ export interface LessonProgressAnswer {
 	is_correct: boolean;
 	category: 'evaluasi' | 'diagnostik';
 	type: 'mcq' | 'flashcard';
+	quiz_type?: 'mcq' | 'weighted' | 'flashcard';
+	earned_points?: number;
+	question_max_points?: number;
 }
 
 export interface LessonProgressResponse {

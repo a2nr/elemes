@@ -47,7 +47,17 @@ def detect_lesson_type(content: str) -> str:
     has_c = '---INITIAL_CODE---' in content
     has_python = '---INITIAL_PYTHON---' in content
     has_circuit = '---INITIAL_CIRCUIT---' in content
-    has_quiz = '---INITIAL_QUIZ---' in content
+    # Semua key quiz (baru + legacy) mengaktifkan tab quiz.
+    has_quiz = any(
+        m in content
+        for m in (
+            '---INITIAL_QUIZ---',
+            '---QUIZ_FLASHCARD---',
+            '---QUIZ_MCQ---',
+            '---QUIZ_WEIGHTED---',
+            '---FLASHCARD---',
+        )
+    )
     has_velxio = '---VELXIO_CIRCUIT---' in content
 
     if has_arduino or (has_velxio and not has_c and not has_python):

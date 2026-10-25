@@ -189,4 +189,113 @@ This is the exercise.`;
 			expect(res.message).toContain('wajib punya tepat satu opsi benar');
 		});
 	});
+
+	describe('parseFlashcards — key baru (Fitur B)', () => {
+		it('QUIZ_MCQ: quiz_type mcq, weight biner 1/0', () => {
+			const cards = parseFlashcards('### Q?\n- [] a\n- [x] b\n', 'mcq');
+			expect(cards[0].quiz_type).toBe('mcq');
+			expect(cards[0].options!.map((o) => o.weight)).toEqual([0, 1]);
+		});
+
+		it('QUIZ_MCQ: menolak bobot angka [N]', () => {
+			const input = '### Q?\n- [10] a\n- [ ] b\n';
+			expect(() => parseFlashcards(input, 'mcq')).toThrow('tidak boleh memakai bobot angka');
+		});
+
+		it('QUIZ_MCQ: soal tanpa opsi ditolak (bukan flashcard)', () => {
+			expect(() => parseFlashcards('### Q?\njawaban bebas\n', 'mcq')).toThrow(
+				'wajib punya opsi jawaban'
+			);
+		});
+
+		it('QUIZ_WEIGHTED: bobot [N] diparse, is_correct = bobot tertinggi', () => {
+			const cards = parseFlashcards('### Q?\n- [10] a\n- [7] b\n- [ ] c\n', 'weighted');
+			expect(cards[0].quiz_type).toBe('weighted');
+			expect(cards[0].options!.map((o) => o.weight)).toEqual([10, 7, 0]);
+			expect(cards[0].options!.map((o) => o.is_correct)).toEqual([true, false, false]);
+		});
+
+		it('QUIZ_WEIGHTED: menolak [x] tercampur bobot', () => {
+			const input = '### Q?\n- [x] a\n- [7] b\n- [ ] c\n';
+			expect(() => parseFlashcards(input, 'weighted')).toThrow('tidak boleh memakai penanda');
+		});
+
+		it('QUIZ_WEIGHTED: menolak bobot 0', () => {
+			const input = '### Q?\n- [10] a\n- [0] b\n- [ ] c\n';
+			expect(() => parseFlashcards(input, 'weighted')).toThrow('bobot harus berupa bilangan bulat >= 1');
+		});
+
+		it('QUIZ_WEIGHTED: wajib ada opsi tanpa bobot [ ]', () => {
+			const input = '### Q?\n- [10] a\n- [7] b\n';
+			expect(() => parseFlashcards(input, 'weighted')).toThrow('minimal satu opsi tanpa bobot');
+		});
+
+		it('QUIZ_WEIGHTED: bobot tertinggi harus unik', () => {
+			const input = '### Q?\n- [10] a\n- [10] b\n- [ ] c\n';
+			expect(() => parseFlashcards(input, 'weighted')).toThrow('bobot tertinggi harus unik');
+		});
+
+		it('FLASHCARD: front/back tanpa opsi', () => {
+			const cards = parseFlashcards('### F?\njawaban\n> penjelasan\n', 'flashcard');
+			expect(cards[0].type).toBe('flashcard');
+			expect(cards[0].quiz_type).toBe('flashcard');
+			expect(cards[0].options).toBeNull();
+			expect(cards[0].back).toContain('jawaban');
+		});
+
+		it('FLASHCARD: menolak soal beropsi', () => {
+			expect(() => parseFlashcards('### F?\n- [x] a\n- [] b\n', 'flashcard')).toThrow(
+				'tidak boleh punya opsi jawaban'
+			);
+		});
+
+		it('legacy: - [10] BUKAN opsi (zero regression)', () => {
+			const cards = parseFlashcards('### Q?\n- [10] bukan opsi\n- [x] asli\n', 'legacy');
+			expect(cards[0].options).toHaveLength(1);
+			expect(cards[0].options![0].text).toContain('asli');
+		});
+	});
+
+	describe('renderMarkdownPreview — multi-key quiz', () => {
+		it('menggabungkan beberapa blok key urut dokumen dengan id berantai', () => {
+			const input = `# Lesson
+---QUIZ_MCQ---
+### M1?
+- [x] a
+- [] b
+---END_QUIZ_MCQ---
+
+---FLASHCARD---
+### F?
+jawab
+---END_FLASHCARD---
+
+---QUIZ_MCQ---
+### M2?
+- [x] c
+- [] d
+---END_QUIZ_MCQ---`;
+			const res = renderMarkdownPreview(input) as {
+				success: boolean;
+				quiz_data?: Array<{ id: string; quiz_type: string }>;
+			};
+			expect(res.success).toBe(true);
+			expect(res.quiz_data!.map((q) => q.id)).toEqual(['q-0', 'q-1', 'q-2']);
+			expect(res.quiz_data!.map((q) => q.quiz_type)).toEqual(['mcq', 'flashcard', 'mcq']);
+		});
+
+		it('tidak menggantung bila marker end hilang (progress guard)', () => {
+			const input = `# Lesson
+---QUIZ_MCQ---
+### M?
+- [x] a
+- [] b`;
+			const res = renderMarkdownPreview(input) as {
+				success: boolean;
+				quiz_data?: unknown[];
+			};
+			// Blok tidak valid dilewati — tidak ada soal, tapi juga tidak infinite loop.
+			expect(res.quiz_data).toHaveLength(0);
+		});
+	});
 });

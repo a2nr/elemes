@@ -311,7 +311,7 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 | **Circuit** | `---INITIAL_CIRCUIT---` | Circuit + Output | node voltage + key_text |
 | **Arduino/Velxio** | `---INITIAL_CODE_ARDUINO---` | Velxio (iframe) + Output | serial + wiring + key_text |
 | **Velxio circuit-only** | `---VELXIO_CIRCUIT---` (tanpa code) | Velxio (no editor) + Output | wiring + key_text |
-| **Quiz** | `---QUIZ_FLASHCARD---` atau `---INITIAL_QUIZ---` | Quiz | Completion status |
+| **Quiz** | `---QUIZ_MCQ---` / `---QUIZ_WEIGHTED---` / `---FLASHCARD---` | Quiz | Skor per jenis (rata-rata persentase) |
 | **Slide** | `---slide-start---` | — | Tampilan Carousel (Presentasi) |
 | **Hybrid** | C/Python + Circuit | Editor + Circuit + Output | AND-logic: kedua harus pass |
 
@@ -325,8 +325,10 @@ Elemes mendukung beberapa mode lesson melalui **marker** di file markdown. Mode 
 | `---INITIAL_CODE---` / `---END_INITIAL_CODE---` | Kode awal C |
 | `---INITIAL_PYTHON---` / `---END_INITIAL_PYTHON---` | Kode awal Python |
 | `---INITIAL_CIRCUIT---` / `---END_INITIAL_CIRCUIT---` | Circuit text awal (CircuitJS format) |
-| `---INITIAL_QUIZ---` / `---END_INITIAL_QUIZ---` | Quiz data (JSON) |
-| `---QUIZ_FLASHCARD---` / `---END_QUIZ_FLASHCARD---` | Quiz data (Markdown/Flashcard format) |
+| `---QUIZ_MCQ---` / `---END_QUIZ_MCQ---` | Kuis pilihan ganda biner (Markdown) |
+| `---QUIZ_WEIGHTED---` / `---END_QUIZ_WEIGHTED---` | Kuis pilihan ganda berbobot (Markdown) |
+| `---FLASHCARD---` / `---END_FLASHCARD---` | Kartu hafalan (Markdown) |
+| `---QUIZ_FLASHCARD---` / `---END_QUIZ_FLASHCARD---` | *(Legacy)* kuis campuran — masih dibaca |
 | `---INITIAL_CODE_ARDUINO---` / `---END_INITIAL_CODE_ARDUINO---` | Kode awal Arduino |
 | `---VELXIO_CIRCUIT---` / `---END_VELXIO_CIRCUIT---` | Circuit JSON untuk Velxio (komponen + wires) |
 | `---EXPECTED_OUTPUT---` / `---END_EXPECTED_OUTPUT---` | Expected stdout (C/Python) atau node voltage JSON (Circuit) |
@@ -491,15 +493,16 @@ Saat siswa klik "Cek Rangkaian", fungsi `evaluateCircuit()` menjalankan:
 
 Elemes mendukung kuis interaktif yang terintegrasi langsung dengan sistem progres. Kuis dapat berupa Flashcard (Tanya-Jawab) atau Pilihan Ganda (MCQ).
 
-### Arsitektur Parsing (`QUIZ_FLASHCARD`)
+### Arsitektur Parsing (key quiz per jenis)
 
 Untuk memudahkan pengajar, Elemes menyediakan parser Markdown khusus di `lesson_service.py` (`_parse_flashcards`):
 
-1. **Detection**: Mencari blok `---QUIZ_FLASHCARD---`.
+1. **Detection**: Mencari blok key quiz (`---QUIZ_MCQ---`, `---QUIZ_WEIGHTED---`, `---FLASHCARD---`; legacy `---QUIZ_FLASHCARD---` tetap dibaca) dan menggabungkannya urut dokumen.
 2. **Splitting**: Membagi konten berdasarkan heading `###`.
-3. **MCQ vs Flashcard**:
-   - Jika ditemukan pola `- []` atau `- [x]`, elemen diparse sebagai `type: 'mcq'`.
-   - Jika tidak, diparse sebagai `type: 'flashcard'`.
+3. **Penilaian per jenis key**:
+   - `QUIZ_MCQ` → `quiz_type: 'mcq'` (biner; tepat satu `- [x]`).
+   - `QUIZ_WEIGHTED` → `quiz_type: 'weighted'` (bobot `- [N]`; bobot tertinggi = kunci).
+   - `FLASHCARD` (dan soal legacy tanpa opsi) → `quiz_type: 'flashcard'`.
 4. **Explanation**: Menangkap blok kutipan `>` sebagai penjelasan yang muncul setelah kuis dijawab.
 5. **Images**: Mendukung penambahan gambar melalui:
    - Keyword `image: URL` tepat di bawah heading pertanyaan (akan tampil sebagai gambar utama).
@@ -681,7 +684,7 @@ Redo (Ctrl+Shift+Z / toolbar button)
 - [x] Security Review & Hardening (Cookie security, Rate limiting, Tarpitting)
 - [x] Examples of Arduino lessons (LED Blink)
 - [x] Flowchart integration (parsing & embedding)
-- [x] Quiz support (parsing INITIAL_QUIZ)
+- [x] Quiz support (parsing key quiz per jenis: QUIZ_MCQ/QUIZ_WEIGHTED/FLASHCARD)
 - [ ] PWA (service worker, offline caching)
 - [ ] More Arduino lesson examples (2-3 more)
 - [ ] Velxio enhancements (lock components, solution overlay, multi-board)

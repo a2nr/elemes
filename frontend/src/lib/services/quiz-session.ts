@@ -1,4 +1,4 @@
-import type { QuizQuestion, QuizAnswer } from '../types/quiz';
+import type { QuizQuestion, QuizAnswer, QuizType } from '../types/quiz';
 
 export interface QuizSession {
 	/** Questions in shuffled (frozen) display order. Option arrays also shuffled once. */
@@ -7,14 +7,48 @@ export interface QuizSession {
 	answers: Record<string, QuizAnswer>;
 }
 
+/** Poin maksimum sebuah soal — bobot tertinggi opsi (weighted), 1 utk MCQ biner, 0 utk flashcard. */
+export function questionMaxPoints(q: QuizQuestion | undefined): number {
+	if (!q || q.type !== 'mcq' || !q.options?.length) return 0;
+	return q.options.reduce((max, o) => Math.max(max, o.weight ?? 0), 0);
+}
+
+/** Persentase kategori per jenis quiz (sumbu kategori evaluasi/diagnostik). */
+export interface QuizTypeScore {
+	/** Poin yang diperoleh untuk jenis ini. */
+	earned: number;
+	/** Poin maksimum jenis ini (Σ bobot tertinggi tiap soal / jumlah soal MCQ). */
+	max: number;
+	/** Persentase 0–100 (belum dibulatkan — pembulatan hanya di skor akhir). */
+	percent: number | null;
+}
+
 export interface QuizResult {
 	totalMcq: number;
 	correctMcq: number;
 	unansweredMcq: number;
 	completedFlashcards: number;
 	allHandled: boolean;
-	/** Skor resmi = seluruh MCQ (evaluasi + diagnostik) tergabung; flashcard tidak dihitung. "X/Y" bila ada MCQ, "completed" bila tidak ada MCQ. */
+	/**
+	 * Skor resmi.
+	 * - Ada soal weighted → "P/100" (P integer 0–100, rata-rata persentase jenis).
+	 * - Hanya MCQ (atau legacy) → "X/Y" — tidak berubah (kompatibel).
+	 * - Tanpa soal dinilai → "completed".
+	 */
 	statusString: string;
+	/**
+	 * Skor akhir integer 0–100 hasil rata-rata persentase per jenis quiz yang
+	 * ADA di kuis (Math.round, 0.5 dibulatkan ke atas). Angka yang tampil =
+	 * angka yang dipakai memutuskan lulus. null bila tidak ada soal dinilai.
+	 */
+	percent: number | null;
+	/** True bila kuis memuat minimal satu soal weighted. */
+	hasWeighted: boolean;
+	/** Breakdown poin per jenis quiz (sumbu jenis, berdampingan dgn kategori). */
+	typeScores: {
+		mcq: QuizTypeScore;
+		weighted: QuizTypeScore;
+	};
 	/** MCQ dengan category 'evaluasi' */
 	evalCorrect: number;
 	evalTotal: number;
@@ -24,6 +58,9 @@ export interface QuizResult {
 	/** Soal diagnostik yang salah/atur tidak dijawab */
 	diagUnmastered: QuizQuestion[];
 }
+
+/** Ambang lulus kuis (persen dari skor akhir). */
+export const QUIZ_PASS_THRESHOLD = 75;
 
 /**
  * Fisher-Yates (Penaud variant): j = i + floor(rng*(n-i)).
@@ -37,6 +74,12 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 		[a[i], a[j]] = [a[j], a[i]];
 	}
 	return a;
+}
+
+/** quiz_type soal — fallback aman untuk konten lama tanpa field quiz_type. */
+function quizTypeOf(q: QuizQuestion): QuizType {
+	if (q.type !== 'mcq') return 'flashcard';
+	return q.quiz_type ?? 'mcq';
 }
 
 export function createQuizSession(source: QuizQuestion[], rng: () => number = Math.random): QuizSession {
@@ -55,7 +98,14 @@ export function createQuizSession(source: QuizQuestion[], rng: () => number = Ma
 
 	const answers: Record<string, QuizAnswer> = {};
 	for (const q of questions) {
-		answers[q.id] = { questionId: q.id, selectedOptionId: null, acknowledged: false, isCorrect: false };
+		answers[q.id] = {
+			questionId: q.id,
+			selectedOptionId: null,
+			acknowledged: false,
+			isCorrect: false,
+			earnedPoints: 0,
+			questionMaxPoints: questionMaxPoints(q)
+		};
 	}
 
 	return { questions, answers };
@@ -68,6 +118,9 @@ export function answerQuestion(session: QuizSession, questionId: string, optionI
 	const opt = q?.options?.find((o) => o.id === optionId);
 	answer.selectedOptionId = optionId;
 	answer.isCorrect = opt?.is_correct ?? false;
+	// Poin parsial (weighted): bobot opsi terpilih. MCQ biner: 1/0 via weight.
+	answer.earnedPoints = opt?.weight ?? 0;
+	answer.questionMaxPoints = questionMaxPoints(q);
 }
 
 export function acknowledgeQuestion(session: QuizSession, questionId: string): void {
@@ -99,6 +152,10 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 	let diagTotal = 0;
 	const diagUnmastered: QuizQuestion[] = [];
 
+	// Poin per JENIS quiz (sumbu jenis) — flashcard netral (tidak dinilai).
+	const mcqScore = { earned: 0, max: 0 };
+	const weightedScore = { earned: 0, max: 0 };
+
 	for (const q of session.questions) {
 		const a = session.answers[q.id];
 		const isEval = q.category !== 'diagnostik'; // default 'evaluasi'
@@ -115,6 +172,15 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 				if (a.isCorrect) diagCorrect += 1;
 				else diagUnmastered.push(q);
 			}
+
+			// Poin per jenis — ::diagnostic tetap masuk rasio MCQ (kompatibilitas).
+			if (quizTypeOf(q) === 'weighted') {
+				weightedScore.earned += a.earnedPoints ?? 0;
+				weightedScore.max += a.questionMaxPoints || questionMaxPoints(q);
+			} else {
+				mcqScore.earned += a.isCorrect ? 1 : 0;
+				mcqScore.max += 1;
+			}
 		} else if (a.acknowledged) {
 			completedFlashcards += 1;
 		}
@@ -125,8 +191,27 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 			? session.answers[q.id].selectedOptionId !== null
 			: session.answers[q.id].acknowledged
 	);
-	// Skor resmi = seluruh MCQ (evaluasi + diagnostik) tergabung; bila tidak ada MCQ → 'completed'.
-	const statusString = totalMcq > 0 ? `${correctMcq}/${totalMcq}` : 'completed';
+
+	const pMcq = mcqScore.max > 0 ? (mcqScore.earned / mcqScore.max) * 100 : null;
+	const pWeighted =
+		weightedScore.max > 0 ? (weightedScore.earned / weightedScore.max) * 100 : null;
+
+	const present = [pMcq, pWeighted].filter((p): p is number => p !== null);
+	const percent = present.length > 0 ? Math.round(present.reduce((s, p) => s + p, 0) / present.length) : null;
+	const hasWeighted = weightedScore.max > 0;
+
+	// Skor resmi:
+	// - weighted ikut → "P/100" (persen, rata-rata per jenis).
+	// - hanya MCQ → "X/Y" (perilaku lama, kompatibel mundur).
+	// - tanpa soal dinilai (flashcard saja) → 'completed'.
+	let statusString: string;
+	if (hasWeighted) {
+		statusString = `${percent}/100`;
+	} else if (mcqScore.max > 0) {
+		statusString = `${mcqScore.earned}/${mcqScore.max}`;
+	} else {
+		statusString = 'completed';
+	}
 
 	return {
 		totalMcq,
@@ -135,6 +220,12 @@ export function calculateQuizResult(session: QuizSession): QuizResult {
 		completedFlashcards,
 		allHandled,
 		statusString,
+		percent,
+		hasWeighted,
+		typeScores: {
+			mcq: { earned: mcqScore.earned, max: mcqScore.max, percent: pMcq },
+			weighted: { earned: weightedScore.earned, max: weightedScore.max, percent: pWeighted }
+		},
 		evalCorrect,
 		evalTotal,
 		diagCorrect,
@@ -150,15 +241,22 @@ export interface StoredQuizAnswer {
 	is_correct?: boolean;
 	category?: 'evaluasi' | 'diagnostik';
 	type?: 'mcq' | 'flashcard';
+	/** Jenis quiz menurut key asalnya (payload baru). */
+	quiz_type?: QuizType;
+	/** Poin jawaban weighted (payload baru) — dihitung ulang dari konten. */
+	earned_points?: number;
+	/** Poin maksimum soal (payload baru) — dihitung ulang dari konten. */
+	question_max_points?: number;
 }
 
 /**
  * Rekonstruksi sesi kuis dari jawaban tersimpan (resume attempt oleh guru).
  *
  * Berbeda dari createQuizSession: jawaban siswa dari attempt sebelumnya
- * di-seed by question_id. `is_correct` dihitung ulang dari source (bukan
- * percaya nilai tersimpan) sebagai guard bila konten soal berubah antara
- * attempt dan resume — option_id yang tidak dikenal dianggap belum dijawab.
+ * di-seed by question_id. `is_correct` dan poin weighted dihitung ulang dari
+ * source (bukan percaya nilai tersimpan) sebagai guard bila konten soal
+ * berubah antara attempt dan resume — option_id yang tidak dikenal dianggap
+ * belum dijawab.
  *
  * Catatan: status `acknowledged` flashcard tidak tersimpan di payload
  * attempt — siswa perlu acknowledge ulang saat resume.
@@ -179,6 +277,8 @@ export function restoreQuizSession(
 			if (opt) {
 				answer.selectedOptionId = opt.id;
 				answer.isCorrect = opt.is_correct;
+				// Poin dihitung ulang dari konten soal (bukan nilai tersimpan).
+				answer.earnedPoints = opt.weight ?? 0;
 			}
 		}
 	}

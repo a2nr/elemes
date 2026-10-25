@@ -37,6 +37,10 @@
 		eval_score: string;
 		diag_score: string;
 		diag_unmastered: string[];
+		/** Rasio benar soal MCQ ("3/4") — kosong bila tidak ada soal MCQ. */
+		quiz_mcq: string;
+		/** Poin soal weighted ("7/10") — kosong bila tidak ada soal weighted. */
+		quiz_weighted: string;
 	}
 
 	interface LessonNode {
@@ -62,6 +66,30 @@
 		} catch {
 			return [];
 		}
+	}
+
+	/** "7/10" → 70 (persen dibulatkan); null bila format tidak valid. */
+	function ratioPercent(ratio: string): number | null {
+		const parts = ratio.split('/');
+		if (parts.length !== 2) return null;
+		const earned = parseInt(parts[0], 10);
+		const total = parseInt(parts[1], 10);
+		if (!Number.isFinite(earned) || !Number.isFinite(total) || total <= 0) return null;
+		return Math.round((earned / total) * 100);
+	}
+
+	/**
+	 * Tooltip badge skor kuis — jelaskan model skor rata-rata per jenis:
+	 * "Rata-rata jenis — MCQ 75% · Weighted 70%".
+	 */
+	function quizScoreTooltip(s: StudentLessonDetail): string {
+		const parts: string[] = [];
+		const mcqPct = ratioPercent(s.quiz_mcq);
+		if (s.quiz_mcq && mcqPct !== null) parts.push(`MCQ ${mcqPct}%`);
+		const weightedPct = ratioPercent(s.quiz_weighted);
+		if (s.quiz_weighted && weightedPct !== null) parts.push(`Weighted ${weightedPct}%`);
+		if (parts.length === 0) return 'Skor Kuis';
+		return `Rata-rata jenis — ${parts.join(' · ')}`;
 	}
 
 	let students = $state<StudentProgress[]>([]);
@@ -253,7 +281,9 @@
 							resumed_at: String(s[key + '_resumed_at'] ?? ''),
 							eval_score: String(s[key + '_eval'] ?? ''),
 							diag_score: String(s[key + '_diag'] ?? ''),
-							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered'])
+							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered']),
+							quiz_mcq: String(s[key + '_quiz_mcq'] ?? ''),
+							quiz_weighted: String(s[key + '_quiz_weighted'] ?? '')
 						});
 
 						if (s.role === 'student') {
@@ -316,7 +346,9 @@
 							resumed_at: String(s[key + '_resumed_at'] ?? ''),
 							eval_score: String(s[key + '_eval'] ?? ''),
 							diag_score: String(s[key + '_diag'] ?? ''),
-							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered'])
+							diag_unmastered: parseUnmastered(s[key + '_diag_unmastered']),
+							quiz_mcq: String(s[key + '_quiz_mcq'] ?? ''),
+							quiz_weighted: String(s[key + '_quiz_weighted'] ?? '')
 						});
 
 						if (s.role === 'student') {
@@ -526,7 +558,15 @@
 																{/if}
 
 																{#if student.quiz_score}
-																	<span class="badge badge-quiz" title="Skor Kuis">Kuis: {student.quiz_score}</span>
+																	<span class="badge badge-quiz" title="{quizScoreTooltip(student)}">Kuis: {student.quiz_score}</span>
+																{/if}
+
+																{#if student.quiz_mcq}
+																	<span class="badge badge-detail" title="Rasio benar soal QUIZ_MCQ (termasuk diagnostik)">MCQ: {student.quiz_mcq}</span>
+																{/if}
+
+																{#if student.quiz_weighted}
+																	<span class="badge badge-detail" title="Poin soal QUIZ_WEIGHTED (bobot tertinggi tiap soal dijumlahkan)">Bobot: {student.quiz_weighted}</span>
 																{/if}
 
 																{#if student.has_violation}

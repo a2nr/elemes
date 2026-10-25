@@ -5,6 +5,7 @@
 	import { autoRenderMath } from '$lib/actions/renderMath';
 	import { shouldShowQuizReview, type QuizTerminationReason } from '$services/quiz-integrity';
 	import { resolveQuizTabView, terminationReasonLabel } from '$services/quiz-view';
+	import { questionMaxPoints, QUIZ_PASS_THRESHOLD } from '$services/quiz-session';
 	import type { LessonManager } from './lesson.svelte';
 	import type { QuizQuestion, QuizAnswer } from '$types/quiz';
 	import { fetchLessonProgress } from '$services/api';
@@ -56,6 +57,28 @@
 		!!storedAttempt
 	);
 
+	/** Label badge review utk soal weighted — penuh / parsial / salah dgn poin. */
+	function weightedBadgeLabel(a: QuizAnswer, q: QuizQuestion): string {
+		const max = a.questionMaxPoints || questionMaxPoints(q);
+		const earned = a.earnedPoints ?? 0;
+		if (a.isCorrect) return `✓ Tepat (${earned}/${max})`;
+		if (earned > 0) return `🟡 Parsial (${earned}/${max})`;
+		return `✗ Salah (0/${max})`;
+	}
+
+	/** Tanda opsi di review — kunci ✅, parsial 🟡 (N/max), salah ❌, lain ○. */
+	function reviewOptionMark(opt: { id: string; is_correct: boolean; weight: number }, a: QuizAnswer, q: QuizQuestion): string {
+		if (opt.is_correct) return '✅';
+		if (opt.id === a.selectedOptionId) {
+			if ((opt.weight ?? 0) > 0) {
+				const max = a.questionMaxPoints || questionMaxPoints(q);
+				return `🟡 ${opt.weight}/${max}`;
+			}
+			return '❌';
+		}
+		return '○';
+	}
+
 	// --- Resume attempt (izin guru untuk melanjutkan kuis terminated) ---
 	// Sinyal dari data lesson (quiz_resumable) atau attempt audit yang baru
 	// di-fetch. Siswa melihat tombol "Lanjutkan Kuis" alih-alih summary.
@@ -104,11 +127,16 @@
 				for (const ans of storedAnswers) {
 					const q = src.find((qq) => qq.id === ans.question_id);
 					if (q) {
+						// Poin weighted dihitung ulang dari konten soal; fallback ke
+						// nilai tersimpan bila opsi sudah tidak dikenal.
+						const opt = q.options?.find((o) => o.id === ans.selected_option_id);
 						reviewAnswers[q.id] = {
 							questionId: q.id,
 							selectedOptionId: ans.selected_option_id,
 							acknowledged: false,
 							isCorrect: ans.is_correct,
+							earnedPoints: opt ? (opt.weight ?? 0) : (ans.earned_points ?? 0),
+							questionMaxPoints: questionMaxPoints(q) || (ans.question_max_points ?? 0)
 						};
 					}
 				}
@@ -265,7 +293,6 @@
 						Kuis ini sudah diselesaikan. Silakan hubungi guru jika ingin mengulang.
 					</div>
 				{:else if result}
-					{@const totalMcq = result.totalMcq}
 					{#if mgr.quizTerminationReason === 'focus_lost'}
 						<div class="alert alert-danger">
 							Kuis dihentikan karena halaman kehilangan fokus. Skor disimpan dan percobaann tidak dapat diulang.
@@ -275,16 +302,29 @@
 							Kuis dihentikan karena halaman di-refresh atau ditutup. Skor disimpan dan percobaan tidak dapat diulang.
 						</div>
 					{/if}
-					{@const correct = result.correctMcq}
-					<p class="score-display">Skor: <strong>{correct} / {totalMcq}</strong></p>
+					<p class="score-display">Skor: <strong>{result.statusString}</strong></p>
 
-					{#if totalMcq > 0 && correct / totalMcq < 0.75}
+					{#if result.percent !== null && result.percent < QUIZ_PASS_THRESHOLD}
 						<div class="alert alert-warning">
 							Nilai Anda di bawah ambang batas 75%. Pelajari kembali topik di bawah ini.
 						</div>
 					{:else}
 						<div class="alert alert-success">
 							Selamat! Anda telah memahami materi ini dengan baik.
+						</div>
+					{/if}
+
+					{#if result.hasWeighted}
+						<div class="score-breakdown">
+							{#if result.typeScores.mcq.max > 0}
+								<span class="breakdown-item">MCQ: <strong>{result.typeScores.mcq.earned}/{result.typeScores.mcq.max}</strong></span>
+							{/if}
+							{#if result.typeScores.weighted.max > 0}
+								<span class="breakdown-item">Bobot: <strong>{result.typeScores.weighted.earned}/{result.typeScores.weighted.max}</strong></span>
+							{/if}
+							<span class="breakdown-item">
+								Rata-rata jenis → <strong>{result.percent}</strong>
+							</span>
 						</div>
 					{/if}
 
@@ -314,8 +354,14 @@
 								{@const a = mgr.quizSession!.answers[q.id]}
 								<div class="review-item" data-category={q.category ?? 'evaluasi'}>
 									<div class="review-header">
-										<span class="review-number">Soal {i + 1} <span class="review-category-badge">{q.category === 'diagnostik' ? 'Diagnostik' : 'Evaluasi'}</span></span>
-										{#if q.type === 'mcq'}
+										<span class="review-number">Soal {i + 1}
+											{#if q.quiz_type === 'weighted'}<span class="review-category-badge">Berbobot</span>{/if}
+											<span class="review-category-badge">{q.category === 'diagnostik' ? 'Diagnostik' : 'Evaluasi'}</span></span>
+										{#if q.type === 'mcq' && q.quiz_type === 'weighted'}
+											<span class="review-badge" class:ok={a.isCorrect} class:partial={!a.isCorrect && (a.earnedPoints ?? 0) > 0} class:bad={!a.isCorrect && !(a.earnedPoints ?? 0)}>
+												{weightedBadgeLabel(a, q)}
+											</span>
+										{:else if q.type === 'mcq'}
 											<span class="review-badge" class:ok={a.isCorrect} class:bad={!a.isCorrect}>
 												{a.isCorrect ? '✓ Benar' : '✗ Salah'}
 											</span>
@@ -331,9 +377,10 @@
 													class="review-option"
 													class:chosen={opt.id === a.selectedOptionId}
 													class:correct-opt={opt.is_correct}
+													class:partial-opt={q.quiz_type === 'weighted' && !opt.is_correct && (opt.weight ?? 0) > 0}
 												>
 													<span class="review-option-mark">
-														{opt.is_correct ? '✅' : opt.id === a.selectedOptionId ? '❌' : '○'}
+														{q.quiz_type === 'weighted' ? reviewOptionMark(opt, a, q) : (opt.is_correct ? '✅' : opt.id === a.selectedOptionId ? '❌' : '○')}
 													</span>
 													<span class="review-option-text">{@html opt.text}</span>
 												</div>
@@ -370,8 +417,14 @@
 							{@const a = reviewAnswers[q.id]}
 							<div class="review-item" data-category={q.category ?? 'evaluasi'}>
 								<div class="review-header">
-									<span class="review-number">Soal {i + 1} <span class="review-category-badge">{q.category === 'diagnostik' ? 'Diagnostik' : 'Evaluasi'}</span></span>
-									{#if q.type === 'mcq'}
+									<span class="review-number">Soal {i + 1}
+										{#if q.quiz_type === 'weighted'}<span class="review-category-badge">Berbobot</span>{/if}
+										<span class="review-category-badge">{q.category === 'diagnostik' ? 'Diagnostik' : 'Evaluasi'}</span></span>
+									{#if q.type === 'mcq' && q.quiz_type === 'weighted'}
+										<span class="review-badge" class:ok={a.isCorrect} class:partial={!a.isCorrect && (a.earnedPoints ?? 0) > 0} class:bad={!a.isCorrect && !(a.earnedPoints ?? 0)}>
+											{weightedBadgeLabel(a, q)}
+										</span>
+									{:else if q.type === 'mcq'}
 										<span class="review-badge" class:ok={a.isCorrect} class:bad={!a.isCorrect}>
 											{a.isCorrect ? '✓ Benar' : '✗ Salah'}
 										</span>
@@ -387,9 +440,10 @@
 												class="review-option"
 												class:chosen={opt.id === a.selectedOptionId}
 												class:correct-opt={opt.is_correct}
+												class:partial-opt={q.quiz_type === 'weighted' && !opt.is_correct && (opt.weight ?? 0) > 0}
 											>
 												<span class="review-option-mark">
-													{opt.is_correct ? '✅' : opt.id === a.selectedOptionId ? '❌' : '○'}
+													{q.quiz_type === 'weighted' ? reviewOptionMark(opt, a, q) : (opt.is_correct ? '✅' : opt.id === a.selectedOptionId ? '❌' : '○')}
 												</span>
 												<span class="review-option-text">{@html opt.text}</span>
 											</div>
@@ -642,6 +696,8 @@
 	.review-badge { font-size: 0.75rem; font-weight: 700; padding: 0.25rem 0.6rem; border-radius: 999px; }
 	.review-badge.ok { background: rgba(25, 135, 84, 0.12); color: var(--color-success); }
 	.review-badge.bad { background: rgba(220, 53, 69, 0.12); color: var(--color-danger); }
+	.review-badge.partial { background: rgba(255, 193, 7, 0.18); color: #997404; }
+	.review-option.partial-opt { border-color: #fcc419; background: #fff9db; }
 	.review-question { font-weight: 600; margin-bottom: 0.75rem; line-height: 1.5; }
 	.review-question :global(img) { max-width: 100%; height: auto; border-radius: 8px; }
 	.review-options { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.5rem; }

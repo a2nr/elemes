@@ -77,7 +77,9 @@ printf
 print
 ---END_KEY_TEXT---
 
----QUIZ_FLASHCARD---
+
+
+---QUIZ_MCQ---
 ### Manakah sintaks penulisan kondisi `if` yang benar dalam bahasa C?
 - [x] `if (kondisi) { ... }`
 - [] `if kondisi then { ... }`
@@ -105,4 +107,6 @@ if (x > 10) {
 - [x] 70%
 - [] 100%
 > Penjelasan: Secara default pada konfigurasi Elemes, komponen latihan koding memiliki bobot 70% dan kuis memiliki bobot 30%.
----END_QUIZ_FLASHCARD---
+---END_QUIZ_MCQ---
+
+

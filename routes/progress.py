@@ -181,7 +181,12 @@ def export_progress_csv():
     )
 
     lesson_slugs = [l['filename'].replace('.md', '') for l in ordered_lessons]
-    fieldnames = ['nama_siswa'] + lesson_slugs + ['completed_count']
+    # Dua kolom breakdown JENIS per lesson (rapor guru): rasio benar MCQ dan
+    # poin weighted. Kolom kosong bila jenis itu tidak ada di kuis lesson.
+    fieldnames = ['nama_siswa']
+    for slug in lesson_slugs:
+        fieldnames.extend([slug, f"{slug}_quiz_mcq", f"{slug}_quiz_weighted"])
+    fieldnames.append('completed_count')
 
     output = io.StringIO()
     output.write('\ufeff')
@@ -200,6 +205,8 @@ def export_progress_csv():
                     row[slug] = 100
                 else:
                     row[slug] = ""
+            row[f"{slug}_quiz_mcq"] = student.get(f"{slug}_quiz_mcq", "")
+            row[f"{slug}_quiz_weighted"] = student.get(f"{slug}_quiz_weighted", "")
         row['completed_count'] = student.get('completed_count', 0)
         writer.writerow(row)
 

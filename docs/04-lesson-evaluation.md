@@ -14,7 +14,7 @@ The LMS determines the type of lesson and how to evaluate it based on specific m
 | **C / Python** | `---INITIAL_CODE---` / `---INITIAL_PYTHON---` | Standard stdout matching against `---EXPECTED_OUTPUT---` and presence of `---KEY_TEXT---`. |
 | **Circuit** | `---INITIAL_CIRCUIT---` | Node voltage matching against `---EXPECTED_CIRCUIT_OUTPUT---` and `---KEY_TEXT_CIRCUIT---`. |
 | **Arduino (Velxio)** | `---INITIAL_CODE_ARDUINO---` | Serial output sequence matching, lenient graph wiring comparison, and `---KEY_TEXT---`. |
-| **Quiz** | `---QUIZ_FLASHCARD---` | State completion tracking (all questions answered correctly). |
+| **Quiz** | `---QUIZ_MCQ---` / `---QUIZ_WEIGHTED---` / `---FLASHCARD---` | Skor resmi = rata-rata persentase per jenis quiz (weighted pakai poin bobot); lulus bila ≥ 75. |
 | **Slide** | `---slide-start---` | Tidak ada (hanya presentasi konten). |
 
 ## Evaluators (`lib/services/`)

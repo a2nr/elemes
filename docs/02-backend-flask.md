@@ -81,7 +81,7 @@ Parses Markdown files to extract content and configuration.
 - `def get_sub_home_path(folder_name):` Returns the absolute path to a folder's `sub-home.md` (or `None`), using the same `CONTENT_DIR` as `get_sub_home_data`.
 - `def get_sub_home_data(folder_name):` Parses a folder's `sub-home.md` (title, intro HTML, lesson list) with an mtime-based cache so edits to the file are picked up without restart.
 - `def render_markdown_content(file_path):` The core parsing function. Uses regex to extract markers like `---INITIAL_CODE---`, `---VELXIO_CIRCUIT---`, etc. It identifies the `active_tabs` needed for the frontend.
-- `def _parse_flashcards(text):` Specifically parses `---QUIZ_FLASHCARD---` blocks into a structured JSON array for the frontend MCQ/Flashcard component.
+- `def _parse_flashcards(text, kind):` Parses quiz blocks (key `---QUIZ_MCQ---`, `---QUIZ_WEIGHTED---`, `---FLASHCARD---`, dan legacy `---QUIZ_FLASHCARD---`) into a structured JSON array for the frontend quiz component. `kind` menentukan model evaluasi & validasi per jenis key.
 
 See `docs/13-content-sub-home.md` for the author-facing guide on writing `sub-home.md`.
 

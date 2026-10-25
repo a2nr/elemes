@@ -1,0 +1,119 @@
+{
+  "source_path": "dasar/composite_test.md",
+  "source_body": "---LESSON_INFO---\n**Learning Objectives:**\n- Memahami konsep materi komposit di Elemes (latihan koding + kuis)\n- Menyelesaikan latihan program C/Python dan kuis evaluasi pemahaman\n**Prerequisites:**\n- variabel\n---END_LESSON_INFO---\n\n# Uji Coba Komposit (Latihan dan Kuis)\n\nPelajaran ini merupakan contoh materi **komposit**, yaitu materi pembelajaran yang menggabungkan:\n1. **Latihan Pemrograman (Exercise):** Menulis kode program langsung di editor dan memverifikasi keluarannya.\n2. **Kuis Evaluasi (Quiz):** Menjawab pertanyaan pilihan ganda terkait materi.\n\n### Perhitungan Nilai Komposit\nNilai akhir siswa dihitung dari kombinasi kedua komponen:\n- Bobot Latihan: 70%\n- Bobot Kuis: 30%\n- Ambang Tuntas (*Done*): $\\ge$ 75%\n\n---EXERCISE---\n### Latihan: Pengecekan Angka Positif\nBuatlah program yang memeriksa nilai variabel `angka`. Jika `angka > 0`, cetak:\n```\nPositif\n```\n\n---INITIAL_CODE---\n#include <stdio.h>\n\nint main() {\n    int angka = 10;\n    // Tulis logika percabangan if di bawah ini:\n    if (angka > 0) {\n        printf(\"Positif\\n\");\n    }\n    return 0;\n}\n---END_INITIAL_CODE---\n\n---EXPECTED_OUTPUT---\nPositif\n---END_EXPECTED_OUTPUT---\n\n---INITIAL_PYTHON---\nangka = 10\n# Tulis logika percabangan if di bawah ini:\nif angka > 0:\n    print(\"Positif\")\n---END_INITIAL_PYTHON---\n\n---EXPECTED_OUTPUT_PYTHON---\nPositif\n---END_EXPECTED_OUTPUT_PYTHON---\n\n---SOLUTION_CODE---\n#include <stdio.h>\n\nint main() {\n    int angka = 10;\n    if (angka > 0) {\n        printf(\"Positif\\n\");\n    }\n    return 0;\n}\n---END_SOLUTION_CODE---\n\n---SOLUTION_PYTHON---\nangka = 10\nif angka > 0:\n    print(\"Positif\")\n---END_SOLUTION_PYTHON---\n\n---KEY_TEXT---\nif\nprintf\nprint\n---END_KEY_TEXT---\n\n\n\n---QUIZ_MCQ---\n### Manakah sintaks penulisan kondisi `if` yang benar dalam bahasa C?\n- [x] `if (kondisi) { ... }`\n- [] `if kondisi then { ... }`\n- [] `if [kondisi] { ... }`\n- [] `if {kondisi} then { ... }`\n> Penjelasan: Dalam bahasa C, ekspresi logika kondisi pada `if` wajib berada di dalam tanda kurung biasa `( )`.\n\n### Apa keluaran dari kode berikut jika `x = 5`?\n```c\nif (x > 10) {\n    printf(\"Besar\\n\");\n} else {\n    printf(\"Kecil\\n\");\n}\n```\n- [] Besar\n- [x] Kecil\n- [] Error sintaks\n- [] Tidak ada keluaran\n> Penjelasan: Karena `5 > 10` bernilai salah (false), maka blok `else` yang akan dieksekusi, menghasilkan output \"Kecil\".\n\n### Berapa bobot penilaian komponen latihan koding dalam penentuan nilai komposit standar Elemes?\n- [] 30%\n- [] 50%\n- [x] 70%\n- [] 100%\n> Penjelasan: Secara default pada konfigurasi Elemes, komponen latihan koding memiliki bobot 70% dan kuis memiliki bobot 30%.\n---END_QUIZ_MCQ---\n\n\n",
+  "lesson_content": "<h1 id=\"uji-coba-komposit-latihan-dan-kuis\">Uji Coba Komposit (Latihan dan Kuis)</h1>\n<p>Pelajaran ini merupakan contoh materi <strong>komposit</strong>, yaitu materi pembelajaran yang menggabungkan:<br />\n1. <strong>Latihan Pemrograman (Exercise):</strong> Menulis kode program langsung di editor dan memverifikasi keluarannya.<br />\n2. <strong>Kuis Evaluasi (Quiz):</strong> Menjawab pertanyaan pilihan ganda terkait materi.</p>\n<h3 id=\"perhitungan-nilai-komposit\">Perhitungan Nilai Komposit</h3>\n<p>Nilai akhir siswa dihitung dari kombinasi kedua komponen:<br />\n- Bobot Latihan: 70%<br />\n- Bobot Kuis: 30%<br />\n- Ambang Tuntas (<em>Done</em>): $\\ge$ 75%</p>",
+  "exercise_content": "<h3 id=\"latihan-pengecekan-angka-positif\">Latihan: Pengecekan Angka Positif</h3>\n<p>Buatlah program yang memeriksa nilai variabel <code>angka</code>. Jika <code>angka &gt; 0</code>, cetak:</p>\n<pre><code>Positif\n</code></pre>",
+  "quiz_data": [
+    {
+      "id": "q-0",
+      "type": "mcq",
+      "quiz_type": "mcq",
+      "question": "<h3 id=\"manakah-sintaks-penulisan-kondisi-if-yang-benar-dalam-bahasa-c\">Manakah sintaks penulisan kondisi <code>if</code> yang benar dalam bahasa C?</h3>",
+      "options": [
+        {
+          "id": "q-0-o-0",
+          "text": "<p><code>if (kondisi) { ... }</code></p>",
+          "is_correct": true,
+          "weight": 1
+        },
+        {
+          "id": "q-0-o-1",
+          "text": "<p><code>if kondisi then { ... }</code></p>",
+          "is_correct": false,
+          "weight": 0
+        },
+        {
+          "id": "q-0-o-2",
+          "text": "<p><code>if [kondisi] { ... }</code></p>",
+          "is_correct": false,
+          "weight": 0
+        },
+        {
+          "id": "q-0-o-3",
+          "text": "<p><code>if {kondisi} then { ... }</code></p>",
+          "is_correct": false,
+          "weight": 0
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Penjelasan: Dalam bahasa C, ekspresi logika kondisi pada <code>if</code> wajib berada di dalam tanda kurung biasa <code>( )</code>.</p>\n</blockquote>",
+      "image": "",
+      "category": "evaluasi"
+    },
+    {
+      "id": "q-1",
+      "type": "mcq",
+      "quiz_type": "mcq",
+      "question": "<h3 id=\"apa-keluaran-dari-kode-berikut-jika-x-5\">Apa keluaran dari kode berikut jika <code>x = 5</code>?</h3>\n<pre><code class=\"language-c\">if (x &gt; 10) {\n    printf(&quot;Besar\\n&quot;);\n} else {\n    printf(&quot;Kecil\\n&quot;);\n}\n</code></pre>",
+      "options": [
+        {
+          "id": "q-1-o-0",
+          "text": "<p>Besar</p>",
+          "is_correct": false,
+          "weight": 0
+        },
+        {
+          "id": "q-1-o-1",
+          "text": "<p>Kecil</p>",
+          "is_correct": true,
+          "weight": 1
+        },
+        {
+          "id": "q-1-o-2",
+          "text": "<p>Error sintaks</p>",
+          "is_correct": false,
+          "weight": 0
+        },
+        {
+          "id": "q-1-o-3",
+          "text": "<p>Tidak ada keluaran</p>",
+          "is_correct": false,
+          "weight": 0
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Penjelasan: Karena <code>5 &gt; 10</code> bernilai salah (false), maka blok <code>else</code> yang akan dieksekusi, menghasilkan output \"Kecil\".</p>\n</blockquote>",
+      "image": "",
+      "category": "evaluasi"
+    },
+    {
+      "id": "q-2",
+      "type": "mcq",
+      "quiz_type": "mcq",
+      "question": "<h3 id=\"berapa-bobot-penilaian-komponen-latihan-koding-dalam-penentuan-nilai-komposit-standar-elemes\">Berapa bobot penilaian komponen latihan koding dalam penentuan nilai komposit standar Elemes?</h3>",
+      "options": [
+        {
+          "id": "q-2-o-0",
+          "text": "<p>30%</p>",
+          "is_correct": false,
+          "weight": 0
+        },
+        {
+          "id": "q-2-o-1",
+          "text": "<p>50%</p>",
+          "is_correct": false,
+          "weight": 0
+        },
+        {
+          "id": "q-2-o-2",
+          "text": "<p>70%</p>",
+          "is_correct": true,
+          "weight": 1
+        },
+        {
+          "id": "q-2-o-3",
+          "text": "<p>100%</p>",
+          "is_correct": false,
+          "weight": 0
+        }
+      ],
+      "explanation": "<blockquote>\n<p>Penjelasan: Secara default pada konfigurasi Elemes, komponen latihan koding memiliki bobot 70% dan kuis memiliki bobot 30%.</p>\n</blockquote>",
+      "image": "",
+      "category": "evaluasi"
+    }
+  ],
+  "slides": [],
+  "active_tabs": [
+    "c",
+    "python",
+    "quiz"
+  ]
+}

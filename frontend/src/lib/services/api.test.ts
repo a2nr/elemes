@@ -76,7 +76,10 @@ describe('submitLessonProgress (quiz)', () => {
 					selected_option_id: 'o2',
 					is_correct: false,
 					category: 'evaluasi',
-					type: 'mcq'
+					type: 'mcq',
+					quiz_type: 'mcq',
+					earned_points: 0,
+					question_max_points: 1
 				}
 			],
 			...overrides

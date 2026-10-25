@@ -27,6 +27,18 @@ from services.repositories import (
 logger = logging.getLogger(__name__)
 
 
+def _answer_quiz_type(ans):
+    """Jenis quiz dari satu entri jawaban (payload attempt).
+
+    Payload baru punya `quiz_type` eksplisit; payload lama di-fallback dari
+    `type` ('flashcard') atau 'mcq' — kompatibel dengan attempt lama.
+    """
+    qt = ans.get('quiz_type')
+    if qt in ('mcq', 'weighted', 'flashcard'):
+        return qt
+    return 'flashcard' if ans.get('type') == 'flashcard' else 'mcq'
+
+
 def calculate_student_completion(student_data, all_lessons):
     """Kontrak kompatibel — PG memakai COUNT DB, helper ini disediakan utk parity API."""
     from services.storage.completion import calculate_student_completion as _calc
@@ -293,10 +305,29 @@ def get_all_students_progress(all_lessons_func):
                     eval_total = 0
                     diag_correct = 0
                     diag_total = 0
+                    mcq_total = 0
+                    mcq_correct = 0
+                    weighted_earned = 0
+                    weighted_max = 0
+
                     for ans in answers:
-                        # Flashcard netral: abaikan dari breakdown eval/diag.
-                        if ans.get('type') == 'flashcard':
+                        qt = _answer_quiz_type(ans)
+                        if qt == 'flashcard':
+                            # Flashcard netral: tidak masuk breakdown mana pun.
                             continue
+                        if qt == 'weighted':
+                            # Sumbu JENIS: poin weighted, bukan rasio benar.
+                            try:
+                                weighted_max += int(float(ans.get('question_max_points') or 0))
+                                weighted_earned += int(float(ans.get('earned_points') or 0))
+                            except (TypeError, ValueError):
+                                pass
+                            continue
+                        mcq_total += 1
+                        if ans.get('is_correct'):
+                            mcq_correct += 1
+                        # Sumbu KATEGORI (eval/diag) — hanya soal QUIZ_MCQ
+                        # (semantik legacy utuh; weighted tidak masuk sini).
                         cat = ans.get('category', 'evaluasi')
                         if cat == 'diagnostik':
                             diag_total += 1
@@ -312,15 +343,25 @@ def get_all_students_progress(all_lessons_func):
                         [
                             a.get('question_id', '')
                             for a in answers
-                            if a.get('type') != 'flashcard'
+                            if _answer_quiz_type(a) == 'mcq'
                             and a.get('category') == 'diagnostik'
                             and not a.get('is_correct')
                         ]
+                    )
+                    # Sumbu JENIS utk laporan guru — hanya diisi bila jenis itu
+                    # ada di kuis (kosong = tidak ada, badge tidak tampil).
+                    student[f"{lesson.slug}_quiz_mcq"] = (
+                        f"{mcq_correct}/{mcq_total}" if mcq_total else ""
+                    )
+                    student[f"{lesson.slug}_quiz_weighted"] = (
+                        f"{weighted_earned}/{weighted_max}" if weighted_max else ""
                     )
                 else:
                     student[f"{lesson.slug}_eval"] = ""
                     student[f"{lesson.slug}_diag"] = ""
                     student[f"{lesson.slug}_diag_unmastered"] = "[]"
+                    student[f"{lesson.slug}_quiz_mcq"] = ""
+                    student[f"{lesson.slug}_quiz_weighted"] = ""
                 # Field komposit (skor gabungan) untuk report guru — emit TERPISAH,
                 # tidak mengubah kontrak status lama di student[lesson.slug].
                 progress_row = rows.get(lesson.id)

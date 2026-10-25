@@ -25,6 +25,8 @@ import {
 	answerQuestion,
 	acknowledgeFlashcard,
 	calculateQuizResult,
+	questionMaxPoints,
+	QUIZ_PASS_THRESHOLD,
 	type QuizSession,
 	type QuizResult
 } from '$services/quiz-session';
@@ -511,12 +513,13 @@ export class LessonManager {
 		const payload = this.buildQuizAttemptPayload(reason);
 		if (!payload) return;
 
-		// Hitung perkiraan awal (optimistic) lulus/tidaknya kuis (ambang batas 75%)
-		const isQuizScorePassed =
+		// Hitung perkiraan awal (optimistic) lulus/tidaknya kuis — ambang 75% dari
+// SKOR AKHIR (angka yang tampil = angka yang dipakai memutuskan).
+const isQuizScorePassed =
 			reason === 'completed' && this.quizResult
-				? this.quizResult.totalMcq > 0
-					? this.quizResult.correctMcq / this.quizResult.totalMcq >= 0.75
-					: true
+				? this.quizResult.percent === null
+					? true // kuis tanpa soal dinilai (flashcard saja) → selesai = lulus
+					: this.quizResult.percent >= QUIZ_PASS_THRESHOLD
 				: false;
 
 		const hasExerciseTab =
@@ -637,12 +640,16 @@ export class LessonManager {
 			visibility_event_count: this.visibilityEventCount,
 			answers: this.quizSession.questions.map((q) => {
 				const a = this.quizSession!.answers[q.id];
+				const quizType = q.type === 'flashcard' ? 'flashcard' : (q.quiz_type ?? 'mcq');
 				return {
 					question_id: q.id,
 					selected_option_id: a.selectedOptionId,
 					is_correct: a.isCorrect,
 					category: (q.category === 'diagnostik' ? 'diagnostik' : 'evaluasi') as 'evaluasi' | 'diagnostik',
-					type: (q.type === 'flashcard' ? 'flashcard' : 'mcq') as 'mcq' | 'flashcard'
+					type: (q.type === 'flashcard' ? 'flashcard' : 'mcq') as 'mcq' | 'flashcard',
+					quiz_type: quizType as 'mcq' | 'weighted' | 'flashcard',
+					earned_points: a.earnedPoints ?? 0,
+					question_max_points: a.questionMaxPoints || questionMaxPoints(q)
 				};
 			})
 		};

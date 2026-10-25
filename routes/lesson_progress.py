@@ -38,6 +38,39 @@ MAX_PAYLOAD_BYTES = 64 * 1024
 MAX_SCORE_LENGTH = 32
 MAX_AGENT_LENGTH = 255
 
+ALLOWED_QUIZ_TYPES = {"mcq", "weighted", "flashcard"}
+
+
+def _validate_answer_entry(ans):
+    """Validasi satu entri jawaban kuis → None bila valid, selain itu pesan error.
+
+    Field poin (`earned_points` / `question_max_points`) dan `quiz_type`
+    bersifat OPSIONAL supaya payload klien lama tetap diterima. Bila ada:
+    - `quiz_type` harus salah satu dari ALLOWED_QUIZ_TYPES.
+    - poin wajib bilangan bulat non-negatif dan earned <= max.
+    """
+    if not isinstance(ans, dict):
+        return "answers harus berisi objek"
+    quiz_type = ans.get("quiz_type")
+    if quiz_type is not None and quiz_type not in ALLOWED_QUIZ_TYPES:
+        return "quiz_type tidak dikenal"
+    earned = ans.get("earned_points")
+    max_points = ans.get("question_max_points")
+    if earned is None and max_points is None:
+        return None
+    for name, value in (("earned_points", earned), ("question_max_points", max_points)):
+        if value is None:
+            return f"{name} wajib diisi bersama pasangannya"
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return f"{name} harus numerik"
+        if value < 0:
+            return f"{name} tidak boleh negatif"
+        if float(value) != int(value):
+            return f"{name} harus bilangan bulat"
+    if float(earned) > float(max_points):
+        return "earned_points melebihi question_max_points"
+    return None
+
 
 def _parse_ts(value, *, required: bool) -> datetime | None:
     """ISO-8601 timestamp -> datetime UTC-aware. Raise ValueError bila invalid."""
@@ -177,6 +210,10 @@ def submit_lesson_progress():
         if answers_raw is not None:
             if not isinstance(answers_raw, list):
                 return jsonify({"success": False, "message": "answers harus berupa list"}), 400
+            for ans in answers_raw:
+                err = _validate_answer_entry(ans)
+                if err:
+                    return jsonify({"success": False, "message": err}), 400
             try:
                 answers_json = json.dumps(answers_raw)
             except (TypeError, ValueError):
