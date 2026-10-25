@@ -22,6 +22,12 @@
 	let circuitEditorRef = $state<any>(null);
 	let velxioEditorRef = $state<any>(null);
 
+	// ── Indikator loading operasi tree (CRUD / upload / export) ──────
+	// Label operasi yang sedang berjalan, mis. 'Membuat folder…'.
+	let treeBusy = $state<string | null>(null);
+	// Key aksi yang sedang berjalan — dipakai untuk menampilkan ⏳ pada tombolnya.
+	let treeBusyAction = $state<string | null>(null);
+
 	// Content view mode: 'preview' (default rendered view) or 'edit' (inline editor)
 	let contentViewMode = $state<'preview' | 'edit'>('preview');
 	let editCursorPos = $state<number | undefined>(undefined);
@@ -31,7 +37,7 @@
 
 	// Load trees on mount & setup global shortcut
 	onMount(() => {
-		loadTrees();
+		void openInitialFile();
 
 		const handleGlobalKey = (e: KeyboardEvent) => {
 			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'e') {
@@ -112,17 +118,18 @@
 	let extractedCircuitVelxio = $derived(extractCode(mgr.body, 'VELXIO_CIRCUIT'));
 
 	// Tab label map for chrome tabs
+	// Catatan: tab "Fitur & Aksi" dihapus — tool digantikan rail (C3),
+	// sehingga desktop & mobile memakai satu cara tampil yang sama.
 	let allTabs = $derived([
-		{ id: 'features', label: 'Fitur & Aksi' },
 		...dynamicTabs,
 		{ id: 'exercise', label: 'Exercise', show: hasExercise },
 		{ id: 'quiz', label: 'Quiz', show: hasQuiz },
 	].filter((t) => t.show !== false));
 
-	// Auto-switch to features tab when switching files
+	// Reset tab saat pindah file (tab pertama yang tersedia dipilih di bawah)
 	$effect(() => {
 		if (mgr.activePath) {
-			mgr.activeTab = 'features';
+			mgr.activeTab = '';
 		}
 	});
 
@@ -130,7 +137,7 @@
 	$effect(() => {
 		const validIds = allTabs.map((t) => t.id);
 		if (!validIds.includes(mgr.activeTab)) {
-			mgr.activeTab = 'features';
+			mgr.activeTab = validIds[0] ?? '';
 		}
 	});
 
@@ -148,6 +155,31 @@
 			mgr.assetsTree = [];
 		} finally {
 			mgr.treeLoading = false;
+		}
+	}
+
+	/** Cari node file dengan path persis di tree (recursive). */
+	function findTreeNode(nodes: TreeNode[], path: string): TreeNode | null {
+		for (const n of nodes) {
+			if (n.path === path) return n;
+			if (n.children) {
+				const found = findTreeNode(n.children, path);
+				if (found) return found;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Saat pertama kali masuk editor: muat tree, lalu buka `home.md` otomatis
+	 * bila ada (file navigasi utama). Bila tidak ada → panel tetap kosong
+	 * ("Pilih file…") seperti sebelumnya.
+	 */
+	async function openInitialFile() {
+		await loadTrees();
+		const home = findTreeNode(mgr.contentTree, 'home.md');
+		if (home && home.type === 'file') {
+			await mgr.loadDraft('home.md');
 		}
 	}
 
@@ -335,6 +367,16 @@
 				'- [] Pilihan A\n- [x] Pilihan B\n' +
 				'> Penjelasan: tulis penjelasan di sini.\n' +
 				'---END_QUIZ_FLASHCARD---\n',
+		},
+		{
+			id: 'details',
+			label: 'Details',
+			group: 'layout',
+			snippet:
+				'\n<details>\n' +
+				'<summary>Judul bagian yang bisa dibuka-tutup</summary>\n\n' +
+				'Isi konten di dalam lipatan (markdown tetap dirender).\n\n' +
+				'</details>\n',
 		},
 		{
 			id: 'exercise',
@@ -530,6 +572,7 @@
 			case 'quiz': return 'Pilihan ganda interaktif & pembahasan';
 			case 'exercise': return 'Blok instruksi tantangan latihan mandiri';
 			case 'slide': return 'Presentasi carousel slide atau embed Canva';
+			case 'details': return 'Bagian lipatan (bisa dibuka-tutup)';
 			case 'set-c': return 'Bundle C: initial, expected, solution, key';
 			case 'set-python': return 'Bundle Python dengan verifikasi output';
 			case 'set-circuit': return 'Rangkaian analog & evaluasi tegangan node';
@@ -559,30 +602,52 @@
 	}
 
 
+	// ── Busy helper ────────────────────────────────────────────────
+	/**
+	 * Jalankan `fn` dengan indikator loading aktif.
+	 * Guard re-entrancy: bila operasi lain sedang berjalan, call diabaikan
+	 * sehingga klik ganda tidak menghasilkan request kedua.
+	 */
+	async function withTreeBusy(label: string, action: string, fn: () => Promise<void>) {
+		if (treeBusy !== null || importExportBusy) return;
+		treeBusy = label;
+		treeBusyAction = action;
+		try {
+			await fn();
+		} finally {
+			treeBusy = null;
+			treeBusyAction = null;
+		}
+	}
+
 	// Tree operations
 	async function handleCreateFolder(parentPath: string) {
 		const name = window.prompt('Nama folder baru:');
 		if (!name) return;
 		const path = parentPath ? `${parentPath}/${name}` : name;
-		const res = await createFolder(mgr.treeRoot, path);
-		if (res.success) {
-			await loadTrees();
-		} else {
-			alert(res.message || 'Gagal membuat folder');
-		}
+		await withTreeBusy('Membuat folder…', 'create-folder', async () => {
+			const res = await createFolder(mgr.treeRoot, path);
+			if (res.success) {
+				await loadTrees();
+			} else {
+				alert(res.message || 'Gagal membuat folder');
+			}
+		});
 	}
 
 	async function handleCreateFile(parentPath: string) {
 		const name = window.prompt('Nama file (.md):');
 		if (!name) return;
 		const path = parentPath ? `${parentPath}/${name}` : name;
-		const res = await createFile(path);
-		if (res.success) {
-			await loadTrees();
-			await mgr.loadDraft(path);
-		} else {
-			alert(res.message || 'Gagal membuat file');
-		}
+		await withTreeBusy('Membuat file…', 'create-file', async () => {
+			const res = await createFile(path);
+			if (res.success) {
+				await loadTrees();
+				await mgr.loadDraft(path);
+			} else {
+				alert(res.message || 'Gagal membuat file');
+			}
+		});
 	}
 
 	// File navigasi kritis yang memerlukan konfirmasi ganda
@@ -603,15 +668,17 @@
 			)) return;
 		}
 
-		const res = await renameEntry(mgr.treeRoot, oldPath, newPath, PROTECTED_BASENAMES.has(oldName));
-		if (res.success) {
-			await loadTrees();
-			if (mgr.activePath === oldPath) {
-				await mgr.loadDraft(newPath);
+		await withTreeBusy('Mengubah nama…', 'rename', async () => {
+			const res = await renameEntry(mgr.treeRoot, oldPath, newPath, PROTECTED_BASENAMES.has(oldName));
+			if (res.success) {
+				await loadTrees();
+				if (mgr.activePath === oldPath) {
+					await mgr.loadDraft(newPath);
+				}
+			} else {
+				alert(res.message || 'Gagal rename');
 			}
-		} else {
-			alert(res.message || 'Gagal rename');
-		}
+		});
 	}
 
 	async function handleDelete(path: string) {
@@ -623,33 +690,36 @@
 				`merusak halaman untuk semua siswa dan TIDAK BISA di-undo. Lanjutkan?`
 			)) return;
 		} else if (!window.confirm(`Hapus "${name}"?`)) return;
-		const res = await deleteEntry(mgr.treeRoot, path, PROTECTED_BASENAMES.has(name));
-		if (res.success) {
-			await loadTrees();
-			if (mgr.activePath === path) {
-				mgr.activePath = null;
-				mgr.body = '';
-				mgr.draftId = null;
-				mgr.previewSlides = [];
-				mgr.previewActiveTabs = [];
-			}
-		} else if (res.needs_force) {
-			if (window.confirm(`Folder "${name}" tidak kosong. Hapus semua isi?`)) {
-				const forceRes = await deleteEntry(mgr.treeRoot, path, PROTECTED_BASENAMES.has(name), true);
-				if (forceRes.success) {
-					await loadTrees();
-					if (mgr.activePath === path) {
-						mgr.activePath = null;
-						mgr.body = '';
-						mgr.draftId = null;
-					}
-				} else {
-					alert(forceRes.message || 'Gagal menghapus');
+
+		await withTreeBusy('Menghapus…', 'delete', async () => {
+			const res = await deleteEntry(mgr.treeRoot, path, PROTECTED_BASENAMES.has(name));
+			if (res.success) {
+				await loadTrees();
+				if (mgr.activePath === path) {
+					mgr.activePath = null;
+					mgr.body = '';
+					mgr.draftId = null;
+					mgr.previewSlides = [];
+					mgr.previewActiveTabs = [];
 				}
+			} else if (res.needs_force) {
+				if (window.confirm(`Folder "${name}" tidak kosong. Hapus semua isi?`)) {
+					const forceRes = await deleteEntry(mgr.treeRoot, path, PROTECTED_BASENAMES.has(name), true);
+					if (forceRes.success) {
+						await loadTrees();
+						if (mgr.activePath === path) {
+							mgr.activePath = null;
+							mgr.body = '';
+							mgr.draftId = null;
+						}
+					} else {
+						alert(forceRes.message || 'Gagal menghapus');
+					}
+				}
+			} else {
+				alert(res.message || 'Gagal menghapus');
 			}
-		} else {
-			alert(res.message || 'Gagal menghapus');
-		}
+		});
 	}
 
 	async function handleUpload() {
@@ -660,16 +730,19 @@
 			const file = input.files?.[0];
 			if (!file) return;
 			const folder = window.prompt('Folder tujuan (opsional, kosongkan untuk root assets):', '') ?? '';
-			const res = await uploadAsset(file, folder);
-			if (res.success) {
-				await loadTrees();
-				const path = res.path;
-				if (window.confirm(`Gambar "${file.name}" berhasil diunggah. Salin path ke clipboard?`)) {
-					navigator.clipboard.writeText(`/assets/${path}`);
+			await withTreeBusy(`Mengunggah ${file.name}…`, 'upload', async () => {
+				showToast(`Mengunggah ${file.name}…`);
+				const res = await uploadAsset(file, folder);
+				if (res.success) {
+					await loadTrees();
+					const path = res.path;
+					if (window.confirm(`Gambar "${file.name}" berhasil diunggah. Salin path ke clipboard?`)) {
+						navigator.clipboard.writeText(`/assets/${path}`);
+					}
+				} else {
+					alert(res.message || 'Gagal mengunggah');
 				}
-			} else {
-				alert(res.message || 'Gagal mengunggah');
-			}
+			});
 		};
 		input.click();
 	}
@@ -714,26 +787,29 @@
 	}
 
 	async function handleExport() {
-		importExportBusy = true;
-		try {
-			const blob = await exportBundle();
-			const url = URL.createObjectURL(blob);
-			const a = document.createElement('a');
-			a.href = url;
-			a.download = `elemes-bundle-${new Date().toISOString().slice(0, 10)}.zip`;
-			a.click();
-			URL.revokeObjectURL(url);
-			showToast('Export berhasil — file sedang diunduh.');
-		} catch (e) {
-			showToast(`Export gagal: ${e instanceof Error ? e.message : String(e)}`, true);
-		} finally {
-			importExportBusy = false;
-		}
+		await withTreeBusy('Menyiapkan zip…', 'export', async () => {
+			importExportBusy = true;
+			try {
+				const blob = await exportBundle();
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = `elemes-bundle-${new Date().toISOString().slice(0, 10)}.zip`;
+				a.click();
+				URL.revokeObjectURL(url);
+				showToast('Export berhasil — file sedang diunduh.');
+			} catch (e) {
+				showToast(`Export gagal: ${e instanceof Error ? e.message : String(e)}`, true);
+			} finally {
+				importExportBusy = false;
+			}
+		});
 	}
 
 	async function handleImportFile(file: File) {
+		if (importExportBusy || treeBusy !== null) return; // guard double-submit
 		importExportBusy = true;
-		importProgress = null;
+		importProgress = { done: 0, total: 0, current: 'Menyiapkan import…' };
 		try {
 			// 1. Reload tree SEBELUM extract supaya existingPaths fresh
 			await loadTrees();
@@ -902,17 +978,104 @@
 			{/if}
 		{/snippet}
 
-		<!-- File management actions (tree header, right side) -->
+		<!-- File management actions (tree header) + indikator loading -->
 		{#snippet treeActions()}
-			{#if mgr.treeRoot === 'content'}
-				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFile('')} title="Buat file baru (.md)">📄</button>
-				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFolder('')} title="Buat folder baru">📁</button>
-			{:else}
-				<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleUpload} title="Upload asset gambar">⬆️</button>
-				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFolder('')} title="Buat folder asset">📁</button>
+			{#if importProgress}
+				<span class="ie-progress" title={importProgress.current}>
+					⏳ {importProgress.total > 0 ? `${importProgress.done}/${importProgress.total}` : '…'} {importProgress.current}
+				</span>
+			{:else if treeBusy}
+				<span class="ie-progress">⏳ {treeBusy}</span>
 			{/if}
-			<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleExport} disabled={importExportBusy} title="Export semua materi & assets (zip)">📤</button>
-			<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleImportClick} disabled={importExportBusy} title="Import materi & assets dari zip">📥</button>
+			{#if mgr.treeRoot === 'content'}
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFile('')} disabled={treeBusy !== null || importExportBusy} title="Buat file baru (.md)">
+					{treeBusyAction === 'create-file' ? '⏳' : '📄'}
+				</button>
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFolder('')} disabled={treeBusy !== null || importExportBusy} title="Buat folder baru">
+					{treeBusyAction === 'create-folder' ? '⏳' : '📁'}
+				</button>
+			{:else}
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleUpload} disabled={treeBusy !== null || importExportBusy} title="Upload asset gambar">
+					{treeBusyAction === 'upload' ? '⏳' : '⬆️'}
+				</button>
+				<button type="button" class="tree-action-btn" use:preserveFocus onclick={() => handleCreateFolder('')} disabled={treeBusy !== null || importExportBusy} title="Buat folder asset">
+					{treeBusyAction === 'create-folder' ? '⏳' : '📁'}
+				</button>
+			{/if}
+			<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleExport} disabled={treeBusy !== null || importExportBusy} title="Export semua materi & assets (zip)">
+				{treeBusyAction === 'export' ? '⏳' : '📤'}
+			</button>
+			<button type="button" class="tree-action-btn" use:preserveFocus onclick={handleImportClick} disabled={treeBusy !== null || importExportBusy} title="Import materi & assets dari zip">
+				{importExportBusy && !treeBusy ? '⏳' : '📥'}
+			</button>
+		{/snippet}
+
+		<!-- Quick tools rail — dipakai desktop & mobile (satu cara tampil, C3) -->
+		{#snippet toolsRail()}
+			{#if mgr.activePath}
+				<div class="quick-tools-rail" data-preserve-editor-focus>
+					<!-- Pinned: status file aktif + aksi utama (tidak ikut scroll) -->
+					<div class="qt-pinned">
+						<span class="qt-file-name" title={mgr.activePath}>{isAssetFile ? '🖼️' : '📄'} {activeFileName}</span>
+						{#if isAssetFile}
+							<span class="qt-path" title={mgr.activePath}>/assets/{mgr.activePath}</span>
+							<button type="button" class="qt-chip" use:preserveFocus onclick={handleCopyAssetPath} title="Salin path asset">📋 Salin Path</button>
+						{:else}
+							<span class="qt-dirty-badge" class:dirty={mgr.dirty}>{mgr.dirty ? '● Belum disimpan' : '✓ Tersimpan'}</span>
+							<button type="button" class="qt-chip qt-action-edit" use:preserveFocus onclick={() => { contentViewMode = contentViewMode === 'edit' ? 'preview' : 'edit'; }} title="Toggle editor teks (Ctrl+E)">
+								{contentViewMode === 'edit' ? '👁️' : '✏️'}
+							</button>
+							<button type="button" class="qt-chip" use:preserveFocus onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
+								{mgr.saving ? '⏳' : '💾'}
+							</button>
+							<button type="button" class="qt-chip" use:preserveFocus onclick={() => handlePublishAction()} disabled={mgr.publishing || mgr.saving} title="Publish">
+								{mgr.publishing ? '⏳' : '🚀'}
+							</button>
+						{/if}
+					</div>
+
+					{#if !isAssetFile}
+						<!-- Scrollable templates -->
+						<div class="qt-scroll">
+							<div class="qt-divider" aria-hidden="true"></div>
+
+							<!-- Layout templates -->
+							<div class="qt-group">
+								<span class="qt-label">📐 Layout</span>
+								{#each FEATURE_TEMPLATES.filter(t => t.group === 'layout') as tpl}
+									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
+										{tpl.label}
+									</button>
+								{/each}
+							</div>
+
+							<div class="qt-divider" aria-hidden="true"></div>
+
+							<!-- Set soal templates -->
+							<div class="qt-group">
+								<span class="qt-label">🎯 Set Soal</span>
+								{#each FEATURE_TEMPLATES.filter(t => t.group === 'set_soal') as tpl}
+									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
+										{tpl.label}
+									</button>
+								{/each}
+							</div>
+
+							<div class="qt-divider" aria-hidden="true"></div>
+
+							<!-- Inline templates -->
+							<div class="qt-group">
+								<span class="qt-label">⚡ Inline</span>
+								{#each FEATURE_TEMPLATES.filter(t => t.group === 'inline') as tpl}
+									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
+										{tpl.label}
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</div>
+			{/if}
 		{/snippet}
 
 		<!-- Panel Header (floating drag handle) -->
@@ -960,76 +1123,22 @@
 				</div>
 				{/if}
 
-				<!-- Quick tools rail: mobile only -->
-				{#if mgr.isMobile && mgr.activePath && !isAssetFile}
-					<div class="quick-tools-rail" data-preserve-editor-focus>
-						<!-- Pinned quick actions (tidak ikut scroll horizontal) -->
-						<div class="qt-pinned">
-							<button type="button" class="qt-chip qt-action-edit" use:preserveFocus onclick={() => { contentViewMode = contentViewMode === 'edit' ? 'preview' : 'edit'; }} title="Toggle editor teks (Ctrl+E)">
-								{contentViewMode === 'edit' ? '👁️' : '✏️'}
-							</button>
-							<button type="button" class="qt-chip" use:preserveFocus onclick={() => handleSaveAction()} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')} title="Simpan">
-								{mgr.saving ? '⏳' : '💾'}
-							</button>
-							<button type="button" class="qt-chip" use:preserveFocus onclick={() => handlePublishAction()} disabled={mgr.publishing || mgr.saving} title="Publish">
-								{mgr.publishing ? '⏳' : '🚀'}
-							</button>
-						</div>
-
-						<!-- Scrollable templates -->
-						<div class="qt-scroll">
-							<div class="qt-divider" aria-hidden="true"></div>
-
-							<!-- Layout templates -->
-							<div class="qt-group">
-								<span class="qt-label">📐 Layout</span>
-								{#each FEATURE_TEMPLATES.filter(t => t.group === 'layout') as tpl}
-									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
-										{tpl.label}
-									</button>
-								{/each}
-							</div>
-
-							<div class="qt-divider" aria-hidden="true"></div>
-
-							<!-- Set soal templates -->
-							<div class="qt-group">
-								<span class="qt-label">🎯 Set Soal</span>
-								{#each FEATURE_TEMPLATES.filter(t => t.group === 'set_soal') as tpl}
-									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
-										{tpl.label}
-									</button>
-								{/each}
-							</div>
-
-							<div class="qt-divider" aria-hidden="true"></div>
-
-							<!-- Inline templates -->
-							<div class="qt-group">
-								<span class="qt-label">⚡ Inline</span>
-								{#each FEATURE_TEMPLATES.filter(t => t.group === 'inline') as tpl}
-									<button type="button" class="qt-chip" use:preserveFocus onclick={() => insertTemplate(tpl)} title={getTemplateDesc(tpl.id)}>
-										{tpl.label}
-									</button>
-								{/each}
-							</div>
-						</div>
-					</div>
-				{/if}
+				<!-- Quick tools rail (desktop & mobile) -->
+				{@render toolsRail()}
 
 				<!-- Editor main: tab panels + feature sidebar -->
 			<div class="editor-main">
-			<div class="editor-body">
+			<div class="editor-body" class:no-tabs={allTabs.length === 0}>
 				{#if mgr.isMobile}
 					<!-- MOBILE: Show full-width tree -->
 					<div class="tree-panel mobile-tree-full">
 						<div class="tree-header">
+							<div class="tree-actions">
+								{@render treeActions()}
+							</div>
 							<div class="tree-tabs">
 								<button class="tree-tab" class:active={mgr.treeRoot === 'content'} onclick={() => mgr.treeRoot = 'content'}>Materi</button>
 								<button class="tree-tab" class:active={mgr.treeRoot === 'assets'} onclick={() => mgr.treeRoot = 'assets'}>Assets</button>
-							</div>
-							<div class="tree-actions">
-								{@render treeActions()}
 							</div>
 						</div>
 						<div class="tree-content">
@@ -1053,12 +1162,12 @@
 					<!-- File Tree -->
 					<div class="tree-panel">
 						<div class="tree-header">
+							<div class="tree-actions">
+								{@render treeActions()}
+							</div>
 							<div class="tree-tabs">
 								<button class="tree-tab" class:active={mgr.treeRoot === 'content'} onclick={() => mgr.treeRoot = 'content'}>Materi</button>
 								<button class="tree-tab" class:active={mgr.treeRoot === 'assets'} onclick={() => mgr.treeRoot = 'assets'}>Assets</button>
-							</div>
-							<div class="tree-actions">
-								{@render treeActions()}
 							</div>
 						</div>
 						<div class="tree-content">
@@ -1080,99 +1189,6 @@
 
 					<!-- Tab Panels -->
 					<div class="tab-panels">
-						<!-- Features & Actions Tab (Toolbox) -->
-						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'features'}>
-							<div class="toolbox-container">
-								{#if mgr.activePath}
-									{#if isImageFile}
-										<!-- Asset Preview -->
-										<div class="toolbox-card">
-											<div class="card-header">
-												<span class="card-title">🖼️ Pratinjau Asset</span>
-											</div>
-											<div class="asset-preview">
-												<div class="asset-preview-image">
-													<img src="/assets/{mgr.activePath}" alt={activeFileName} loading="lazy" />
-												</div>
-												<div class="asset-preview-info">
-													<span class="asset-name">{activeFileName}</span>
-													<span class="asset-path">/assets/{mgr.activePath}</span>
-													<div class="asset-actions">
-														<button class="panel-btn" onclick={handleCopyAssetPath}>📋 Salin Path</button>
-													</div>
-												</div>
-											</div>
-										</div>
-									{:else}
-										<!-- 2. Active File Status & Document Actions -->
-										<div class="toolbox-card active-file-card">
-											<div class="active-file-header">
-												<span class="file-name">📄 {activeFileName}</span>
-												<span class="file-status-badge" class:dirty={mgr.dirty}>
-													{mgr.dirty ? '● Perubahan Belum Disimpan' : '✓ Tersimpan'}
-												</span>
-											</div>
-											<div class="btn-row">
-													<button type="button" class="btn-primary" onclick={handleSaveAction} disabled={mgr.saving || (!mgr.dirty && mgr.activeTab !== 'velxio')}>
-														{mgr.saving ? '⏳ Menyimpan...' : '💾 Simpan Draft'}
-													</button>
-													<button type="button" class="btn-success" onclick={handlePublishAction} disabled={mgr.publishing || mgr.saving}>
-														{mgr.publishing ? '⏳ Memproses...' : '🚀 Publish Materi'}
-													</button>
-													<button type="button" class="btn-secondary" onclick={() => { contentViewMode = 'edit'; }}>
-														✏️ Edit Teks di Content View (Ctrl+E)
-													</button>
-												</div>
-											</div>
-
-										<!-- 3. Layout Templates -->
-										<div class="toolbox-section">
-											<h4 class="section-title">📐 Template Layout & Konten</h4>
-											<div class="template-grid">
-												{#each FEATURE_TEMPLATES.filter(t => t.group === 'layout') as tpl}
-													<button type="button" class="template-card-btn" onclick={() => insertTemplate(tpl)}>
-														<span class="tpl-label">{tpl.label}</span>
-														<span class="tpl-desc">{getTemplateDesc(tpl.id)}</span>
-													</button>
-												{/each}
-											</div>
-										</div>
-
-										<!-- 4. Set Soal & Penilaian -->
-										<div class="toolbox-section">
-											<h4 class="section-title">🎯 Set Soal & Penilaian</h4>
-											<div class="template-grid">
-												{#each FEATURE_TEMPLATES.filter(t => t.group === 'set_soal') as tpl}
-													<button type="button" class="template-card-btn" onclick={() => insertTemplate(tpl)}>
-														<span class="tpl-label">{tpl.label}</span>
-														<span class="tpl-desc">{getTemplateDesc(tpl.id)}</span>
-													</button>
-												{/each}
-											</div>
-										</div>
-
-										<!-- 5. Komponen Interaktif Inline -->
-										<div class="toolbox-section">
-											<h4 class="section-title">⚡ Komponen Interaktif Inline</h4>
-											<div class="template-grid">
-												{#each FEATURE_TEMPLATES.filter(t => t.group === 'inline') as tpl}
-													<button type="button" class="template-card-btn" onclick={() => insertTemplate(tpl)}>
-														<span class="tpl-label">{tpl.label}</span>
-														<span class="tpl-desc">{getTemplateDesc(tpl.id)}</span>
-													</button>
-												{/each}
-											</div>
-										</div>
-									{/if}
-								{:else}
-									<!-- Zero state -->
-									<div class="toolbox-zero-state">
-										<p>👈 Pilih materi di daftar berkas untuk melihat template & aksi dokumen aktif.</p>
-									</div>
-								{/if}
-							</div>
-						</div>
-
 						<!-- Exercise Tab -->
 						<div class="tab-panel" class:tab-hidden={mgr.activeTab !== 'exercise'}>
 							{#if mgr.previewExerciseHtml}
@@ -1436,184 +1452,6 @@
 		min-height: 0;
 		overflow: hidden;
 	}
-	/* ── Toolbox (Fitur & Aksi) ── */
-	.toolbox-container {
-		flex: 1;
-		overflow-y: auto;
-		padding: 1rem;
-		display: flex;
-		flex-direction: column;
-		gap: 1rem;
-	}
-	.toolbox-card {
-		background: var(--color-bg-secondary);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius);
-		padding: 0.75rem;
-	}
-	.card-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-	}
-	.card-title {
-		font-size: 0.85rem;
-		font-weight: 700;
-		color: var(--color-text);
-	}
-	.btn-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-	}
-	.btn-action {
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		padding: 0.45rem 0.75rem;
-		font-size: 0.8rem;
-		font-weight: 500;
-		color: var(--color-text);
-		cursor: pointer;
-		transition: all 0.15s;
-		white-space: nowrap;
-	}
-	.btn-action:hover:not(:disabled) {
-		background: var(--color-border);
-		border-color: var(--color-text-muted);
-	}
-	.btn-action:disabled {
-	 opacity: 0.45;
-		cursor: not-allowed;
-	}
-	.btn-primary {
-		background: var(--color-primary, #339af0);
-		border-color: var(--color-primary, #339af0);
-		color: #fff;
-		font-weight: 600;
-	}
-	.btn-primary:hover:not(:disabled) {
-		background: #228be6;
-		border-color: #228be6;
-	}
-	.btn-success {
-		background: #2b8a3e;
-		border-color: #2b8a3e;
-		color: #fff;
-		font-weight: 600;
-	}
-	.btn-success:hover:not(:disabled) {
-		background: #237032;
-		border-color: #237032;
-	}
-	.btn-secondary {
-		background: var(--color-bg);
-		border: 1px dashed var(--color-border);
-		color: var(--color-text-muted);
-	}
-	.btn-secondary:hover:not(:disabled) {
-		background: var(--color-border);
-		color: var(--color-text);
-	}
-	.active-file-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-		flex-wrap: wrap;
-	}
-	.file-name {
-		font-size: 0.85rem;
-		font-weight: 600;
-		color: var(--color-text);
-		word-break: break-all;
-	}
-	.file-status-badge {
-		font-size: 0.72rem;
-		padding: 0.2rem 0.5rem;
-		border-radius: 4px;
-		background: #ebfbee;
-		color: #2b8a3e;
-		white-space: nowrap;
-	}
-	.file-status-badge.dirty {
-		background: #fff3bf;
-		color: #e67700;
-	}
-	.toolbox-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.section-title {
-		font-size: 0.78rem;
-		font-weight: 700;
-		color: var(--color-text-muted);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-	}
-	.template-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-		gap: 0.5rem;
-	}
-	.template-card-btn {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 0.2rem;
-		padding: 0.6rem 0.75rem;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 6px;
-		cursor: pointer;
-		text-align: left;
-		transition: all 0.15s;
-	}
-	.template-card-btn:hover {
-		background: var(--color-border);
-		border-color: var(--color-text-muted);
-	}
-	.tpl-label {
-		font-size: 0.8rem;
-		font-weight: 600;
-		color: var(--color-text);
-	}
-	.tpl-desc {
-		font-size: 0.7rem;
-		color: var(--color-text-muted);
-		line-height: 1.3;
-	}
-	.toolbox-zero-state {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 2rem 1rem;
-		color: var(--color-text-muted);
-		text-align: center;
-		font-size: 0.85rem;
-	}
-
-	@media (max-width: 768px) {
-		.toolbox-container {
-			padding: 0.75rem;
-			gap: 0.75rem;
-		}
-		.template-grid {
-			grid-template-columns: repeat(2, 1fr);
-		}
-		.btn-row {
-			flex-direction: column;
-		}
-		.btn-action, .btn-primary, .btn-success, .btn-secondary {
-			width: 100%;
-			text-align: center;
-		}
-	}
-
 	.btn-float-toggle {
 		background: none;
 		border: 1px solid var(--color-border);
@@ -1726,6 +1564,9 @@
 		overflow: hidden;
 		min-height: 0;
 	}
+	/* Tanpa tab (mis. file materi biasa) → tree memakai seluruh lebar */
+	.editor-body.no-tabs .tab-panels { display: none; }
+	.editor-body.no-tabs .tree-panel { flex: 1 1 auto; }
 
 	/* Tree Panel */
 	.tree-panel {
@@ -1776,6 +1617,7 @@
 	.tree-actions {
 		display: flex;
 		gap: 2px;
+		align-items: center;
 	}
 	.tree-action-btn {
 		display: inline-flex;
@@ -1872,52 +1714,6 @@
 		border: none;
 	}
 
-	/* Asset Preview */
-	.asset-preview {
-		display: flex;
-		flex-direction: column;
-		height: 100%;
-		overflow: hidden;
-	}
-	.asset-preview-image {
-		flex: 1;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 1rem;
-		overflow: auto;
-		background: repeating-conic-gradient(var(--color-border) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
-	}
-	.asset-preview-image img {
-		max-width: 100%;
-		max-height: 100%;
-		object-fit: contain;
-		border-radius: var(--radius);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	}
-	.asset-preview-info {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-		padding: 0.5rem 1rem;
-		border-top: 1px solid var(--color-border);
-		background: var(--color-bg-secondary);
-	}
-	.asset-name {
-		font-weight: 600;
-		font-size: 0.85rem;
-	}
-	.asset-path {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-		word-break: break-all;
-	}
-	.asset-actions {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: 4px;
-	}
-
 	/* Status Bar */
 	.status-bar {
 		padding: 0.4rem 1rem;
@@ -1999,6 +1795,35 @@
 		background: var(--color-bg-secondary);
 		border-right: 1px solid var(--color-border);
 		flex-shrink: 0;
+	}
+	.qt-file-name {
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: var(--color-text);
+		max-width: 180px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.qt-path {
+		font-size: 0.7rem;
+		color: var(--color-text-muted);
+		max-width: 200px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.qt-dirty-badge {
+		font-size: 0.68rem;
+		padding: 0.15rem 0.45rem;
+		border-radius: 4px;
+		background: #ebfbee;
+		color: #2b8a3e;
+		white-space: nowrap;
+	}
+	.qt-dirty-badge.dirty {
+		background: #fff3bf;
+		color: #e67700;
 	}
 	.qt-scroll {
 		display: flex;
